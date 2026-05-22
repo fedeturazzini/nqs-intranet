@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NQS — Dashboard operativo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#faf9f6;--sf:#fff;--tx:#1a1a18;--tx2:#6b6a65;--tx3:#9c9a92;
+  --ln:rgba(0,0,0,.1);--ln2:rgba(0,0,0,.2);--r:10px;--rs:6px;
+  --fd:'Montserrat',system-ui,sans-serif;--fb:'Roboto',system-ui,sans-serif;
+  --teal:#1D9E75;--teal-bg:#E1F5EE;--teal-t:#085041;
+  --purple:#7F77DD;--purple-bg:#EEEDFE;--purple-t:#3C3489;
+  --coral:#D85A30;--coral-bg:#FAECE7;--coral-t:#712B13;
+  --pink:#D4537E;--pink-bg:#FBEAF0;--pink-t:#72243E;
+  --green:#639922;--green-bg:#EAF3DE;--green-t:#27500A;
+  --blue:#378ADD;--blue-bg:#E6F1FB;--blue-t:#0C447C;
+  --amber:#BA7517;--amber-bg:#FAEEDA;--amber-t:#633806;
+  --gray:#888780;--gray-bg:#F1EFE8;--gray-t:#444441;
+  --blue1:#7AC4F0;--blue1-bg:#EEF7FD;--blue1-t:#0E4F8A;
+  --blue2:#3B94E0;--blue2-bg:#E0EFFB;--blue2-t:#0C447C;
+  --blue3:#1B5FB5;--blue3-bg:#D2E2F2;--blue3-t:#0A3A6A;
+  --blue4:#0D3D78;--blue4-bg:#C2D5E8;--blue4-t:#06213F;
+  --orange:#E8873C;--orange-bg:#FDF2E9;--orange-t:#7A3D10;
+  --celeste:#5BB8D4;--celeste-bg:#E8F4F8;--celeste-t:#1A5A6E;
+  --celeste1:#7CC8DE;--celeste1-bg:#EDF6FA;--celeste1-t:#1D6078;
+  --celeste2:#4AADCA;--celeste2-bg:#E3F1F6;--celeste2-t:#165468;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#141413;--sf:#1e1e1c;--tx:#e8e6de;--tx2:#a8a69e;--tx3:#6b6a65;
+  --ln:rgba(255,255,255,.08);--ln2:rgba(255,255,255,.16);
+  --teal-bg:#0a3028;--teal-t:#9FE1CB;--purple-bg:#272050;--purple-t:#CECBF6;
+  --coral-bg:#3a1a0c;--coral-t:#F5C4B3;--pink-bg:#3a1220;--pink-t:#F4C0D1;
+  --green-bg:#1a2e08;--green-t:#C0DD97;--blue-bg:#0a2640;--blue-t:#B5D4F4;
+  --amber-bg:#2e1c04;--amber-t:#FAC775;--gray-bg:#2a2a28;--gray-t:#D3D1C7;
+  --blue1-bg:#0d2d4a;--blue1-t:#B5D4F4;
+  --blue2-bg:#0a2640;--blue2-t:#85B7EB;
+  --blue3-bg:#082040;--blue3-t:#6EA8E0;
+  --blue4-bg:#061a36;--blue4-t:#5B99D4;
+  --orange-bg:#3a2210;--orange-t:#F5C4A1;
+  --celeste-bg:#0e2e38;--celeste-t:#A3D8E8;--celeste1-bg:#102f3a;--celeste1-t:#B5DEE8;--celeste2-bg:#0c2a34;--celeste2-t:#8CCFE0;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--fb);background:var(--bg);color:var(--tx);min-height:100vh;-webkit-font-smoothing:antialiased}
+.page{max-width:100%;padding:40px 24px 60px}
+.header{text-align:center;margin-bottom:32px}
+.header h1{font-family:var(--fd);font-size:44px;font-weight:300;letter-spacing:4px;line-height:1;text-transform:uppercase}
+.header-logo{width:182px;height:auto;max-width:90%;display:block;margin:0 auto;opacity:.85;filter:invert(1) contrast(1.15);image-rendering:auto}
+@media(prefers-color-scheme:dark){.header-logo{filter:contrast(1.15)}}
+.header-line{width:40px;height:1px;background:var(--ln2);margin:20px auto 0}
+
+.main-tabs{display:flex;justify-content:center;gap:0;margin-bottom:28px;border-bottom:.5px solid var(--ln)}
+.main-tab{padding:12px 24px;font-size:16px;color:var(--tx3);cursor:pointer;border:none;background:none;font-family:var(--fb);font-weight:300;transition:all .2s;border-bottom:2px solid transparent;margin-bottom:-.5px}
+.main-tab:hover{color:var(--tx2)}
+.main-tab.active{color:var(--tx);font-weight:400;border-bottom-color:var(--tx)}
+.view{display:none}.view.active{display:block}
+
+.canvas-wrap{position:relative;width:1456px;margin:0 auto;min-height:680px;transform-origin:top left}
+.canvas-scale{position:relative;width:100%;max-width:1456px;margin:0 auto;overflow:hidden}
+.canvas-wrap svg.lines{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.node{position:absolute;display:flex;align-items:center;text-align:left;z-index:1;transition:transform .25s,box-shadow .25s;cursor:pointer}
+.node:hover{transform:translateY(-2px)}
+.node .nm{font-weight:500;font-size:13px;line-height:1.3}
+.node .rl{font-size:10px;font-weight:300;margin-top:1px}
+.node.dept{border-radius:20px;padding:7px 20px;justify-content:center;text-align:center;border:2px solid;background:var(--sf)}
+.node.person{border-radius:28px;padding:8px 18px;gap:10px;background:var(--sf);border:0.5px solid var(--ln)}
+.node.person .accent-bar{width:4px;border-radius:2px;align-self:stretch;flex-shrink:0}
+.node.person.level-1{border-radius:28px;padding:10px 20px}
+.node.person.level-1 .nm{font-size:14px}
+.node.person.level-1 .accent-bar{width:5px}
+.node.person.level-2{border-radius:26px;padding:9px 18px}
+.node.person.level-3{border-radius:24px;padding:8px 16px}
+.node.person.level-3 .nm{font-size:12px}
+.node.person.level-4{border-radius:22px;padding:6px 14px}
+.node.person.level-4 .nm{font-size:12px}
+.node.person.level-5{border-radius:18px;padding:4px 12px}
+.node.person.level-5 .nm{font-size:11px}
+.badge{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;font-size:9px;font-weight:500;color:#fff;display:flex;align-items:center;justify-content:center;z-index:2}
+.legend{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:32px;padding-top:20px;border-top:.5px solid var(--ln)}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--tx3);font-weight:300}
+.legend-dot{width:7px;height:7px;border-radius:50%}
+
+.panel-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.15);z-index:100}
+.panel-overlay.show{display:block}
+.panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.95);width:360px;max-height:80vh;overflow-y:auto;background:var(--sf);border:.5px solid var(--ln2);border-radius:16px;padding:24px;z-index:101;opacity:0;transition:opacity .25s,transform .25s}
+.panel-overlay.show .panel{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.panel-close{position:absolute;top:12px;right:14px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:var(--tx3);border:none;background:transparent}
+.panel-close:hover{background:var(--ln)}
+.panel-name{font-family:var(--fd);font-size:18px;font-weight:500}
+.panel-role{font-size:12px;color:var(--tx3);font-weight:300}
+.panel-badge{display:inline-block;font-size:11px;padding:3px 12px;border-radius:20px;margin-top:10px;font-weight:400}
+.panel-section{font-size:10px;color:var(--tx3);letter-spacing:.4px;text-transform:uppercase;margin:16px 0 8px;font-weight:400}
+.panel-member{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;font-weight:300;cursor:pointer;transition:color .2s}
+.panel-member:hover{color:var(--blue)}
+.panel-member-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.panel-member-role{color:var(--tx3);font-size:10px}
+
+.timeline{display:flex;align-items:center;gap:0;margin:0 auto 20px;max-width:700px;overflow-x:auto;padding-bottom:4px}
+.sbtn{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;padding:6px 4px;border:none;background:none;font-family:var(--fb);transition:all .25s}
+.sbtn:hover .scirc{transform:scale(1.12)}
+.scirc{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;transition:all .25s;border:.5px solid var(--ln);background:var(--bg);color:var(--tx2)}
+.sbtn.active .scirc{border-width:2px;transform:scale(1.08)}
+.slbl{font-size:9px;color:var(--tx3);max-width:60px;text-align:center;line-height:1.2}
+.sbtn.active .slbl{color:var(--tx);font-weight:500}
+.sline{width:16px;height:.5px;background:var(--ln);flex-shrink:0;margin-top:-12px}
+.det{border-radius:var(--r);border:.5px solid var(--ln);background:var(--sf);overflow:hidden;max-width:700px;margin:0 auto}
+.det-hd{padding:14px 18px;display:flex;align-items:center;gap:12px;border-bottom:.5px solid var(--ln)}
+.det-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500}
+.det-nm{font-size:15px;font-weight:500;color:var(--tx)}
+.det-sub{font-size:11px;color:var(--tx3);margin-top:1px}
+.det-body{padding:14px 18px}
+.dsec{font-size:12px;color:var(--tx3);letter-spacing:.4px;text-transform:uppercase;margin:16px 0 8px;font-weight:400}
+.dsec:first-child{margin-top:0}
+.dtxt{font-size:14px;color:var(--tx2);line-height:1.6;margin-bottom:4px}
+.ttags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.ttag{font-size:11px;padding:4px 10px;border-radius:20px;font-weight:400}
+.irow{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+.ibdg{font-size:11px;padding:4px 9px;border-radius:var(--rs);background:var(--bg);color:var(--tx2);border:.5px solid var(--ln)}
+
+.fc{border-radius:var(--r);border:.5px solid var(--ln);background:var(--sf);overflow:hidden;margin-bottom:14px;max-width:960px;margin-left:auto;margin-right:auto}
+.fc-hd{padding:18px 24px;display:flex;align-items:center;gap:16px;cursor:pointer;transition:background .2s}
+.fc-hd:hover{background:var(--bg)}
+.fc-icon{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;flex-shrink:0}
+.fc-nm{font-size:17px;font-weight:500;color:var(--tx)}
+.fc-who{font-size:13px;color:var(--tx3);font-weight:300;margin-top:2px}
+.fc-chev{font-size:13px;color:var(--tx3);transition:transform .3s;margin-left:auto}
+.fc.open .fc-chev{transform:rotate(180deg)}
+.fc-body{max-height:0;overflow:hidden;transition:max-height .4s ease}
+.fc.open .fc-body{max-height:600px}
+.fc-inner{padding:0 24px 22px}
+.fc-div{height:.5px;background:var(--ln);margin-bottom:14px}
+.fc-list{margin:0;padding:0 0 0 20px;font-size:14px;color:var(--tx2);line-height:1.7}
+.fc-list li{margin-bottom:4px}
+.fc-list li strong{font-weight:500;color:var(--tx)}
+.callout{padding:16px 20px;border-radius:0;background:var(--bg);font-size:14px;color:var(--tx2);line-height:1.6;margin:0 auto 20px;max-width:960px;border-left:3px solid var(--ln2)}
+.callout strong{font-weight:500;color:var(--tx)}
+
+.flcard{border-radius:var(--r);border:.5px solid var(--ln);background:var(--sf);overflow:hidden;margin-bottom:12px;max-width:960px;margin-left:auto;margin-right:auto}
+.flhd{padding:16px 22px;display:flex;align-items:center;gap:12px}
+.fldot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.fllbl{font-size:12px;color:var(--tx3);letter-spacing:.5px;text-transform:uppercase}
+.flbody{padding:0 22px 18px}
+.flstep{display:flex;align-items:flex-start;gap:14px;padding:12px 0}
+.flstep+.flstep{border-top:.5px solid var(--ln)}
+.flsnum{width:26px;height:26px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--tx2);font-weight:500;flex-shrink:0;margin-top:2px}
+.flact{font-size:14px;color:var(--tx);line-height:1.5}
+.fldet{font-size:13px;color:var(--tx3);margin-top:4px;line-height:1.5}
+.mn{font-weight:500;font-size:12px;padding:2px 8px;border-radius:4px;display:inline-block;margin:0 1px}
+.rule{padding:14px 20px;border-radius:var(--rs);background:var(--bg);font-size:14px;color:var(--tx2);line-height:1.6;margin:0 auto 18px;max-width:960px}
+.rule strong{font-weight:500;color:var(--tx)}
+.ftabs{display:flex;gap:6px;margin:0 auto 16px;max-width:960px;flex-wrap:wrap}
+.ftab{padding:9px 18px;border-radius:var(--rs);border:.5px solid var(--ln);background:transparent;font-size:13px;color:var(--tx2);cursor:pointer;font-family:var(--fb);transition:all .2s}
+.ftab:hover{border-color:var(--ln2)}
+.ftab.active{background:var(--sf);border-color:var(--ln2);color:var(--tx);font-weight:400}
+.fs{display:none}.fs.active{display:block}
+.trbox{border-radius:var(--r);border:.5px solid var(--ln);background:var(--sf);padding:22px 24px;max-width:960px;margin:0 auto}
+.trtitle{font-size:15px;font-weight:500;color:var(--tx);margin-bottom:14px}
+.tritem{display:flex;align-items:flex-start;gap:12px;padding:8px 0;font-size:13px;color:var(--tx2);line-height:1.55}
+.trbul{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:7px}
+.tritem strong{font-weight:500;color:var(--tx)}
+.hos-box{padding:16px 20px;border-radius:0;background:var(--bg);font-size:14px;color:var(--tx2);line-height:1.6;margin:18px auto 0;max-width:960px;border-left:3px solid var(--blue)}
+.hos-box strong{font-weight:500;color:var(--tx)}
+
+/* ── CORTAFUEGOS RAIL ── */
+.cf-rail{position:absolute;left:0;top:0;width:92px;height:100%;z-index:1;display:flex;flex-direction:column;pointer-events:none}
+.cf-seg{position:relative;flex-shrink:0;display:flex;flex-direction:column;align-items:stretch;pointer-events:auto}
+.cf-hazard{position:absolute;left:0;top:2px;bottom:2px;width:20px;background:repeating-linear-gradient(135deg,#1a1a18 0 10px,#f5c518 10px 20px);border-radius:3px;opacity:.92;box-shadow:0 0 0 1px var(--bg)}
+.cf-chip{position:absolute;left:26px;top:50%;transform:translateY(-50%);right:4px;padding:8px 9px 8px 10px;border-radius:7px;background:var(--sf);border:.5px solid var(--ln);border-left:3px solid var(--cf-c);display:flex;flex-direction:column;gap:3px}
+.cf-chip-code{font-family:var(--fd);font-size:13px;font-weight:500;letter-spacing:.5px;color:var(--cf-c);line-height:1;font-variant-numeric:tabular-nums}
+.cf-chip-lbl{font-family:var(--fb);font-size:10px;font-weight:400;color:var(--tx2);line-height:1.15;letter-spacing:.1px}
+.cf-guide{position:absolute;left:92px;top:50%;width:calc(100% - 92px);height:0;border-top:.5px dashed var(--cf-c);opacity:.35;transform:translateY(-.5px);pointer-events:none}
+.cf-divider{position:absolute;left:92px;top:0;right:0;height:0;border-top:.5px dashed var(--ln2);pointer-events:none}
+.cf-guide{position:absolute;left:64px;top:50%;width:calc(100% - 64px);height:0;border-top:.5px dashed var(--ln2);transform:translateY(-.5px);pointer-events:none}
+.cf-divider{position:absolute;left:64px;top:0;right:0;height:0;border-top:.5px dashed var(--ln);pointer-events:none}
+
+/* canvas: rail sits in the left 64–80px space already reserved by the node x offset (+96) */
+.cf-rail{display:none}
+.canvas-wrap.cf-on .cf-rail{display:flex}
+.cf-divider,.cf-guide{display:none}
+.canvas-wrap.cf-on .cf-divider,.canvas-wrap.cf-on .cf-guide{display:block}
+
+/* ── DISCIPLINE GROUPS (dashed containers) ── */
+.disc-group{position:absolute;border:.5px dashed var(--ln2);border-radius:12px;pointer-events:none;z-index:0;display:none}
+.canvas-wrap.groups-on .disc-group{display:block}
+.disc-group-lbl{position:absolute;top:-9px;left:14px;background:var(--bg);padding:0 8px;font-family:var(--fb);font-size:10px;font-weight:400;color:var(--tx3);letter-spacing:.4px;line-height:1}
+
+/* ── METADATA HEADER ── */
+.org-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;max-width:1456px;margin:0 auto 16px;padding:0 4px;flex-wrap:wrap}
+.org-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.org-meta{display:flex;align-items:center;gap:22px;font-family:var(--fb)}
+.org-meta-item{display:flex;flex-direction:column;gap:2px;line-height:1}
+.org-meta-k{font-size:9px;font-weight:400;color:var(--tx3);letter-spacing:1px;text-transform:uppercase}
+.org-meta-v{font-size:13px;font-weight:500;color:var(--tx);font-variant-numeric:tabular-nums}
+.org-meta-link{font-family:var(--fb);font-size:11px;color:var(--tx2);text-decoration:none;border-bottom:.5px solid var(--ln2);padding-bottom:1px;transition:color .15s,border-color .15s;cursor:pointer;background:none;border-left:none;border-right:none;border-top:none}
+.org-meta-link:hover{color:var(--tx);border-bottom-color:var(--tx)}
+.cf-toggle{display:inline-flex;align-items:center;gap:8px;padding:7px 14px 7px 11px;border-radius:999px;border:.5px solid var(--ln2);background:var(--sf);font-family:var(--fb);font-size:12px;color:var(--tx2);cursor:pointer;transition:all .2s;font-weight:400}
+.cf-toggle:hover{border-color:var(--tx2);color:var(--tx)}
+.cf-toggle-dot{width:10px;height:10px;border-radius:2px;background:repeating-linear-gradient(135deg,#1a1a18 0 3px,#f5c518 3px 6px);flex-shrink:0}
+.cf-toggle.on{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+.cf-toggle.on .cf-toggle-dot{outline:1px solid var(--bg);outline-offset:-2px}
+.cf-def-btn{display:inline-flex;align-items:center;padding:7px 14px;border-radius:999px;border:.5px solid var(--ln);background:transparent;font-family:var(--fb);font-size:12px;color:var(--tx2);cursor:pointer;transition:all .2s;font-weight:400}
+.cf-def-btn:hover{border-color:var(--tx2);color:var(--tx)}
+
+/* ── BADGES (ring-style, 600 bg / 50 text via CSS vars) ── */
+.badge{position:absolute;top:-7px;right:-7px;width:18px;height:18px;border-radius:50%;font-family:var(--fb);font-size:10px;font-weight:500;color:#fff;display:flex;align-items:center;justify-content:center;z-index:2;border:1.5px solid var(--sf);letter-spacing:-.3px;line-height:1;font-variant-numeric:tabular-nums}
+.badge[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);right:0;background:var(--tx);color:var(--bg);font-size:10px;font-weight:400;padding:5px 8px;border-radius:4px;white-space:nowrap;pointer-events:none;letter-spacing:.2px}
+
+/* ── CORTAFUEGOS LEGEND ── */
+.cf-legend{max-width:1000px;margin:28px auto 0;padding:18px 22px;border-radius:var(--r);border:.5px solid var(--ln);background:var(--sf)}
+.cf-legend-title{font-family:var(--fb);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:14px;font-weight:400}
+.cf-legend-row{display:grid;grid-template-columns:22px 90px 1fr;gap:14px;align-items:center;padding:9px 0;border-top:.5px solid var(--ln)}
+.cf-legend-row:first-of-type{border-top:none;padding-top:2px}
+.cf-legend-haz{width:16px;height:16px;border-radius:3px;background:repeating-linear-gradient(135deg,#1a1a18 0 4px,#f5c518 4px 8px)}
+.cf-legend-code{font-family:var(--fd);font-size:11px;font-weight:500;letter-spacing:1.2px;color:var(--tx);display:flex;flex-direction:column;gap:2px}
+.cf-legend-code em{font-family:var(--fb);font-style:normal;font-size:11px;font-weight:400;color:var(--tx2);letter-spacing:.1px;text-transform:none}
+.cf-legend-desc{font-family:var(--fb);font-size:12px;font-weight:300;color:var(--tx2);line-height:1.5}
+.cf-legend.hidden{display:none}
+
+/* disc-group label uses page bg on parent; fix for bg var */
+.canvas-wrap{background:var(--bg)}
+
+@media(max-width:768px){.canvas-wrap{transform:scale(.45);transform-origin:top left}.panel{width:90vw}.org-header{flex-direction:column;align-items:flex-start}}
+
+.intro-hero{position:relative;width:100%;min-height:600px;border-radius:var(--r);overflow:hidden;display:flex;align-items:center;justify-content:center;margin:0 auto;background:#1a1a18}
+.intro-hero-video{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);min-width:100%;min-height:100%;width:auto;height:auto;object-fit:cover;z-index:0}
+.intro-hero-overlay{position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(180deg,rgba(0,0,0,.4) 0%,rgba(0,0,0,.7) 100%);z-index:1}
+.intro-hero-content{position:relative;z-index:2;text-align:center;padding:80px 40px;max-width:680px;width:100%}
+.intro-kicker{font-family:var(--fd);font-size:56px;color:#fff;letter-spacing:3px;font-weight:300;margin-bottom:28px;line-height:1.1;text-transform:uppercase;text-shadow:0 2px 20px rgba(0,0,0,.4)}
+.intro-kicker-sup{font-size:.4em;vertical-align:top;position:relative;top:.15em;margin-left:.05em;font-weight:300}
+.intro-title{font-family:var(--fd);font-size:32px;font-weight:300;line-height:1.4;color:#fff;margin-bottom:60px;letter-spacing:.5px;text-shadow:0 2px 20px rgba(0,0,0,.3)}
+.intro-pillars{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin:0 auto;text-align:left;max-width:560px}
+.intro-pillar-label{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#fff;font-weight:500;margin-bottom:10px}
+.intro-pillar-text{font-size:13px;color:rgba(255,255,255,.85);line-height:1.6;font-weight:300}
+@media(max-width:640px){.intro-hero{min-height:520px}.intro-pillars{grid-template-columns:1fr;gap:24px}.intro-kicker{font-size:44px}.intro-title{font-size:22px}.intro-hero-content{padding:60px 24px}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <img class="header-logo" src="logo-nqs-alfa-blanco.gif" alt="NQS">
+    <div class="header-line"></div>
+  </div>
+
+  <div class="main-tabs">
+    <button class="main-tab" onclick="showMain(0,this)">Intro</button>
+    <button class="main-tab active" onclick="showMain(1,this)">Organigrama</button>
+    <button class="main-tab" onclick="showMain(2,this)">Filtros de calidad</button>
+    <button class="main-tab" onclick="showMain(3,this)">Etiquetado</button>
+    <button class="main-tab" onclick="showMain(4,this)">What's next?</button>
+    <button class="main-tab" onclick="showMain(5,this)">Next Layer</button>
+  </div>
+
+  <div class="view" id="m0">
+    <div class="intro-hero">
+      <video class="intro-hero-video" autoplay muted loop playsinline>
+        <source src="WIP01.mp4" type="video/mp4">
+      </video>
+      <div class="intro-hero-overlay"></div>
+      <div class="intro-hero-content">
+        <div class="intro-kicker">Town Hall</div>
+        <h2 class="intro-title">Queremos organizarnos mejor.</h2>
+        <div class="intro-pillars">
+          <div class="intro-pillar">
+            <div class="intro-pillar-label">Claridad y dirección estratégica</div>
+            <div class="intro-pillar-text">Roles mejor definidos, líneas de reporte claras y liderazgos fortalecidos en cada área, comunicación y trabajo en equipo.</div>
+          </div>
+          <div class="intro-pillar">
+            <div class="intro-pillar-label">Research &amp; Development</div>
+            <div class="intro-pillar-text">Ya es parte de nuestro trabajo. Buscamos integrarla estratégicamente en el proceso de producción.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view active" id="m1">
+    <div class="org-header">
+      <div class="org-controls">
+        <div style="position:relative;width:280px">
+          <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--tx3)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="search" placeholder="Buscar persona..." autocomplete="off" style="width:100%;padding:8px 14px 8px 36px;border-radius:var(--r);border:.5px solid var(--ln);background:var(--sf);font-size:13px;color:var(--tx);font-family:var(--fb);outline:none">
+          <div id="sres" style="position:absolute;top:100%;left:0;right:0;background:var(--sf);border:.5px solid var(--ln);border-radius:var(--r);margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;display:none"></div>
+        </div>
+        <button class="cf-toggle" id="cfToggle" type="button" aria-pressed="false"><span class="cf-toggle-dot"></span>Cortafuegos</button>
+        <button class="cf-def-btn" id="cfDefLink" type="button">Ver definición<span aria-hidden="true" style="margin-left:6px">→</span></button>
+      </div>
+    </div>
+    <div class="canvas-scale" id="canvasScale">
+      <div class="canvas-wrap" id="canvas">
+        <div class="cf-rail" id="cfRail"></div>
+        <div class="canvas-inner" id="canvasInner" style="position:relative;width:100%;height:100%;min-height:680px">
+          <svg class="lines" id="lines"></svg>
+        </div>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="cf-legend hidden" id="cfLegend">
+      <div class="cf-legend-title">Sistema de cortafuegos · Cuatro puntos de control</div>
+      <div class="cf-legend-row">
+        <div class="cf-legend-haz" style="background:#BA7517"></div>
+        <div class="cf-legend-code" style="color:#BA7517">04<em>Dirección</em></div>
+        <div class="cf-legend-desc">Dirección &amp; negocio. Decisiones de scope, cuenta y estrategia creativa — sólo sube acá lo que excede el criterio de producción.</div>
+      </div>
+      <div class="cf-legend-row">
+        <div class="cf-legend-haz" style="background:#7F77DD"></div>
+        <div class="cf-legend-code" style="color:#7F77DD">03<em>Criterio</em></div>
+        <div class="cf-legend-desc">Criterio de producción. AD y HOS fijan el estándar creativo y técnico; resuelven desvíos que el equipo no puede cerrar.</div>
+      </div>
+      <div class="cf-legend-row">
+        <div class="cf-legend-haz" style="background:#378ADD"></div>
+        <div class="cf-legend-code" style="color:#378ADD">02<em>Técnica</em></div>
+        <div class="cf-legend-desc">Filtro técnico &amp; operativo. PMs y TLs validan brief, referentes técnicos y trayectoria del proyecto en la daily.</div>
+      </div>
+      <div class="cf-legend-row">
+        <div class="cf-legend-haz" style="background:#1D9E75"></div>
+        <div class="cf-legend-code" style="color:#1D9E75">01<em>Autocheck</em></div>
+        <div class="cf-legend-desc">Autocheck de entrega. El artista valida su propia pieza contra las guías antes de arrobar a nadie.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="m2">
+    <div class="callout"><strong>El filtro 1 solo es sostenible si se documentan las guías técnicas de entrega.</strong></div>
+    <div class="fc" id="fc0">
+      <div class="fc-hd" onclick="toggleFC('fc0')"><div class="fc-icon" style="background:var(--teal-bg);color:var(--teal-t)">F1</div><div style="flex:1"><div class="fc-nm">Artist check</div><div class="fc-who">Artista</div></div><div class="fc-chev">▾</div></div>
+      <div class="fc-body"><div class="fc-inner"><div class="fc-div"></div><div class="dsec">Qué revisa</div><ul class="fc-list"><li>Técnica base: iluminación, escala, encuadre, materiales, limpieza de escena</li><li>Aplica las guías documentadas por HOS</li></ul><div class="dsec">Cuándo escala</div><ul class="fc-list"><li>Problema excede su conocimiento → <strong>TL del área</strong> (referente técnico)</li><li>TL no puede resolverlo → <strong>Guille</strong></li></ul></div></div>
+    </div>
+    <div class="fc" id="fc1">
+      <div class="fc-hd" onclick="toggleFC('fc1')"><div class="fc-icon" style="background:var(--green-bg);color:var(--green-t)">F2</div><div style="flex:1"><div class="fc-nm">PM check</div><div class="fc-who">PM (con apoyo de PM Lead si es necesario)</div></div><div class="fc-chev">▾</div></div>
+      <div class="fc-body"><div class="fc-inner"><div class="fc-div"></div><div class="dsec">Qué revisa</div><ul class="fc-list"><li>Alineación con brief, mood, referencias</li><li>Desvíos evidentes de criterio</li><li>Seguimiento de etiquetado correcto</li></ul><div class="dsec">Cuándo escala</div><ul class="fc-list"><li>Desvío creativo real → <strong>Juli</strong> (AD)</li><li>Bloqueo técnico → <strong>TL / Guille</strong></li></ul></div></div>
+    </div>
+    <div class="fc" id="fc2">
+      <div class="fc-hd" onclick="toggleFC('fc2')"><div class="fc-icon" style="background:var(--purple-bg);color:var(--purple-t)">F3</div><div style="flex:1"><div class="fc-nm">AD check</div><div class="fc-who">Juli (HOP + AD)</div></div><div class="fc-chev">▾</div></div>
+      <div class="fc-body"><div class="fc-inner"><div class="fc-div"></div><div class="dsec">Qué revisa</div><ul class="fc-list"><li>Criterio creativo, cámaras y FD en <strong>todos</strong> los proyectos</li><li>SD / FI / ER <strong>solo si PM lo solicita</strong> o hay riesgo de cuenta</li></ul><div class="dsec">Cuándo escala</div><ul class="fc-list"><li>Supera scope creativo o es decisión de negocio → <strong>Chule o socios</strong></li></ul></div></div>
+    </div>
+  </div>
+
+  <div class="view" id="m3">
+    <div class="rule"><strong>Regla base:</strong> una sola voz de AD por proyecto. Si Chule ve algo en un proyecto de Juli, se lo dice a ella, no al artista directamente. Idem Guille.</div>
+    <div class="ftabs">
+      <button class="ftab active" onclick="showFS(0,this)">CS / FD</button>
+      <button class="ftab" onclick="showFS(1,this)">SD / FI / ER</button>
+      <button class="ftab" onclick="showFS(2,this)">Bloqueo técnico</button>
+      <button class="ftab" onclick="showFS(3,this)">Transición AD</button>
+    </div>
+    <div class="fs active" id="fs0">
+      <div class="flcard"><div class="flhd"><div class="fldot" style="background:var(--purple)"></div><div class="fllbl">Etapa CS / FD — Revisión artística + PM</div></div><div class="flbody">
+        <div class="flstep"><div class="flsnum">1</div><div><div class="flact">Artista arroba <span class="mn" style="background:var(--purple-bg);color:var(--purple-t)">@AD</span> + <span class="mn" style="background:var(--green-bg);color:var(--green-t)">@PM</span></div></div></div>
+        <div class="flstep"><div class="flsnum">2</div><div><div class="flact">Revisan AD y PM en paralelo</div><div class="fldet">AD valida dirección artística. PM valida cumplimiento de brief.</div></div></div>
+        <div class="flstep"><div class="flsnum">3</div><div><div class="flact">Escalada si es necesario</div><div class="fldet">AD puede derivar corrección técnica al <span class="mn" style="background:var(--blue1-bg);color:var(--blue1-t)">TL del área</span> → <span class="mn" style="background:var(--blue-bg);color:var(--blue-t)">Guille</span> si el TL no puede resolverlo. PM levanta la mano si hay desvío de brief.</div></div></div>
+      </div></div>
+    </div>
+    <div class="fs" id="fs1">
+      <div class="flcard"><div class="flhd"><div class="fldot" style="background:var(--teal)"></div><div class="fllbl">Etapa SD / FI / ER — Revisión PM</div></div><div class="flbody">
+        <div class="flstep"><div class="flsnum">1</div><div><div class="flact">Artista arroba <span class="mn" style="background:var(--green-bg);color:var(--green-t)">@PM</span> únicamente</div><div class="fldet">Salvo aclarado lo contrario en proyectos especiales.</div></div></div>
+        <div class="flstep"><div class="flsnum">2</div><div><div class="flact">Revisa PM</div></div></div>
+        <div class="flstep"><div class="flsnum">3</div><div><div class="flact">Escalada si es necesario</div><div class="fldet">PM arroba a <span class="mn" style="background:var(--purple-bg);color:var(--purple-t)">@AD</span> solo si detecta desvío artístico real. Si hay bloqueo técnico: <span class="mn" style="background:var(--blue1-bg);color:var(--blue1-t)">TL del área</span> → <span class="mn" style="background:var(--blue-bg);color:var(--blue-t)">Guille</span>.</div></div></div>
+      </div></div>
+    </div>
+    <div class="fs" id="fs2">
+      <div class="flcard"><div class="flhd"><div class="fldot" style="background:var(--coral)"></div><div class="fllbl">Bloqueo técnico — Cualquier etapa</div></div><div class="flbody">
+        <div class="flstep"><div class="flsnum">1</div><div><div class="flact">Artista arroba <span class="mn" style="background:var(--green-bg);color:var(--green-t)">@PM</span> + <span class="mn" style="background:var(--blue1-bg);color:var(--blue1-t)">@TL del área</span></div></div></div>
+        <div class="flstep"><div class="flsnum">2</div><div><div class="flact">Revisa el TL (referente técnico)</div></div></div>
+        <div class="flstep"><div class="flsnum">3</div><div><div class="flact">Escalada si es necesario</div><div class="fldet">TL no puede resolverlo → <span class="mn" style="background:var(--blue-bg);color:var(--blue-t)">Guille</span> (HOS). Guille → <span class="mn" style="background:var(--purple-bg);color:var(--purple-t)">Chule</span> si es decisión de negocio.</div></div></div>
+      </div></div>
+    </div>
+    <div class="fs" id="fs3">
+      <div class="trbox"><div class="trtitle">Transición AD — Criterio por proyecto</div>
+        <div class="tritem"><div class="trbul" style="background:var(--teal)"></div><div><strong>Proyectos nuevos:</strong> Juli como AD, sin excepción. Estructura del departamento AD (Juli visión AD, Guille asesor técnico, ambos reportando a Chule).</div></div>
+        <div class="tritem"><div class="trbul" style="background:var(--amber)"></div><div><strong>Proyectos existentes de Chule:</strong> los cierra él, con fecha límite explícita. Juli no interviene salvo consulta o elevación del PM.</div></div>
+        <div class="tritem"><div class="trbul" style="background:var(--coral)"></div><div><strong>Ningún proyecto sin AD asignado</strong> claro en el Project Overview.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="m4">
+    <div style="max-width:1200px;margin:0 auto;padding:24px 24px 40px">
+
+      <div style="padding:0 0 26px;border-bottom:.5px solid var(--ln);margin-bottom:34px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:16px;margin-bottom:14px">
+          <div style="font-family:var(--fb);font-weight:400;font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--tx3)">What's next · Coming soon</div>
+          <div style="font-family:var(--fd);font-weight:300;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3)">Vol · 01 / Q2 · 2026</div>
+        </div>
+        <h2 style="font-family:var(--fd);font-weight:300;font-size:38px;line-height:1.15;letter-spacing:-.7px;margin:0 0 14px;color:var(--tx);max-width:880px">Cuatro lanzamientos para ordenar, operar y escalar.</h2>
+        <p style="font-family:var(--fb);font-weight:300;font-size:15px;line-height:1.6;color:var(--tx2);margin:0;max-width:780px">Los próximos meses traen las herramientas que estuvimos construyendo en paralelo al reacomodamiento del equipo. Cada una resuelve una capa distinta del estudio — proceso, operaciones y entrega.</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;align-items:stretch">
+
+        <div style="display:flex;flex-direction:column;padding-right:24px;border-right:.5px solid var(--ln)">
+          <div style="font-family:var(--fd);font-weight:300;font-size:46px;letter-spacing:-1.8px;color:var(--tx3);line-height:.9;margin-bottom:20px">01</div>
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+            <div style="width:58px;height:58px;border-radius:7px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;border:.5px solid var(--ln);padding:4px">
+              <img style="width:100%;height:100%;object-fit:contain" src="data:image/jpeg;base64,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" alt="Playbook">
+            </div>
+            <div>
+              <div style="font-family:var(--fb);font-weight:400;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:5px">Conocimiento · Proceso</div>
+              <h3 style="font-family:var(--fd);font-weight:300;font-size:26px;letter-spacing:-.4px;color:var(--tx);margin:0;line-height:1">NQS Playbook</h3>
+            </div>
+          </div>
+          <p style="font-family:var(--fb);font-weight:300;font-size:14px;line-height:1.6;color:var(--tx2);margin:0 0 20px;flex:1">El manual vivo del estudio. Guías técnicas, flujos de trabajo, criterios de entrega, protocolos de escalado — todo documentado y accesible en un solo lugar.</p>
+          <div style="padding-top:12px;border-top:.5px dashed var(--ln2);font-family:var(--fb);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--tx3);display:flex;flex-direction:column;gap:5px">
+            <div><span style="color:var(--tx2);font-weight:500">Audiencia</span> &nbsp;·&nbsp; Equipo interno</div>
+            <div><span style="color:var(--tx2);font-weight:500">Estado</span> &nbsp;·&nbsp; En preparación</div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;padding-right:24px;border-right:.5px solid var(--ln)">
+          <div style="font-family:var(--fd);font-weight:300;font-size:46px;letter-spacing:-1.8px;color:var(--tx3);line-height:.9;margin-bottom:20px">02</div>
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+            <div style="width:58px;height:58px;border-radius:7px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;border:.5px solid var(--ln)">
+              <img src="data:image/jpeg;base64,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" style="width:100%;height:100%;object-fit:cover" alt="Monday">
+            </div>
+            <div>
+              <div style="font-family:var(--fb);font-weight:400;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:5px">Operación · Proyectos</div>
+              <h3 style="font-family:var(--fd);font-weight:300;font-size:26px;letter-spacing:-.4px;color:var(--tx);margin:0;line-height:1">Monday</h3>
+            </div>
+          </div>
+          <p style="font-family:var(--fb);font-weight:300;font-size:14px;line-height:1.6;color:var(--tx2);margin:0 0 20px;flex:1">Columna vertebral operativa del estudio. Seguimiento de 70+ proyectos en paralelo, asignaciones en la daily, monitoreo de tiempos y riesgos. Una sola fuente de verdad.</p>
+          <div style="padding-top:12px;border-top:.5px dashed var(--ln2);font-family:var(--fb);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--tx3);display:flex;flex-direction:column;gap:5px">
+            <div><span style="color:var(--tx2);font-weight:500">Audiencia</span> &nbsp;·&nbsp; Toda la empresa</div>
+            <div><span style="color:var(--tx2);font-weight:500">Estado</span> &nbsp;·&nbsp; En proceso</div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;padding-right:24px;border-right:.5px solid var(--ln)">
+          <div style="font-family:var(--fd);font-weight:300;font-size:46px;letter-spacing:-1.8px;color:var(--tx3);line-height:.9;margin-bottom:20px">03</div>
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+            <div style="width:58px;height:58px;border-radius:7px;background:linear-gradient(135deg,#0E4F8A 0%,#1B5FB5 50%,#7AC4F0 100%);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">
+              <div style="font-family:var(--fd);font-weight:300;font-size:26px;color:#fff;letter-spacing:-1.2px;line-height:1">RH</div>
+            </div>
+            <div>
+              <div style="font-family:var(--fb);font-weight:400;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:5px">Entrega · Cliente</div>
+              <h3 style="font-family:var(--fd);font-weight:300;font-size:26px;letter-spacing:-.4px;color:var(--tx);margin:0;line-height:1">Render Hub</h3>
+            </div>
+          </div>
+          <p style="font-family:var(--fb);font-weight:300;font-size:14px;line-height:1.6;color:var(--tx2);margin:0 0 20px;flex:1">Plataforma de entrega y visualización de renders. Un espacio donde el cliente navega, revisa y aprueba piezas con una experiencia acorde al estándar NQS.</p>
+          <div style="padding-top:12px;border-top:.5px dashed var(--ln2);font-family:var(--fb);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--tx3);display:flex;flex-direction:column;gap:5px">
+            <div><span style="color:var(--tx2);font-weight:500">Audiencia</span> &nbsp;·&nbsp; Clientes</div>
+            <div><span style="color:var(--tx2);font-weight:500">Estado</span> &nbsp;·&nbsp; Próximamente</div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column">
+          <div style="font-family:var(--fd);font-weight:300;font-size:46px;letter-spacing:-1.8px;color:var(--tx3);line-height:.9;margin-bottom:20px">04</div>
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+            <div style="width:58px;height:58px;border-radius:7px;background:linear-gradient(135deg,#3A2D1E 0%,#6B5235 50%,#C9A876 100%);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">
+              <div style="font-family:var(--fd);font-weight:300;font-size:26px;color:#fff;letter-spacing:-1.2px;line-height:1">AL</div>
+            </div>
+            <div>
+              <div style="font-family:var(--fb);font-weight:400;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--tx3);margin-bottom:5px">Assets · Cultura</div>
+              <h3 style="font-family:var(--fd);font-weight:300;font-size:26px;letter-spacing:-.4px;color:var(--tx);margin:0;line-height:1">Asset Library &amp; Culture</h3>
+            </div>
+          </div>
+          <p style="font-family:var(--fb);font-weight:300;font-size:14px;line-height:1.6;color:var(--tx2);margin:0 0 20px;flex:1">Biblioteca compartida de assets y memoria visual del estudio. Centraliza modelos, materiales, referencias e identidad — y con ella, la cultura técnica y estética de NQS.</p>
+          <div style="padding-top:12px;border-top:.5px dashed var(--ln2);font-family:var(--fb);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--tx3);display:flex;flex-direction:column;gap:5px">
+            <div><span style="color:var(--tx2);font-weight:500">Audiencia</span> &nbsp;·&nbsp; 3D Artists</div>
+            <div><span style="color:var(--tx2);font-weight:500">Estado</span> &nbsp;·&nbsp; En preparación</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="margin-top:34px;text-align:center;padding:22px 0 0;border-top:.5px solid var(--ln)">
+        <div style="font-family:var(--fd);font-weight:300;font-size:13px;letter-spacing:4px;text-transform:uppercase;color:var(--tx3)">More to come</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="view" id="m5">
+    <div style="max-width:1080px;margin:0 auto;padding:40px 24px 80px">
+      <div style="padding:4px 0 60px">
+        <div style="font-family:var(--fb);font-weight:400;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--tx3);margin-bottom:22px">NQS AI Unit</div>
+        <h2 style="font-family:var(--fd);font-weight:300;font-size:44px;line-height:1.15;letter-spacing:-.5px;margin:0 0 22px;color:var(--tx);max-width:860px">Now amplified by AI — unlocking the full potential of every render.</h2>
+        <p style="font-family:var(--fb);font-weight:300;font-size:15px;line-height:1.65;color:var(--tx2);margin:0 0 4px;max-width:660px">Por más de una década, NQS convirtió visiones arquitectónicas en renders fotorrealistas. Hoy damos un paso más: de un render generamos historias, animaciones, films y moodboards.</p>
+        <p style="font-family:var(--fb);font-weight:400;font-size:15px;color:var(--tx);margin:22px 0 0">Cinco herramientas. Un punto de partida: tu render.</p>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:56px">
+        <div style="padding:16px 34px;border:.5px solid var(--ln2);border-radius:999px;background:var(--bg);font-family:var(--fb);font-weight:300;font-size:15px;color:var(--tx);letter-spacing:.3px"><span style="color:var(--tx3);margin-right:8px">01</span>—<span style="margin-left:8px">Reframes</span></div>
+        <div style="padding:16px 34px;border:.5px solid var(--ln2);border-radius:999px;background:var(--bg);font-family:var(--fb);font-weight:300;font-size:15px;color:var(--tx);letter-spacing:.3px"><span style="color:var(--tx3);margin-right:8px">02</span>—<span style="margin-left:8px">In motion</span></div>
+        <div style="padding:16px 34px;border:.5px solid var(--ln2);border-radius:999px;background:var(--bg);font-family:var(--fb);font-weight:300;font-size:15px;color:var(--tx);letter-spacing:.3px"><span style="color:var(--tx3);margin-right:8px">03</span>—<span style="margin-left:8px">Ground up</span></div>
+        <div style="padding:16px 34px;border:.5px solid var(--ln2);border-radius:999px;background:var(--bg);font-family:var(--fb);font-weight:300;font-size:15px;color:var(--tx);letter-spacing:.3px"><span style="color:var(--tx3);margin-right:8px">04</span>—<span style="margin-left:8px">Mock up</span></div>
+        <div style="padding:16px 34px;border:.5px solid var(--ln2);border-radius:999px;background:var(--bg);font-family:var(--fb);font-weight:300;font-size:15px;color:var(--tx);letter-spacing:.3px"><span style="color:var(--tx3);margin-right:8px">05</span>—<span style="margin-left:8px">Maquette</span></div>
+      </div>
+
+      <div style="text-align:center;padding:28px 0 0;border-top:.5px solid var(--ln)">
+        <a href="https://nqscreative.com/nextlayer/" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:12px;padding:16px 32px;background:var(--tx);color:var(--bg);text-decoration:none;border-radius:999px;font-family:var(--fb);font-weight:400;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;transition:opacity .2s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+          NQS AI — The Future of Visual Storytelling
+          <span style="font-size:16px;line-height:1">→</span>
+        </a>
+        <div style="font-family:var(--fb);font-weight:300;font-size:12px;color:var(--tx3);margin-top:14px;letter-spacing:.3px">Descubrí las cinco machines en detalle.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel-overlay" id="overlay">
+  <div class="panel"><button class="panel-close" id="pclose">×</button><div id="pbody"></div></div>
+</div>
+
+<script>
+function showMain(i,btn){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));document.querySelectorAll('.main-tab').forEach(t=>t.classList.remove('active'));document.getElementById('m'+i).classList.add('active');btn.classList.add('active')}
+function toggleFC(id){document.getElementById(id).classList.toggle('open')}
+function showFS(i,btn){document.querySelectorAll('.fs').forEach(s=>s.classList.remove('active'));document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('active'));document.getElementById('fs'+i).classList.add('active');btn.classList.add('active')}
+
+// ── ORGANIGRAMA ──
+const nodes=[
+  {id:'tincho',lv:1,teamCount:2,x:156,y:20,w:140,h:48,name:'Tincho',role:'Managing Partner',type:'person',accent:'var(--orange)',bg:'var(--orange-bg)',textC:'var(--orange-t)',roleC:'var(--orange-t)'},
+  {id:'fran',lv:1,teamCount:1,x:456,y:20,w:140,h:48,name:'Fran',role:'Managing Partner',type:'person',accent:'var(--orange)',bg:'var(--orange-bg)',textC:'var(--orange-t)',roleC:'var(--orange-t)'},
+  {id:'chule',lv:1,teamCount:2,x:764,y:20,w:180,h:52,name:'Chule',role:'Managing Partner + R&D',type:'person',accent:'var(--orange)',bg:'var(--orange-bg)',textC:'var(--orange-t)',roleC:'var(--orange-t)'},
+  {id:'sales',x:471,y:110,w:110,h:32,name:'Sales',type:'dept',bg:'var(--teal-bg)',textC:'var(--teal-t)',accent:'var(--teal)'},
+  {id:'people',x:171,y:110,w:110,h:32,name:'People',type:'dept',bg:'var(--pink-bg)',textC:'var(--pink-t)',accent:'var(--pink)'},
+  {id:'admin',x:326,y:110,w:100,h:32,name:'Admin',type:'dept',bg:'var(--coral-bg)',textC:'var(--coral-t)',accent:'var(--coral)'},
+  {id:'valen',lv:2,x:481,y:255,w:90,h:40,name:'Valen',role:'BD',type:'person',bg:'var(--teal-bg)',textC:'var(--teal-t)',roleC:'var(--teal-t)',accent:'var(--teal)'},
+  {id:'meme',lv:2,x:166,y:187,w:120,h:44,name:'Meme',role:'Head of People',type:'person',bg:'var(--pink-bg)',textC:'var(--pink-t)',roleC:'var(--pink-t)',accent:'var(--pink)'},
+  {id:'berni',lv:2,teamCount:1,x:316,y:187,w:120,h:44,name:'Berni',role:'Head of F&A',type:'person',bg:'var(--coral-bg)',textC:'var(--coral-t)',roleC:'var(--coral-t)',accent:'var(--coral)'},
+  {id:'pablo',lv:4,x:336,y:255,w:80,h:34,name:'Pablo',role:'',type:'person',bg:'var(--coral-bg)',textC:'var(--coral-t)',roleC:'var(--coral-t)',accent:'var(--coral)'},
+  {id:'ia',x:986,y:30,w:80,h:32,name:'R&D',type:'dept',bg:'var(--purple-bg)',textC:'var(--purple-t)',accent:'var(--purple)'},
+  {id:'arte',x:749,y:110,w:210,h:32,name:'Production',type:'dept',bg:'var(--purple-bg)',textC:'var(--purple-t)',accent:'var(--purple)'},
+  {id:'juli',lv:2,teamCount:5,x:656,y:185,w:150,h:48,name:'Juli',role:'HOP + AD Front',type:'person',bg:'var(--celeste-bg)',textC:'var(--celeste-t)',roleC:'var(--celeste-t)',accent:'var(--celeste)'},
+  {id:'guille',lv:2,teamCount:5,x:896,y:185,w:160,h:48,name:'Guille',role:'HOS + AD Back',type:'person',bg:'var(--blue-bg)',textC:'var(--blue-t)',roleC:'var(--blue-t)',accent:'var(--blue)'},
+  {id:'pm',x:641,y:278,w:180,h:32,name:'Project management',type:'dept',bg:'var(--celeste1-bg)',textC:'var(--celeste1-t)',accent:'var(--celeste1)'},
+  {id:'vick',lv:3,x:601,y:345,w:120,h:44,name:'Vick',role:'PM Lead',type:'person',bg:'var(--celeste1-bg)',textC:'var(--celeste1-t)',roleC:'var(--celeste1-t)',accent:'var(--celeste1)'},
+  {id:'male',lv:4,x:741,y:345,w:120,h:38,name:'Male',role:'PM',type:'person',bg:'var(--celeste2-bg)',textC:'var(--celeste2-t)',roleC:'var(--celeste2-t)',accent:'var(--celeste2)'},
+  {id:'dana',lv:4,x:741,y:390,w:120,h:38,name:'Dana',role:'PM',type:'person',bg:'var(--celeste2-bg)',textC:'var(--celeste2-t)',roleC:'var(--celeste2-t)',accent:'var(--celeste2)'},
+  {id:'nacho',lv:4,x:741,y:435,w:120,h:38,name:'Nacho',role:'PM',type:'person',bg:'var(--celeste2-bg)',textC:'var(--celeste2-t)',roleC:'var(--celeste2-t)',accent:'var(--celeste2)'},
+  {id:'sofi',lv:4,x:741,y:480,w:120,h:38,name:'Sofi',role:'PM',type:'person',bg:'var(--celeste2-bg)',textC:'var(--celeste2-t)',roleC:'var(--celeste2-t)',accent:'var(--celeste2)'},
+  {id:'interactive',x:891,y:278,w:100,h:32,name:'Interactive',type:'dept',bg:'var(--blue1-bg)',textC:'var(--blue1-t)',accent:'var(--blue1)'},
+  {id:'modeling',x:1026,y:278,w:100,h:32,name:'Modeling',type:'dept',bg:'var(--blue2-bg)',textC:'var(--blue2-t)',accent:'var(--blue2)'},
+  {id:'threeD',x:1176,y:278,w:60,h:32,name:'3D',type:'dept',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',accent:'var(--blue3)'},
+  {id:'pp',x:1316,y:278,w:60,h:32,name:'PP',type:'dept',bg:'var(--blue4-bg)',textC:'var(--blue4-t)',accent:'var(--blue4)'},
+  {id:'it',x:1071,y:193,w:60,h:32,name:'IT',type:'dept',bg:'var(--gray-bg)',textC:'var(--gray-t)',accent:'var(--gray)'},
+  {id:'lucho',lv:3,x:886,y:345,w:110,h:44,name:'Lucho',role:'TL - Interactive',type:'person',bg:'var(--blue1-bg)',textC:'var(--blue1-t)',roleC:'var(--blue1-t)',accent:'var(--blue1)',dept:'Interactive',members:['Santi C.','Gabi B.']},
+  {id:'anto',lv:3,x:1021,y:345,w:110,h:44,name:'Anto',role:'TL - Modeling',type:'person',bg:'var(--blue2-bg)',textC:'var(--blue2-t)',roleC:'var(--blue2-t)',accent:'var(--blue2)',dept:'Modeling',members:['Gonza','Juli F.','Agus L.']},
+  {id:'gasti',lv:3,x:1151,y:345,w:110,h:44,name:'Gasti',role:'TL - 3D',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',dept:'3D',members:['Fer','Rodri','Javi','Ingrid','Joe','Exe','Juani','Cin','Fran','Nere','Gavi','San','Nahue','Gon']},
+  {id:'cefe',lv:3,x:1291,y:345,w:110,h:44,name:'Cefe',role:'TL - PP',type:'person',bg:'var(--blue4-bg)',textC:'var(--blue4-t)',roleC:'var(--blue4-t)',accent:'var(--blue4)',dept:'PP',members:['Mati','Fede','Any','Espi']},
+  {id:'santic',x:901,y:420,w:80,h:28,name:'Santi C.',role:'',type:'person',bg:'var(--blue1-bg)',textC:'var(--blue1-t)',roleC:'var(--blue1-t)',accent:'var(--blue1)',lv:5,isSmall:true},
+  {id:'gabib',x:901,y:454,w:80,h:28,name:'Gabi B.',role:'',type:'person',bg:'var(--blue1-bg)',textC:'var(--blue1-t)',roleC:'var(--blue1-t)',accent:'var(--blue1)',lv:5,isSmall:true},
+  {id:'gonza',x:1036,y:420,w:80,h:28,name:'Gonza',role:'',type:'person',bg:'var(--blue2-bg)',textC:'var(--blue2-t)',roleC:'var(--blue2-t)',accent:'var(--blue2)',lv:5,isSmall:true},
+  {id:'julif',x:1036,y:454,w:80,h:28,name:'Juli F.',role:'',type:'person',bg:'var(--blue2-bg)',textC:'var(--blue2-t)',roleC:'var(--blue2-t)',accent:'var(--blue2)',lv:5,isSmall:true},
+  {id:'agusl_m',x:1036,y:488,w:80,h:28,name:'Agus L.',role:'',type:'person',bg:'var(--blue2-bg)',textC:'var(--blue2-t)',roleC:'var(--blue2-t)',accent:'var(--blue2)',lv:5,isSmall:true},
+  {id:'3d_fer',x:1131,y:420,w:70,h:28,name:'Fer',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_rodri',x:1211,y:420,w:70,h:28,name:'Rodri',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_javi',x:1131,y:454,w:70,h:28,name:'Javi',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_ingrid',x:1211,y:454,w:70,h:28,name:'Ingrid',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_joe',x:1131,y:488,w:70,h:28,name:'Joe',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_exe',x:1211,y:488,w:70,h:28,name:'Exe',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_juani',x:1131,y:522,w:70,h:28,name:'Juani',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_cin',x:1211,y:522,w:70,h:28,name:'Cin',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_fran',x:1131,y:556,w:70,h:28,name:'Fran',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_nere',x:1211,y:556,w:70,h:28,name:'Nere',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_gavi',x:1131,y:590,w:70,h:28,name:'Gavi',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_san',x:1211,y:590,w:70,h:28,name:'San',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_nahue',x:1131,y:624,w:70,h:28,name:'Nahue',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'3d_gon',x:1211,y:624,w:70,h:28,name:'Gon',role:'',type:'person',bg:'var(--blue3-bg)',textC:'var(--blue3-t)',roleC:'var(--blue3-t)',accent:'var(--blue3)',lv:5,isSmall:true},
+  {id:'pp_mati',x:1306,y:420,w:80,h:28,name:'Mati',role:'',type:'person',bg:'var(--blue4-bg)',textC:'var(--blue4-t)',roleC:'var(--blue4-t)',accent:'var(--blue4)',lv:5,isSmall:true},
+  {id:'pp_fede',x:1306,y:454,w:80,h:28,name:'Fede',role:'',type:'person',bg:'var(--blue4-bg)',textC:'var(--blue4-t)',roleC:'var(--blue4-t)',accent:'var(--blue4)',lv:5,isSmall:true},
+  {id:'pp_any',x:1306,y:488,w:80,h:28,name:'Any',role:'',type:'person',bg:'var(--blue4-bg)',textC:'var(--blue4-t)',roleC:'var(--blue4-t)',accent:'var(--blue4)',lv:5,isSmall:true},
+  {id:'pp_espi',x:1306,y:522,w:80,h:28,name:'Espi',role:'',type:'person',bg:'var(--blue4-bg)',textC:'var(--blue4-t)',roleC:'var(--blue4-t)',accent:'var(--blue4)',lv:5,isSmall:true},
+];
+const edges=[
+  ['tincho','people'],['tincho','admin'],['fran','sales'],['sales','valen'],
+  ['people','meme'],['admin','berni'],['berni','pablo'],
+  ['chule','arte'],['arte','juli'],['arte','guille'],
+  ['juli','pm'],['pm','vick'],['pm','male'],['pm','dana'],['pm','nacho'],['pm','sofi'],
+  ['guille','interactive'],['guille','modeling'],['guille','threeD'],['guille','pp'],
+  ['interactive','lucho'],['modeling','anto'],['threeD','gasti'],['pp','cefe'],
+  ['lucho','santic'],['lucho','gabib'],
+  ['anto','gonza'],['anto','julif'],['anto','agusl_m'],
+  ['gasti','3d_fer'],['gasti','3d_rodri'],['gasti','3d_javi'],['gasti','3d_ingrid'],
+  ['gasti','3d_joe'],['gasti','3d_exe'],['gasti','3d_juani'],['gasti','3d_cin'],
+  ['gasti','3d_fran'],['gasti','3d_nere'],['gasti','3d_gavi'],['gasti','3d_san'],
+  ['gasti','3d_nahue'],['gasti','3d_gon'],
+  ['cefe','pp_mati'],['cefe','pp_fede'],['cefe','pp_any'],['cefe','pp_espi'],
+];
+const nodeMap={};nodes.forEach(n=>nodeMap[n.id]=n);
+const childrenMap={};edges.forEach(([f,t])=>{if(!childrenMap[f])childrenMap[f]=[];childrenMap[f].push(t)});
+const canvas=document.getElementById('canvas'),canvasInner=document.getElementById('canvasInner'),svgEl=document.getElementById('lines');
+nodes.forEach(n=>{
+  const el=document.createElement('div');
+  const lv=n.lv||0;
+  if(n.type==='dept'){
+    el.className='node dept';
+    el.style.cssText=`left:${n.x}px;top:${n.y}px;width:${n.w}px;height:${n.h}px;border-color:${n.accent};color:${n.textC};`;
+  } else {
+    el.className='node person level-'+lv;
+    el.style.cssText=`left:${n.x}px;top:${n.y}px;width:${n.w}px;height:${n.h}px;`;
+  }
+  let html='';
+  if(n.type==='person'){
+    html+=`<div class="accent-bar" style="background:${n.accent}"></div>`;
+    html+=`<div><div class="nm" style="color:${n.textC}">${n.name}</div>`;
+    if(n.role)html+=`<div class="rl" style="color:${n.roleC||n.textC}">${n.role}</div>`;
+    html+='</div>';
+  } else {
+    html+=`<div class="nm" style="color:${n.textC}">${n.name}</div>`;
+  }
+  const badgeNum=n.teamCount||(n.members&&n.members.length);
+  if(badgeNum){
+    const tip=n.members&&n.members.length?`${badgeNum} reportes directos`:`${badgeNum} reporte${badgeNum>1?'s':''} directo${badgeNum>1?'s':''}`;
+    html+=`<div class="badge" data-tip="${tip}" style="background:${n.accent}">${badgeNum}</div>`;
+  }
+  el.innerHTML=html;el.addEventListener('click',()=>showPanel(n));canvasInner.appendChild(el);
+});
+function cx(n){return n.x+n.w/2}function bot(n){return n.y+n.h}function top_(n){return n.y}
+svgEl.setAttribute('viewBox','0 0 1456 680');svgEl.setAttribute('fill','none');
+
+// Group children by parent to draw shared vertical stems
+const parentChildren={};
+edges.forEach(([fId,tId])=>{if(!parentChildren[fId])parentChildren[fId]=[];parentChildren[fId].push(tId)});
+
+Object.entries(parentChildren).forEach(([fId,children])=>{
+  const f=nodeMap[fId];if(!f)return;
+  const fxc=cx(f),fyb=bot(f);
+  const childNodes=children.map(cId=>nodeMap[cId]).filter(Boolean);
+  if(!childNodes.length)return;
+
+  // Check if all children are vertically aligned with parent (same center x)
+  const allAlignedWithParent=childNodes.every(t=>Math.abs(cx(t)-fxc)<2);
+
+  if(allAlignedWithParent){
+    // Draw one straight vertical line from parent to last child, passing through all
+    childNodes.forEach(t=>{
+      const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',fxc);line.setAttribute('y1',fyb);line.setAttribute('x2',fxc);line.setAttribute('y2',top_(t));
+      line.setAttribute('stroke','var(--ln2)');line.setAttribute('stroke-width','1');line.setAttribute('fill','none');line.setAttribute('vector-effect','non-scaling-stroke');line.setAttribute('shape-rendering','crispEdges');
+      svgEl.appendChild(line);
+    });
+    return;
+  }
+
+  // If only one child not aligned, draw L-path
+  if(childNodes.length===1){
+    const t=childNodes[0];
+    const txc=cx(t),tyt=top_(t);
+    const midY=fyb+(tyt-fyb)/2;
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d',`M${fxc},${fyb} L${fxc},${midY} L${txc},${midY} L${txc},${tyt}`);
+    p.setAttribute('stroke','var(--ln2)');p.setAttribute('stroke-width','1');p.setAttribute('fill','none');p.setAttribute('vector-effect','non-scaling-stroke');p.setAttribute('shape-rendering','crispEdges');
+    svgEl.appendChild(p);
+    return;
+  }
+
+  // Multiple children: draw a vertical stem from parent, then a horizontal bar, then verticals to each child
+  const minChildTop=Math.min(...childNodes.map(t=>top_(t)));
+  const stemY=minChildTop-14;
+
+  // Group children by center X column (rounded to nearest 2px for tolerance)
+  const columns={};
+  childNodes.forEach(t=>{
+    const key=Math.round(cx(t)/2)*2;
+    if(!columns[key])columns[key]=[];
+    columns[key].push(t);
+  });
+  const columnKeys=Object.keys(columns).map(Number).sort((a,b)=>a-b);
+
+  // Special layout for 'pm' parent: no horizontal bar near the parent box.
+  // Each column gets its own L-path from parent bottom.
+  if(fId==='pm'){
+    columnKeys.forEach(colX=>{
+      const group=columns[colX];
+      if(group.length===1){
+        const t=group[0];
+        const txc=cx(t),tyt=top_(t);
+        const midY=fyb+(tyt-fyb)/2;
+        const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+        p.setAttribute('d',`M${fxc},${fyb} L${fxc},${midY} L${txc},${midY} L${txc},${tyt}`);
+        p.setAttribute('stroke','var(--ln2)');p.setAttribute('stroke-width','1');p.setAttribute('fill','none');p.setAttribute('vector-effect','non-scaling-stroke');p.setAttribute('shape-rendering','crispEdges');
+        svgEl.appendChild(p);
+      } else {
+        // Stacked column: L-path from parent, then vertical down the left of the stack with pigtails
+        const sorted=[...group].sort((a,b)=>top_(a)-top_(b));
+        const entryX=sorted[0].x-10;
+        const lastMidY=sorted[sorted.length-1].y+sorted[sorted.length-1].h/2;
+        const firstMidY=sorted[0].y+sorted[0].h/2;
+        const midY=fyb+(firstMidY-fyb)/2;
+        const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+        p.setAttribute('d',`M${fxc},${fyb} L${fxc},${midY} L${entryX},${midY} L${entryX},${lastMidY}`);
+        p.setAttribute('stroke','var(--ln2)');p.setAttribute('stroke-width','1');p.setAttribute('fill','none');p.setAttribute('vector-effect','non-scaling-stroke');p.setAttribute('shape-rendering','crispEdges');
+        svgEl.appendChild(p);
+        sorted.forEach(t=>{
+          const midY2=t.y+t.h/2;
+          const hline=document.createElementNS('http://www.w3.org/2000/svg','line');
+          hline.setAttribute('x1',entryX);hline.setAttribute('y1',midY2);
+          hline.setAttribute('x2',t.x);hline.setAttribute('y2',midY2);
+          hline.setAttribute('stroke','var(--ln2)');hline.setAttribute('stroke-width','1');hline.setAttribute('fill','none');hline.setAttribute('vector-effect','non-scaling-stroke');hline.setAttribute('shape-rendering','crispEdges');
+          svgEl.appendChild(hline);
+        });
+      }
+    });
+    return;
+  }
+
+  // Special layout for 'gasti' parent: central vertical line between the two columns of artists,
+  // with horizontal pigtails to each child on both sides.
+  if(fId==='gasti' && columnKeys.length===2){
+    const leftCol=columns[columnKeys[0]];
+    const rightCol=columns[columnKeys[1]];
+    // Find the gap center between the two columns
+    const leftRight=Math.max(...leftCol.map(t=>t.x+t.w));
+    const rightLeft=Math.min(...rightCol.map(t=>t.x));
+    const centerX=(leftRight+rightLeft)/2;
+    // Vertical line from parent bottom down to last row's midY
+    const allRows=[...leftCol,...rightCol].sort((a,b)=>top_(a)-top_(b));
+    const firstTop=top_(allRows[0]);
+    const lastMidY=allRows[allRows.length-1].y+allRows[allRows.length-1].h/2;
+    const firstMidY=leftCol.concat(rightCol).sort((a,b)=>top_(a)-top_(b))[0];
+    const topY=firstTop-8;
+    // Stem from parent down and across to centerX
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d',`M${fxc},${fyb} L${fxc},${topY} L${centerX},${topY} L${centerX},${lastMidY}`);
+    p.setAttribute('stroke','var(--ln2)');p.setAttribute('stroke-width','1');p.setAttribute('fill','none');p.setAttribute('vector-effect','non-scaling-stroke');p.setAttribute('shape-rendering','crispEdges');
+    svgEl.appendChild(p);
+    // Pigtails to each child on both sides
+    [...leftCol,...rightCol].forEach(t=>{
+      const midY=t.y+t.h/2;
+      const hline=document.createElementNS('http://www.w3.org/2000/svg','line');
+      // From centerX horizontally to the nearest edge of the child
+      const targetX=(t.x+t.w/2 < centerX) ? (t.x+t.w) : t.x;
+      hline.setAttribute('x1',centerX);hline.setAttribute('y1',midY);
+      hline.setAttribute('x2',targetX);hline.setAttribute('y2',midY);
+      hline.setAttribute('stroke','var(--ln2)');hline.setAttribute('stroke-width','1');hline.setAttribute('fill','none');hline.setAttribute('vector-effect','non-scaling-stroke');hline.setAttribute('shape-rendering','crispEdges');
+      svgEl.appendChild(hline);
+    });
+    return;
+  }
+
+  // Vertical stem from parent bottom to stem level
+  const stem=document.createElementNS('http://www.w3.org/2000/svg','line');
+  stem.setAttribute('x1',fxc);stem.setAttribute('y1',fyb);stem.setAttribute('x2',fxc);stem.setAttribute('y2',stemY);
+  stem.setAttribute('stroke','var(--ln2)');stem.setAttribute('stroke-width','1');stem.setAttribute('fill','none');stem.setAttribute('vector-effect','non-scaling-stroke');stem.setAttribute('shape-rendering','crispEdges');
+  svgEl.appendChild(stem);
+
+  // Horizontal bar across all columns at stem level
+  const minX=Math.min(fxc,...columnKeys);
+  const maxX=Math.max(fxc,...columnKeys);
+  const bar=document.createElementNS('http://www.w3.org/2000/svg','line');
+  bar.setAttribute('x1',minX);bar.setAttribute('y1',stemY);bar.setAttribute('x2',maxX);bar.setAttribute('y2',stemY);
+  bar.setAttribute('stroke','var(--ln2)');bar.setAttribute('stroke-width','1');bar.setAttribute('fill','none');bar.setAttribute('vector-effect','non-scaling-stroke');bar.setAttribute('shape-rendering','crispEdges');
+  svgEl.appendChild(bar);
+
+  // For each column: if 1 child, straight drop. If >1, pigtails on the left.
+  columnKeys.forEach(colX=>{
+    const group=columns[colX];
+    if(group.length===1){
+      const t=group[0];
+      const txc=cx(t),tyt=top_(t);
+      const drop=document.createElementNS('http://www.w3.org/2000/svg','line');
+      drop.setAttribute('x1',txc);drop.setAttribute('y1',stemY);drop.setAttribute('x2',txc);drop.setAttribute('y2',tyt);
+      drop.setAttribute('stroke','var(--ln2)');drop.setAttribute('stroke-width','1');drop.setAttribute('fill','none');drop.setAttribute('vector-effect','non-scaling-stroke');drop.setAttribute('shape-rendering','crispEdges');
+      svgEl.appendChild(drop);
+    } else {
+      // Stacked column: vertical line on the left with horizontal pigtails to each child
+      const sorted=[...group].sort((a,b)=>top_(a)-top_(b));
+      const entryX=sorted[0].x-10;
+      const lastMidY=sorted[sorted.length-1].y+sorted[sorted.length-1].h/2;
+      const childCenterX=sorted[0].x+sorted[0].w/2;
+      const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('d',`M${childCenterX},${stemY} L${entryX},${stemY} L${entryX},${lastMidY}`);
+      p.setAttribute('stroke','var(--ln2)');p.setAttribute('stroke-width','1');p.setAttribute('fill','none');p.setAttribute('vector-effect','non-scaling-stroke');p.setAttribute('shape-rendering','crispEdges');
+      svgEl.appendChild(p);
+      sorted.forEach(t=>{
+        const midY=t.y+t.h/2;
+        const hline=document.createElementNS('http://www.w3.org/2000/svg','line');
+        hline.setAttribute('x1',entryX);hline.setAttribute('y1',midY);
+        hline.setAttribute('x2',t.x);hline.setAttribute('y2',midY);
+        hline.setAttribute('stroke','var(--ln2)');hline.setAttribute('stroke-width','1');hline.setAttribute('fill','none');hline.setAttribute('vector-effect','non-scaling-stroke');hline.setAttribute('shape-rendering','crispEdges');
+        svgEl.appendChild(hline);
+      });
+    }
+  });
+});
+
+// Horizontal connector between the 3 Managing Partners (Tincho, Fran, Chule)
+(function(){
+  const t=nodeMap['tincho'],f=nodeMap['fran'],c=nodeMap['chule'];
+  if(!t||!f||!c)return;
+  // Connect at right edge of Tincho → left edge of Fran, and right edge of Fran → left edge of Chule
+  const y1=t.y+t.h/2, y2=c.y+c.h/2;
+  const conn=document.createElementNS('http://www.w3.org/2000/svg','g');
+  // Tincho to Fran
+  const l1=document.createElementNS('http://www.w3.org/2000/svg','line');
+  l1.setAttribute('x1',t.x+t.w);l1.setAttribute('y1',y1);
+  l1.setAttribute('x2',f.x);l1.setAttribute('y2',y1);
+  l1.setAttribute('stroke','var(--ln2)');l1.setAttribute('stroke-width','1');l1.setAttribute('fill','none');l1.setAttribute('vector-effect','non-scaling-stroke');l1.setAttribute('shape-rendering','crispEdges');
+  conn.appendChild(l1);
+  // Fran to Chule
+  const l2=document.createElementNS('http://www.w3.org/2000/svg','line');
+  l2.setAttribute('x1',f.x+f.w);l2.setAttribute('y1',y1);
+  l2.setAttribute('x2',c.x);l2.setAttribute('y2',y2);
+  l2.setAttribute('stroke','var(--ln2)');l2.setAttribute('stroke-width','1');l2.setAttribute('fill','none');l2.setAttribute('vector-effect','non-scaling-stroke');l2.setAttribute('shape-rendering','crispEdges');
+  conn.appendChild(l2);
+  svgEl.appendChild(conn);
+})();
+
+// Horizontal connector between Chule and R&D (side by side)
+(function(){
+  const c=nodeMap['chule'],ia=nodeMap['ia'];
+  if(!c||!ia)return;
+  const yc=c.y+c.h/2, yia=ia.y+ia.h/2;
+  const l=document.createElementNS('http://www.w3.org/2000/svg','line');
+  l.setAttribute('x1',c.x+c.w);l.setAttribute('y1',yc);
+  l.setAttribute('x2',ia.x);l.setAttribute('y2',yia);
+  l.setAttribute('stroke','var(--ln2)');l.setAttribute('stroke-width','1');l.setAttribute('fill','none');l.setAttribute('vector-effect','non-scaling-stroke');l.setAttribute('shape-rendering','crispEdges');
+  svgEl.appendChild(l);
+})();
+
+// Dedicated connector: Guille ↔ IT (side by side, horizontal)
+(function(){
+  const g=nodeMap['guille'],it=nodeMap['it'];
+  if(!g||!it)return;
+  const gMidY=g.y+g.h/2, itMidY=it.y+it.h/2;
+  const l=document.createElementNS('http://www.w3.org/2000/svg','line');
+  l.setAttribute('x1',g.x+g.w);l.setAttribute('y1',gMidY);
+  l.setAttribute('x2',it.x);l.setAttribute('y2',itMidY);
+  l.setAttribute('stroke','var(--ln2)');l.setAttribute('stroke-width','1');l.setAttribute('fill','none');l.setAttribute('vector-effect','non-scaling-stroke');l.setAttribute('shape-rendering','crispEdges');
+  svgEl.appendChild(l);
+})();
+const legendData=[{name:'Partners',color:'var(--orange)'},{name:'Sales',color:'var(--teal)'},{name:'People',color:'var(--pink)'},{name:'Admin',color:'var(--coral)'},{name:'Production / R&D',color:'var(--purple)'},{name:'HOP · PM Lead',color:'var(--celeste)'},{name:'PM',color:'var(--celeste2)'},{name:'HOS',color:'var(--blue)'},{name:'Interactive',color:'var(--blue1)'},{name:'Modeling',color:'var(--blue2)'},{name:'3D',color:'var(--blue3)'},{name:'PP',color:'var(--blue4)'},{name:'IT',color:'var(--gray)'}];
+const legEl=document.getElementById('legend');
+legendData.forEach(l=>{legEl.innerHTML+=`<div class="legend-item"><span class="legend-dot" style="background:${l.color}"></span>${l.name}</div>`});
+
+const overlay=document.getElementById('overlay'),pbody=document.getElementById('pbody');
+document.getElementById('pclose').onclick=()=>overlay.classList.remove('show');
+overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.classList.remove('show')});
+const roleDesc={
+  chule:{title:'Managing Partner + R&D',bullets:['Lidera el departamento de R&D (Research & Development), con foco en la investigación y aplicación de IA dentro del proceso de producción.','Trabaja de forma transversal con distintos colaboradores, asignando tareas vinculadas a iniciativas de R&D.','Los colaboradores de R&D no cambian su línea de reporte: continúan reportando a sus líderes directos.','Dinámica colaborativa, priorizando comunicación constante con líderes/referentes de cada área.']},
+  tincho:{title:'Managing Partner',bullets:['Supervisa las áreas de People y Admin.','Berni (Head of F&A) reporta directamente a Tincho.']},
+  fran:{title:'Managing Partner',bullets:['Supervisa el área de Sales.','Valen reporta directamente a Fran.','Lucho (TL Interactive) reporta a Fran para asuntos de esquemas de productos.']},
+  juli:{title:'HOP + AD Front',bullets:['Asume el rol de AD (Dirección Artística) para todos los proyectos.','Mantiene su rol como HOP y continúa liderando el equipo de Project Management.','AD en todos los proyectos: cámaras y FD sin excepción; SD/FI/ER solo si PM lo solicita.','Responsable creativa en key accounts.','No interviene en bloqueos técnicos ni en la daily de asignaciones.','Actúa como el "front" de Dirección de Arte.','Reporta directamente a Chule.']},
+  guille:{title:'HOS + AD Back',bullets:['Continúa como HOS (Head of Studio).','Responsable del estándar técnico de los artistas.','Construye y documenta las guías de entrega por tipo de imagen y etapa.','Primer nivel en bloqueos técnicos — escalado desde PM o AD.','Responsable de los 1:1 con artistas.','Feedback técnico (iluminación, materiales, eficiencia de escena) vía TLs en la diaria.','Rol de "back" de Dirección de Arte: soporte técnico para implementar correcciones y lineamientos.','No interviene en lo creativo ni en Monday operativo.','Reporta directamente a Chule.']},
+  vick:{title:'PM Lead · Reporta a Juli (HOP)',bullets:['Juli lidera el departamento de Project Management como HOP. Todos los PMs (incluida Vick) reportan a Juli.','Vick es PM Lead: rol operativo senior dentro del equipo. No es líder de línea de reporte de los otros PMs.','Lidera la daily de asignaciones.','Convoca a los referentes de área.','Dueña operativa de Monday (en proceso).','Primer filtro en urgencias de cliente.','Detecta desvíos creativos y los escala a Juli (AD).','Escala bloqueos técnicos a Guille.','Monitorea tiempos y riesgos generales en Monday.','Reporta directamente a Juli.']},
+  lucho:{title:'TL - Interactive',bullets:['Parte activa del proceso de producción: creación de modelos, imágenes, animaciones.','Liderazgo dentro de su equipo, acompañando el trabajo diario.','Referente técnico y de proceso. Resuelve dudas y apoya a cada artista del área.','Coordina soporte técnico con Guille.','Gestiona avisos de cambio de horario y compensación de horas de su equipo.','Reporta directamente a Guille.','Para asuntos relacionados con esquemas de productos desarrollados por Fran (Managing Partner), reporta directamente a él en esas cuestiones.']},
+  anto:{title:'TL - Modeling',bullets:['Parte activa del proceso de producción.','Liderazgo dentro de su equipo, acompañando el trabajo diario.','Referente técnico y de proceso.','Coordina soporte técnico con Guille.','Gestiona avisos de cambio de horario y compensación de horas.','Reporta directamente a Guille.']},
+  gasti:{title:'TL - 3D',bullets:['Asume formalmente el rol de TL en 3D (nuevo en esta estructura).','Parte activa del proceso de producción.','Liderazgo dentro de su equipo, acompañando el trabajo diario.','Referente técnico y de proceso. Cortafuegos de HOS en la diaria.','Coordina soporte técnico con Guille.','Gestiona avisos de cambio de horario y compensación de horas.','Reporta directamente a Guille.']},
+  cefe:{title:'TL - PP',bullets:['Parte activa del proceso de producción.','Liderazgo dentro de su equipo, acompañando el trabajo diario.','Referente técnico y de proceso.','Coordina soporte técnico con Guille.','Gestiona avisos de cambio de horario y compensación de horas.','Reporta directamente a Guille.']},
+  meme:{title:'Head of People',bullets:['Lidera el área de People. Gestión de talento, cultura y bienestar del equipo.']},
+  berni:{title:'Head of F&A',bullets:['Lidera el área de Admin (Finance & Administration).','Forma parte de los departamentos de Admin y Sales.','Reporta directamente a Tincho.']},
+  valen:{title:'BD',bullets:['Business Development.','Pertenece al departamento de Sales.','Reporta directamente a Fran.']},
+};
+function showPanel(n){
+  let h=`<div class="panel-name">${n.name}</div>`;
+  if(n.role)h+=`<div class="panel-role">${n.role}</div>`;
+  h+=`<div class="panel-badge" style="background:${n.bg};color:${n.textC}">${n.dept||n.name}</div>`;
+  const d=roleDesc[n.id];
+  if(d){h+=`<div class="panel-section">Sobre el rol</div><ul style="margin:0;padding:0 0 0 16px;font-size:12px;color:var(--tx2);line-height:1.6">`;d.bullets.forEach(b=>{h+=`<li style="margin-bottom:4px">${b}</li>`});h+='</ul>'}
+  const ch=childrenMap[n.id]||[];
+  if(ch.length){h+=`<div class="panel-section">Reportes directos</div>`;ch.forEach(cid=>{const c=nodeMap[cid];if(!c)return;h+=`<div class="panel-member"><span class="panel-member-dot" style="background:${c.accent}"></span>${c.name}${c.role?` <span class="panel-member-role">· ${c.role}</span>`:''}</div>`})}
+  if(n.members&&n.members.length){h+=`<div class="panel-section">Equipo (${n.members.length})</div>`;n.members.forEach(m=>{h+=`<div class="panel-member"><span class="panel-member-dot" style="background:${n.accent}"></span>${m}</div>`})}
+  pbody.innerHTML=h;overlay.classList.add('show');
+}
+
+
+// ── CORTAFUEGOS RAIL ──
+(function(){
+  // Classify nodes into tiers by y-center
+  // tier4 (Dirección): partners + top deptos + R&D (y<160 for heads of partners; 04 covers top strip)
+  // tier3 (Criterio): Heads (Meme, Berni, Juli, Guille), Valen, IT, Pablo  (y 180-295)
+  // tier2 (Técnica): mid dept pills + TLs + PMs  (y 278-480)  — but artists overlap here
+  // tier1 (Autocheck): artistas (lv 5, y>=420)
+  const tierOf = (n) => {
+    if (n.lv === 5) return 1;
+    const yc = n.y + n.h/2;
+    if (yc < 160) return 4;
+    if (yc < 310) return 3;
+    return 2;
+  };
+  // Compute bounds per tier using centers
+  const tiers = {1:[],2:[],3:[],4:[]};
+  nodes.forEach(n=>{tiers[tierOf(n)].push(n)});
+  // Build rail segments based on y ranges with soft midpoint cuts
+  const canvasH = 680;
+  // Use fixed break points that align with visual gaps in the org
+  const breakpoints = {4:[0,156], 3:[156,312], 2:[312,410], 1:[410,canvasH]};
+  const segsData = [
+    {code:'04', label:'Dirección',  range:breakpoints[4], count:tiers[4].length, color:'#BA7517'},
+    {code:'03', label:'Criterio',   range:breakpoints[3], count:tiers[3].length, color:'#7F77DD'},
+    {code:'02', label:'Técnica',    range:breakpoints[2], count:tiers[2].length, color:'#378ADD'},
+    {code:'01', label:'Autocheck',  range:breakpoints[1], count:tiers[1].length, color:'#1D9E75'},
+  ];
+  const rail = document.getElementById('cfRail');
+  const inner = document.getElementById('canvasInner');
+  // Set rail & inner height
+  rail.style.height = canvasH + 'px';
+  inner.style.minHeight = canvasH + 'px';
+  inner.style.height = canvasH + 'px';
+  canvas.style.minHeight = canvasH + 'px';
+
+  // Build each segment absolutely positioned (so heights match content bands)
+  rail.innerHTML = '';
+  segsData.forEach(s=>{
+    const [y0,y1] = s.range;
+    const seg = document.createElement('div');
+    seg.className = 'cf-seg';
+    seg.style.cssText = `position:absolute;left:0;width:92px;top:${y0}px;height:${y1-y0}px;--cf-c:${s.color}`;
+    seg.innerHTML = `
+      <div class="cf-hazard"></div>
+      <div class="cf-chip">
+        <div class="cf-chip-code">${s.code}</div>
+        <div class="cf-chip-lbl">${s.label}</div>
+      </div>`;
+    rail.appendChild(seg);
+
+    // Guide line: dashed horizontal at the vertical midpoint of the segment, colored per tier
+    const guide = document.createElement('div');
+    guide.className = 'cf-guide';
+    const midY = (y0+y1)/2;
+    guide.style.cssText = `position:absolute;left:92px;right:0;top:${midY}px;height:0;border-top:.5px dashed ${s.color};opacity:.35`;
+    rail.appendChild(guide);
+  });
+  // Divider lines between tiers (extend across content area)
+  const dividers = [breakpoints[4][1], breakpoints[3][1], breakpoints[2][1]];
+  dividers.forEach(y=>{
+    const div = document.createElement('div');
+    div.className = 'cf-divider';
+    div.style.cssText = `position:absolute;left:92px;right:0;top:${y}px;height:0;border-top:.5px dashed var(--ln2)`;
+    rail.appendChild(div);
+  });
+})();
+
+// ── TOGGLE + METADATA ──
+(function(){
+  const wrap = document.getElementById('canvas');
+  const btn = document.getElementById('cfToggle');
+  const legend = document.getElementById('cfLegend');
+  const STORE_KEY = 'nqs-cf-on';
+  const apply = (on) => {
+    wrap.classList.toggle('cf-on', on);
+    wrap.classList.toggle('groups-on', on);
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    legend.classList.toggle('hidden', !on);
+  };
+  let on = localStorage.getItem(STORE_KEY) === '1';
+  apply(on);
+  btn.addEventListener('click', ()=>{
+    on = !on;
+    localStorage.setItem(STORE_KEY, on?'1':'0');
+    apply(on);
+  });
+  // "Ver definición" link → turns on and scrolls to legend
+  document.getElementById('cfDefLink').addEventListener('click', ()=>{
+    if (!wrap.classList.contains('cf-on')) { on = true; localStorage.setItem(STORE_KEY,'1'); apply(true); }
+    setTimeout(()=>legend.scrollIntoView({behavior:'smooth',block:'start'}), 50);
+  });
+  // Total headcount: unique names across nodes + members
+  const names = new Set();
+  nodes.forEach(n=>{ if(n.type==='person') names.add(n.name); if(n.members) n.members.forEach(m=>names.add(m)); });
+  const totalEl = document.getElementById('orgTotal');
+  if (totalEl) totalEl.textContent = names.size;
+})();
+
+// ── DISCIPLINE GROUPS (dashed containers per discipline) ──
+(function(){
+  const inner = document.getElementById('canvasInner');
+  // Each group wraps TL + its operators  (y range + x range from member nodes)
+  const groups = [
+    {id:'g-int',  label:'Interactive', ids:['lucho','santic','gabib']},
+    {id:'g-mod',  label:'Modeling',    ids:['anto','gonza','julif','agusl_m']},
+    {id:'g-3d',   label:'3D',          ids:['gasti','3d_fer','3d_rodri','3d_javi','3d_ingrid','3d_joe','3d_exe','3d_juani','3d_cin','3d_fran','3d_nere','3d_gavi','3d_san','3d_nahue','3d_gon']},
+    {id:'g-pp',   label:'PP',          ids:['cefe','pp_mati','pp_fede','pp_any','pp_espi']},
+    {id:'g-pm',   label:'Project mgmt',ids:['vick','male','dana','nacho','sofi']},
+  ];
+  const pad = 14;
+  groups.forEach(g=>{
+    const ns = g.ids.map(i=>nodeMap[i]).filter(Boolean);
+    if (!ns.length) return;
+    const x0 = Math.min(...ns.map(n=>n.x)) - pad;
+    const x1 = Math.max(...ns.map(n=>n.x+n.w)) + pad;
+    const y0 = Math.min(...ns.map(n=>n.y)) - pad;
+    const y1 = Math.max(...ns.map(n=>n.y+n.h)) + pad;
+    const box = document.createElement('div');
+    box.className = 'disc-group';
+    box.style.cssText = `left:${x0}px;top:${y0}px;width:${x1-x0}px;height:${y1-y0}px`;
+    box.innerHTML = `<span class="disc-group-lbl">${g.label}</span>`;
+    inner.insertBefore(box, inner.firstChild);
+  });
+})();
+
+// ── AUTO-FIT CANVAS (no horizontal scroll) ──
+(function(){
+  const scale = document.getElementById('canvasScale');
+  const wrap = document.getElementById('canvas');
+  const CANVAS_W = 1456;
+  const CANVAS_H = 680;
+  function fit(){
+    const avail = scale.clientWidth;
+    if (!avail) return;
+    const s = Math.min(1, avail / CANVAS_W);
+    wrap.style.transform = `scale(${s})`;
+    scale.style.height = (CANVAS_H * s) + 'px';
+  }
+  fit();
+  window.addEventListener('resize', fit);
+  // also re-fit when tab becomes visible (css display:none has zero clientWidth)
+  const obs = new MutationObserver(fit);
+  const view = document.getElementById('m1');
+  if (view) obs.observe(view, {attributes:true, attributeFilter:['class']});
+})();
+
+// ── SEARCH ──
+const searchAll=[];
+nodes.forEach(n=>{if(n.name)searchAll.push({name:n.name,role:n.role||'',id:n.id,accent:n.accent});if(n.members)n.members.forEach(m=>searchAll.push({name:m,role:n.dept||n.role||'',id:n.id,accent:n.accent}))});
+const searchInput=document.getElementById('search'),sresEl=document.getElementById('sres');
+searchInput.addEventListener('input',()=>{
+  const q=searchInput.value.toLowerCase().trim();
+  if(!q){sresEl.style.display='none';sresEl.innerHTML='';return}
+  const matches=searchAll.filter(p=>p.name.toLowerCase().includes(q)||p.role.toLowerCase().includes(q));
+  if(!matches.length){sresEl.style.display='none';return}
+  sresEl.innerHTML=matches.slice(0,8).map(p=>`<div style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13px;transition:background .15s" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''" onclick="searchPick('${p.id}','${p.name}')"><span style="width:8px;height:8px;border-radius:50%;background:${p.accent};flex-shrink:0"></span><span style="font-weight:400">${p.name}</span><span style="color:var(--tx3);font-size:11px;margin-left:4px">${p.role}</span></div>`).join('');
+  sresEl.style.display='block';
+});
+searchInput.addEventListener('blur',()=>setTimeout(()=>{sresEl.style.display='none'},200));
+function searchPick(id,name){
+  searchInput.value='';sresEl.style.display='none';
+  const n=nodeMap[id];if(n)showPanel(n);
+}
+</script>
+</body>
+</html>

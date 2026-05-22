@@ -1,0 +1,9 @@
+/* NQS AI Hub — entry stylesheet
+ * Order: fonts → Tailwind → client design system → screen-specific.
+ * Any new rule debe vivir en `components.css` o `screens.css`
+ * para mantener el design system del cliente como fuente única.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap");
+@import "tailwindcss";
+@import "./components.css";
+@import "./screens.css";

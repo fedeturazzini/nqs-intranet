@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InMotion — NQS Creative</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #000;
+    --fg: #ffffff;
+    --muted: rgba(255,255,255,0.45);
+    --muted-2: rgba(255,255,255,0.65);
+    --line: rgba(255,255,255,0.10);
+    --line-soft: rgba(255,255,255,0.06);
+    --cream: #f5efe0;
+    --cream-dim: rgba(245, 239, 224, 0.55);
+    --surface: rgba(255,255,255,0.03);
+    --surface-hi: rgba(255,255,255,0.05);
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-weight: 300;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body { tabindex: -1; }
+
+  /* ============================================
+     DECK STRUCTURE
+     ============================================ */
+  .deck {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    padding: 68px 72px 96px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(20px);
+    transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .slide.active { opacity: 1; pointer-events: all; transform: translateY(0); }
+  .slide.exit { opacity: 0; transform: translateY(-20px); }
+
+  /* Subtle vignette over every slide */
+  .slide::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* ============================================
+     CHROME — corner labels, counter, progress
+     ============================================ */
+  .chrome-top {
+    position: fixed;
+    top: 28px; left: 36px; right: 36px;
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 100;
+    pointer-events: none;
+  }
+  .brand {
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .brand strong {
+    color: var(--fg);
+    font-weight: 500;
+    margin-right: 14px;
+    padding-right: 14px;
+    border-right: 1px solid var(--line);
+  }
+  .counter {
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    color: var(--muted);
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+  }
+  .counter strong {
+    color: var(--fg);
+    font-weight: 500;
+  }
+
+  .progress-track {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: var(--line-soft);
+    z-index: 200;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--fg);
+    transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    width: 0;
+  }
+
+  /* ============================================
+     NAV — center bottom
+     ============================================ */
+  .nav {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    z-index: 100;
+    padding: 10px 18px;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .nav-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 18px;
+    font-family: inherit;
+    transition: color 0.2s;
+    padding: 4px 8px;
+    line-height: 1;
+  }
+  .nav-btn:hover { color: var(--fg); }
+  .nav-btn:disabled { opacity: 0.2; cursor: default; }
+  .nav-dots { display: flex; gap: 7px; align-items: center; }
+  .dot {
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    cursor: pointer;
+    transition: background 0.3s, transform 0.3s;
+  }
+  .dot.active {
+    background: var(--fg);
+    transform: scale(1.8);
+  }
+
+  /* ============================================
+     TYPE SYSTEM
+     ============================================ */
+  .eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+  }
+
+  .eyebrow-num {
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    font-weight: 400;
+    color: var(--fg);
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+  }
+  .eyebrow-num .dim {
+    color: var(--muted);
+    margin-left: 8px;
+  }
+
+  h1.title-mega {
+    font-family: 'Inter', sans-serif;
+    font-weight: 200;
+    font-size: clamp(80px, 12vw, 180px);
+    line-height: 0.9;
+    letter-spacing: -0.055em;
+    color: var(--fg);
+  }
+  h1.title-mega em {
+    font-style: italic;
+    font-weight: 200;
+    color: var(--cream);
+  }
+
+  h2.title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 200;
+    font-size: clamp(28px, 2.8vw, 42px);
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    color: var(--fg);
+  }
+  h2.title em { font-style: italic; color: var(--cream); font-weight: 200; }
+
+  h3.title-sm {
+    font-weight: 300;
+    font-size: clamp(22px, 2.2vw, 30px);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+
+  .lede {
+    font-size: clamp(15px, 1.15vw, 18px);
+    line-height: 1.55;
+    color: var(--muted-2);
+    font-weight: 300;
+    letter-spacing: -0.005em;
+  }
+  .lede strong { color: var(--fg); font-weight: 400; }
+  .lede em {
+    color: var(--cream);
+    font-style: italic;
+  }
+
+  .body {
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--muted-2);
+    font-weight: 300;
+  }
+  .body strong { color: var(--fg); font-weight: 500; }
+  .body em { color: var(--cream); font-style: italic; }
+
+  .caption {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+  }
+
+  /* ============================================
+     COVER SLIDE (slide 1)
+     ============================================ */
+  .slide-cover {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    align-items: center;
+    padding: 80px 80px 140px;
+  }
+  .cover-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .cover-main {
+    align-self: center;
+    max-width: 1400px;
+  }
+  .cover-main h1 {
+    margin-top: 28px;
+  }
+  .cover-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 80px;
+  }
+  .cover-meta .lede {
+    max-width: 560px;
+  }
+  .meta-tags {
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .meta-tag {
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+    position: relative;
+    padding-left: 16px;
+  }
+  .meta-tag::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 50%;
+    width: 8px; height: 1px;
+    background: var(--cream-dim);
+  }
+
+  /* ============================================
+     TWO-COL LAYOUT
+     ============================================ */
+  .two {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.58fr) 1.42fr;
+    gap: 48px;
+    height: 100%;
+    align-items: stretch;
+  }
+  .two .left {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-width: 0;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .two .left::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  .two .left:hover { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
+  .two .left:hover::-webkit-scrollbar { width: 4px; display: block; }
+  .two .left:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+  .two .left:hover::-webkit-scrollbar-track { background: transparent; }
+  .two .right {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .left-header {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* ============================================
+     PILLS / META-LIST
+     ============================================ */
+  .meta-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+  }
+  .meta-item {
+    background: var(--bg);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .meta-item .k {
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .meta-item .v {
+    font-size: 13px;
+    color: var(--fg);
+    font-weight: 300;
+    letter-spacing: -0.01em;
+  }
+
+  /* ============================================
+     CALLOUT — editorial note, no left-border
+     ============================================ */
+  .note {
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--muted-2);
+    font-weight: 300;
+    position: relative;
+  }
+  .note .note-label {
+    font-size: 9px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--cream);
+    font-weight: 500;
+    display: block;
+    margin-bottom: 8px;
+  }
+  .note.warn .note-label { color: #e8b06a; }
+  .note.info .note-label { color: #a8c9a8; }
+  .note strong { color: var(--fg); font-weight: 400; }
+
+  /* ============================================
+     STEPS
+     ============================================ */
+  .steps {
+    display: flex;
+    flex-direction: column;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 14px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line-soft);
+    align-items: baseline;
+  }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+  }
+  .step-text {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--muted-2);
+    font-weight: 300;
+  }
+  .step-text strong { color: var(--fg); font-weight: 500; }
+  .step-text em { color: var(--cream); font-style: italic; }
+
+  /* ============================================
+     VISUAL FRAME (image container)
+     ============================================ */
+  .visual {
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+  }
+  .visual-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--line);
+    background: #0a0a0a;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .visual-frame img, .visual-frame video, .visual-frame iframe {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #050505;
+    border: 0;
+  }
+  .visual-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--muted);
+    position: relative;
+    background:
+      linear-gradient(135deg, transparent 49.5%, var(--line-soft) 49.5%, var(--line-soft) 50.5%, transparent 50.5%),
+      linear-gradient(45deg, transparent 49.5%, var(--line-soft) 49.5%, var(--line-soft) 50.5%, transparent 50.5%),
+      #060606;
+  }
+  .visual-placeholder .ph-label {
+    font-size: 9px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .visual-placeholder .ph-title {
+    font-size: 14px;
+    color: var(--cream-dim);
+    font-weight: 300;
+    letter-spacing: -0.01em;
+    text-align: center;
+    max-width: 70%;
+  }
+
+  .visual-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .visual-meta .cap { color: var(--muted); }
+  .visual-meta .tag {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--cream-dim);
+  }
+
+  /* Grid inside visual (6-up collage placeholder) */
+  .visual-grid-6 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 2px;
+    width: 100%;
+    height: 100%;
+    background: var(--line);
+  }
+  .visual-grid-6 .cell {
+    background: #0a0a0a;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .visual-grid-6 .cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .visual-grid-6 .cell.placeholder {
+    background:
+      linear-gradient(135deg, transparent 49.6%, rgba(255,255,255,0.04) 49.6%, rgba(255,255,255,0.04) 50.4%, transparent 50.4%),
+      #080808;
+  }
+  .visual-grid-6 .cell .tag {
+    position: absolute;
+    bottom: 6px; left: 8px;
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ============================================
+     NUMBER DISPLAY (big)
+     ============================================ */
+  .big-num {
+    font-family: 'Inter', sans-serif;
+    font-weight: 100;
+    font-size: clamp(180px, 22vw, 340px);
+    line-height: 0.85;
+    letter-spacing: -0.06em;
+    color: var(--fg);
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+  }
+  .big-num .small {
+    color: var(--muted);
+    font-size: 0.3em;
+    margin-left: 0.15em;
+    vertical-align: top;
+    letter-spacing: 0.1em;
+  }
+
+  /* ============================================
+     TABLE-LIKE LIST
+     ============================================ */
+  .t-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .t-row {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line-soft);
+    align-items: baseline;
+    font-size: 12.5px;
+  }
+  .t-row:first-child { border-top: 1px solid var(--line); }
+  .t-row:last-child { border-bottom: 1px solid var(--line); }
+  .t-row .idx { color: var(--muted); font-size: 10px; letter-spacing: 0.2em; font-weight: 400; }
+  .t-row .lbl { color: var(--fg); font-weight: 400; letter-spacing: -0.01em; }
+  .t-row .val { color: var(--muted-2); font-size: 12px; font-weight: 300; }
+  .t-row.best .lbl { color: var(--cream); }
+  .t-row.best .val { color: var(--cream-dim); }
+
+  /* ============================================
+     KEY LIST (checkmarks style — minimal)
+     ============================================ */
+  .k-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .k-item {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--muted-2);
+  }
+  .k-item:last-child { border-bottom: none; }
+  .k-item::before {
+    content: "";
+    width: 6px; height: 6px;
+    border: 1px solid var(--cream-dim);
+    border-radius: 50%;
+    margin-top: 8px;
+    align-self: flex-start;
+  }
+  .k-item strong { color: var(--fg); font-weight: 400; display: block; margin-bottom: 4px; font-size: 14px; }
+  .k-item em { color: var(--cream); font-style: italic; }
+
+  /* ============================================
+     SLIDE VARIANT — centered statement
+     ============================================ */
+  .slide-statement {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 40px;
+    padding: 80px 120px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ============================================
+     MARQUEE (tag strip)
+     ============================================ */
+  .marquee {
+    overflow: hidden;
+    white-space: nowrap;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 18px 0;
+    margin-top: 24px;
+  }
+  .marquee-inner {
+    display: inline-block;
+    animation: marquee 40s linear infinite;
+  }
+  .marquee span {
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 32px;
+    font-weight: 400;
+  }
+  .marquee span::before {
+    content: "●";
+    color: var(--cream-dim);
+    margin-right: 24px;
+    font-size: 6px;
+    vertical-align: middle;
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  /* ============================================
+     BEFORE / AFTER (stacked frames)
+     ============================================ */
+  .ba {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 20px;
+    align-items: stretch;
+    height: 100%;
+  }
+  .ba-col { display: flex; flex-direction: column; gap: 10px; }
+  .ba-col .visual-frame { aspect-ratio: auto; }
+  .ba-arrow {
+    align-self: center;
+    color: var(--muted);
+    font-size: 24px;
+    font-weight: 200;
+  }
+
+  /* ============================================
+     UTILITY
+     ============================================ */
+  .hide-scrollbar::-webkit-scrollbar { display: none; }
+  .grow { flex: 1; min-height: 0; }
+  .gap-sm { gap: 12px; }
+  .mt-xl { margin-top: 40px; }
+
+  /* Hint at bottom of slide */
+  .slide-footer-hint {
+    position: absolute;
+    bottom: 28px;
+    left: 96px;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+
+
+  /* ============================================
+     TOOL LINK
+     ============================================ */
+  a.tool-link {
+    color: var(--cream);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(245, 239, 224, 0.4);
+    padding-bottom: 1px;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  a.tool-link:hover {
+    color: var(--fg);
+    border-bottom-color: var(--fg);
+  }
+  a.tool-link strong { color: inherit; }
+
+  /* ============================================
+     SCROLL INDICATOR
+     ============================================ */
+  .left-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+  .scroll-hint {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 8px;
+    height: 60px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 70%, rgba(0,0,0,1) 100%);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 6px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 5;
+  }
+  .scroll-hint.visible { opacity: 1; }
+  .scroll-hint-inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--cream);
+    font-weight: 400;
+    animation: scroll-bob 1.8s ease-in-out infinite;
+  }
+  .scroll-hint-inner svg {
+    width: 12px;
+    height: 12px;
+  }
+  @keyframes scroll-bob {
+    0%, 100% { transform: translateY(0); opacity: 0.7; }
+    50% { transform: translateY(3px); opacity: 1; }
+  }
+
+  /* ============================================
+     SCALES GRID (3-up cards)
+     ============================================ */
+  .scales-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    width: 100%;
+  }
+  .scale-card {
+    background: var(--bg);
+    padding: 22px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 220px;
+  }
+  .scale-card .scale-name {
+    font-family: 'Inter', sans-serif;
+    font-weight: 300;
+    font-style: italic;
+    font-size: 22px;
+    letter-spacing: -0.02em;
+    color: var(--cream);
+    margin-bottom: 4px;
+  }
+  .scale-card .scale-desc {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--muted-2);
+    font-weight: 300;
+    flex: 1;
+  }
+  .scale-card .scale-meta {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 400;
+    border-top: 1px solid var(--line-soft);
+    padding-top: 8px;
+  }
+  .scale-card .scale-meta span {
+    color: var(--fg);
+    font-weight: 400;
+    margin-left: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ============================================
+     SECTION DIVIDER (full-bleed title card)
+     ============================================ */
+  .slide-section .sd-wrap {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 20px 0;
+  }
+  .slide-section .sd-num-big {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'Inter', sans-serif;
+    font-weight: 100;
+    font-size: clamp(220px, 28vw, 440px);
+    line-height: 0.85;
+    letter-spacing: -0.065em;
+    color: var(--cream);
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .slide-section .sd-main {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 900px;
+  }
+  .slide-section .sd-label {
+    font-size: 10px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--cream);
+    font-weight: 400;
+  }
+  .slide-section .sd-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 200;
+    font-size: clamp(88px, 13vw, 180px);
+    line-height: 0.9;
+    letter-spacing: -0.055em;
+    color: var(--fg);
+  }
+  .slide-section .sd-title em {
+    font-style: italic;
+    font-weight: 200;
+    color: var(--cream);
+  }
+  .slide-section .sd-sub {
+    font-size: clamp(15px, 1.15vw, 18px);
+    line-height: 1.55;
+    color: var(--muted-2);
+    font-weight: 300;
+    max-width: 820px;
+    margin-top: 8px;
+  }
+
+  /* ============================================
+     TABS (for switchable visuals)
+     ============================================ */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 14px;
+  }
+  .tab {
+    flex: 1;
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    font-weight: 400;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--cream-dim); }
+  .tab.active {
+    color: var(--fg);
+    border-bottom-color: var(--cream);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: flex; flex-direction: column; gap: 14px; }
+
+</style>
+</head>
+
+<body tabindex="-1">
+
+<div class="progress-track"><div class="progress-fill" id="progress"></div></div>
+
+<div class="chrome-top">
+  <div class="brand"><strong>NQS</strong>Creative · How It Works</div>
+  <div class="counter"><strong id="counter-cur">01</strong><span class="dim">/ 17</span></div>
+</div>
+
+<div class="deck" id="deck">
+
+  
+  <div class="slide slide-cover active" data-index="0">
+    <div class="cover-top">
+      <div class="eyebrow">Herramientas de IA · NQS Creative</div>
+      <div class="eyebrow-num">Tool 03 <span class="dim">/ 06</span></div>
+    </div>
+    <div class="cover-main">
+      <div class="eyebrow" style="color: var(--cream)">How it works</div>
+      <h1 class="title-mega">InMotion.</h1>
+      <p class="lede mt-xl" style="max-width:820px; margin-top:36px">Animación cinematográfica de renders arquitectónicos. Desde un <strong>clip de 3 segundos</strong> hasta un <strong>film de 40 a 70 segundos</strong> con storyboard completo.</p>
+    </div>
+    <div class="cover-meta">
+      <div class="meta-tags">
+        <span class="meta-tag">Claude · prompts + storyboard</span><span class="meta-tag">Kling · generación</span><span class="meta-tag">Single · Multi · Films</span><span class="meta-tag">Premiere · ensamble</span>
+      </div>
+    </div>
+    <div class="slide-footer-hint">← → para navegar</div>
+  </div>
+
+  <div class="slide" data-index="1">
+    <div style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:42px; padding:20px 20px;">
+      <div style="text-align:center; max-width:720px; display:flex; flex-direction:column; gap:14px;">
+        <div class="eyebrow-num">01 <span class="dim">— Overview</span></div>
+        <h2 class="title" style="margin:0 auto">Tres escalas <em>cinematográficas</em></h2>
+        <p class="body" style="max-width:560px; margin:0 auto;">Desde un clip de 3 segundos hasta un film de 40 a 70 segundos con storyboard completo.</p>
+      </div>
+      <div class="scales-grid" style="max-width:1100px;">
+        <div class="scale-card">
+          <div class="scale-name">Single Shots</div>
+          <div class="scale-desc">Un clip animado desde un solo render. Un momento, completamente vivo.</div>
+          <div class="scale-meta">Duración<span>3–15 seg</span></div>
+          <div class="scale-meta">Input<span>1 imagen · 1 descripción</span></div>
+        </div>
+        <div class="scale-card">
+          <div class="scale-name">Multi Shots</div>
+          <div class="scale-desc">Múltiples escenas concatenadas. Un reel corto que cuenta la historia de un espacio.</div>
+          <div class="scale-meta">Duración<span>6–15 seg</span></div>
+          <div class="scale-meta">Input<span>1 imagen · 1 descripción</span></div>
+        </div>
+        <div class="scale-card">
+          <div class="scale-name">Films</div>
+          <div class="scale-desc">Una pieza cinematográfica completa. Claude genera el storyboard y ejecutamos cada escena.</div>
+          <div class="scale-meta">Duración<span>40 seg – 1:10 min</span></div>
+          <div class="scale-meta">Input<span>1+ imágenes · múltiples descripciones</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="slide slide-section" data-index="2">
+    <div class="sd-wrap">
+      <div class="sd-num-big">01</div>
+      <div class="sd-main">
+        <div class="sd-label">Primera escala</div>
+        <h1 class="sd-title"><em>Single</em> Shots.</h1>
+        <p class="sd-sub">Una imagen de referencia. Una descripción. Un clip cinematográfico de entre 3 y 15 segundos.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="3">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">01.1 <span class="dim">— Single Shots · Paso 1</span></div>
+          <h2 class="title">Generar el prompt con <em>Claude</em></h2>
+        </div>
+        <p class="body">El proceso arranca en el proyecto <strong>KLING</strong> dentro de Claude. Claude actúa como cinematógrafo experto: analiza la imagen y genera un prompt optimizado para Kling 3.0.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Subir el render</strong> — la imagen de referencia del proyecto.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Describir en lenguaje natural</strong> — movimiento de cámara, acción, mood y duración aproximada.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Claude entrega el prompt</strong> como archivo TXT listo para pegar en Kling.</div></div>
+  </div>
+  <div class="note">
+    <span class="note-label">Proyecto KLING en Claude</span>
+    Configurado con system prompt de cinematógrafo especializado en visualización arquitectónica. Modelo Opus 4.6.
+  </div>
+  <div class="note info">
+    <span class="note-label">Conversación = imagen</span>
+    Igual que en <a href="how-reframes-v2.html" class="tool-link">Reframes</a>, cada imagen que queremos animar es una conversación separada en Claude, nombrada con el proyecto y la view.
+  </div>
+      </div>
+      <div class="right"><div class="visual">
+    <div class="visual-frame"><img src="assets/how/inmotion/frame_0080.jpg" alt=""></div>
+    <div class="visual-meta">
+      <span class="caption cap">Claude KLING · generando prompt para Kling 3.0</span>
+      <span class="tag">01 / 13</span>
+    </div>
+  </div></div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="4">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">01.2 <span class="dim">— Single Shots · Paso 2</span></div>
+          <h2 class="title">Kling: la <em>plataforma</em> de generación</h2>
+        </div>
+        <p class="body"><strong>Kling</strong> es la herramienta que anima todos los reframes y renders. Para acceder, pedirle a IT — se usa con la cuenta de contacto, igual que <a href="how-weavy-v2.html" class="tool-link">Weavy</a>.</p>
+  <div class="note warn">
+    <span class="note-label">Créditos</span>
+    Se ven abajo a la izquierda al entrar. Son caros — usarlos de manera específica para NQS. Si se necesitan más, avisar a dirección de Arte.
+  </div>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text">Ingresar a Kling con la <strong>cuenta de contacto</strong> (IT provee acceso).</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">En la barra lateral: ir a la sección <strong>Canvas</strong>.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text">En Canvas: <strong>crear nuevo proyecto</strong> con el nombre <strong>Cliente — Proyecto</strong> (ej: DEVMARK — MANHATTAN), igual criterio que en Reframes.</div></div>
+  </div>
+  <div class="note">
+    <span class="note-label">Secciones de Kling</span>
+    Image Gen · Video Gen · Motion Control · Canvas · Avatar
+  </div>
+      </div>
+      <div class="right"><div class="visual">
+    <div class="visual-frame"><img src="assets/how/inmotion/frame_0100.jpg" alt=""></div>
+    <div class="visual-meta">
+      <span class="caption cap">Kling · home — secciones y créditos disponibles (bottom-left)</span>
+      <span class="tag">02 / 13</span>
+    </div>
+  </div></div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="5">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">01.3 <span class="dim">— Single Shots · Paso 3</span></div>
+          <h2 class="title">Armar el canvas y <em>conectar nodos</em></h2>
+        </div>
+        <p class="body">Dentro del proyecto en Canvas se construye el flujo nodal: imagen de referencia + prompt de Claude → nodo de generación.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Arrastrar la imagen</strong> de referencia al canvas → se crea el nodo Image.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">Agregar nodo <strong>Text</strong> y pegar el prompt de Claude.<br><span style="color:var(--cream-dim)">Máximo 2000 caracteres — Kling no acepta prompts más largos en modo Canvas.</span></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text">Conectar Image y Text al nodo <strong>Image to Video</strong>. El conector de la imagen define si es <strong>Start Only</strong> o <strong>Start + End</strong>.</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-text">Configurar parámetros y dar <strong>Generate</strong> — aparece el nodo resultado.</div></div>
+  </div>
+      </div>
+      <div class="right"><div class="visual">
+    <div class="visual-frame"><img src="assets/how/inmotion/frame_0140.jpg" alt=""></div>
+    <div class="visual-meta">
+      <span class="caption cap">Kling Canvas · Image + Text → Image to Video → resultado</span>
+      <span class="tag">03 / 13</span>
+    </div>
+  </div></div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="6">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">01.4 <span class="dim">— Single Shots · Paso 4</span></div>
+          <h2 class="title">Parámetros, <em>Start/End</em> y generación</h2>
+        </div>
+        <p class="body">Antes de generar, configurar siempre con estos valores por defecto. Para testeos usar <strong>720p</strong> para ahorrar créditos; pasar a <strong>1080p</strong> solo cuando el AD aprueba.</p>
+  <div class="meta-list">
+    <div class="meta-item"><span class="k">Modelo</span><span class="v">VIDEO 3.0</span></div>
+    <div class="meta-item"><span class="k">Modo</span><span class="v">Frames</span></div>
+    <div class="meta-item"><span class="k">Duración</span><span class="v">3s – 15s según el prompt</span></div>
+    <div class="meta-item"><span class="k">Calidad testeo</span><span class="v">720p (ahorra créditos)</span></div>
+    <div class="meta-item"><span class="k">Calidad final</span><span class="v">1080p (cuando AD aprueba)</span></div>
+    <div class="meta-item"><span class="k">Native Audio</span><span class="v">OFF por defecto</span></div>
+    <div class="meta-item"><span class="k">Multi Shot</span><span class="v">OFF por defecto</span></div>
+    <div class="meta-item"><span class="k">Outputs</span><span class="v">1 (más = más créditos sin sentido)</span></div>
+  </div>
+  <div class="note info">
+    <span class="note-label">Start + End frame</span>
+    Además del frame de inicio se puede definir un frame final → Kling genera la interpolación entre ambos. Útil cuando la cámara fue predispuesta en 3D o para Films con recorridos específicos. Además, podés extraer frames del Video Editor con <strong>Capture Keyframe</strong> en caso de que quieras usar un frame del video generado como Start o End frame.
+  </div>
+      </div>
+      <div class="right"><div class="visual">
+    <div class="visual-frame"><img src="assets/how/inmotion/frame_0026.jpg" alt=""></div>
+    <div class="visual-meta">
+      <span class="caption cap">Kling Canvas · Start Only / Start + End — Video Edit Frame node</span>
+      <span class="tag">04 / 13</span>
+    </div>
+  </div></div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="7">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">01.5 <span class="dim">— Single Shots · Post</span></div>
+          <h2 class="title">Revisión, upscale y <em>entrega</em></h2>
+        </div>
+        <p class="body">Una vez generado el video, el flujo de revisión sigue la misma lógica que <a href="how-reframes-v2.html" class="tool-link">Reframes</a>: Miro → AD → correcciones → aprobación → 1080p → upscale opcional.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text">Revisar movimiento y calidad. <strong>Subir a Miro</strong> para revisión con el AD.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">Si el AD aprueba: regenerar en <strong>1080p</strong>. Confirmar y subir de vuelta a Miro.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Upscale (opcional, siempre a definir con AD):</strong><br><span style="color:var(--cream-dim)"><strong>Topaz Video AI</strong> — más cinematográfico: mejora calidad general y sube los FPS de 24 a 30.<br><strong>Magnify</strong> — ideal cuando hay personas en el video: corrige deformaciones generadas por IA, pero agrega mucho sharpening.</span></div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-text">Con todo aprobado: pedirle al PM la carpeta de destino, <strong>renombrar el archivo</strong> según la convención, y subir el video renombrado a esa carpeta.</div></div>
+  </div>
+  <div class="note">
+    <span class="note-label">Topaz Video AI y <a href="https://magnific.ai/" target="_blank" class="tool-link">Magnify</a></span>
+    IT los instala y el acceso es con la cuenta de contacto. No son herramientas por defecto — siempre evaluar con el AD antes de usar.
+  </div>
+      </div>
+      <div class="right"><div class="visual">
+    <div class="visual-frame"><img src="assets/how/inmotion/inmotion_slide8.png" alt=""></div>
+    <div class="visual-meta">
+      <span class="caption cap">Miro · revisión con AD — First Draft 08/04/26</span>
+      <span class="tag">05 / 13</span>
+    </div>
+  </div></div>
+    </div>
+  </div>
+
+  <div class="slide slide-section" data-index="8">
+    <div class="sd-wrap">
+      <div class="sd-num-big">02</div>
+      <div class="sd-main">
+        <div class="sd-label">Segunda escala</div>
+        <h1 class="sd-title"><em>Multi</em> Shots.</h1>
+        <p class="sd-sub">Varios planos. Una imagen. Y el Video Editor permite editarlo de manera sencilla si necesitamos.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="9">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">02.1 <span class="dim">— Multi Shots · Paso 1</span></div>
+          <h2 class="title">Diseñar la secuencia con <em>Claude</em></h2>
+        </div>
+        <p class="body">El mismo proyecto KLING en Claude. En pleno castellano describir los planos que se necesitan y la duración total aproximada. Claude genera el prompt completo con cada shot numerado.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text">En Claude KLING: <strong>nueva conversación</strong> (o continuar la misma si es la misma imagen). Describir la secuencia y duración total.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">Claude genera prompt con <strong>SHOT 1, SHOT 2, SHOT 3...</strong> cada uno con cámara, acción y duración.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text">Copiar el prompt.<br><span style="color:var(--cream-dim)">Los prompts de multi-shot son demasiado largos para Canvas — se usa el modo Generate estándar de Kling.</span></div></div>
+  </div>
+  <div class="note warn">
+    <span class="note-label">Importante</span>
+    Multi Shots NO va por Canvas. Ir al ícono <strong>Generate</strong> en el sidebar izquierdo de Kling y usar ese modo.
+  </div>
+      </div>
+      <div class="right"><div class="visual">
+    <div class="visual-frame"><img src="assets/how/inmotion/inmotion_slide10.png" alt=""></div>
+    <div class="visual-meta">
+      <span class="caption cap">Claude KLING · generando prompt multi-shot con shots numerados</span>
+      <span class="tag">06 / 13</span>
+    </div>
+  </div></div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="10">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">02.2 <span class="dim">— Multi Shots · Paso 2</span></div>
+          <h2 class="title">Generar en modo <em>Generate</em> de Kling</h2>
+        </div>
+        <p class="body">En el modo <strong>Generate</strong> de Kling (no Canvas): pegar el prompt, activar Multi Shot y configurar los parámetros. El formato se elige entre las opciones que da Kling: <strong>16:9, 1:1 o vertical</strong>. El recorte lo hace Kling automáticamente y no permite elegir desde dónde recortar — si necesitás un recorte específico, hacelo antes en Photoshop y subí ese frame.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text">Pegar el prompt. Tildar <strong>Multi Shot</strong>. Subir la imagen de referencia.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">Configurar: <strong>720p</strong> para testeo, duración total, outputs en <strong>1</strong>, Native Audio <strong>OFF</strong>.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text">Generar. Una vez aprobado el resultado: <strong>descargar y subir a Canvas</strong> para tener todo el proyecto ordenado en un solo tablero.</div></div>
+  </div>
+  <div class="note">
+    <span class="note-label">Video Editor</span>
+    Permite cortar, invertir clips y extraer frames de manera sencilla. Antes de pedirle a Kling que regenere algo, evaluar si no es más fácil resolverlo en el editor.
+  </div>
+  <div class="note info">
+    <span class="note-label">Custom Multi Shot</span>
+    Al lado del toggle Multi Shot hay una opción <strong>Custom Multi Shot</strong> que permite configurar cada shot individualmente — duración, prompt propio, etc. Como Claude ya especifica los tiempos y descripciones en el prompt, generalmente no hace falta. Pero es una herramienta poderosa para usar si el Multi Shot estándar no está dando los resultados esperados.
+  </div>
+      </div>
+      <div class="right"><div class="visual tabs-group">
+  <div class="tabs">
+    <button class="tab active" data-tab="gen">Generate</button>
+    <button class="tab" data-tab="canv">Canvas</button>
+    <button class="tab" data-tab="editor">Video Editor</button>
+  </div>
+  <div class="tab-panel active" data-panel="gen">
+    <div class="visual-frame"><img src="assets/how/inmotion/inmotion_generate_multishot.png" alt=""></div>
+    <div class="visual-meta"><span class="caption cap">Kling · Generate — prompt multi-shot pegado, Multi Shot activado</span><span class="tag">07 / 13</span></div>
+  </div>
+  <div class="tab-panel" data-panel="canv">
+    <div class="visual-frame"><img src="assets/how/inmotion/frame_0040.jpg" alt=""></div>
+    <div class="visual-meta"><span class="caption cap">Kling Canvas · clic en el video → botón Video Editor</span><span class="tag">07 / 13</span></div>
+  </div>
+  <div class="tab-panel" data-panel="editor">
+    <div class="visual-frame"><img src="assets/how/inmotion/frame_0025.jpg" alt=""></div>
+    <div class="visual-meta"><span class="caption cap">Kling · Video Editor — timeline, corte de clips y extracción de frames</span><span class="tag">07 / 13</span></div>
+  </div>
+</div></div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="11">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">02.3 <span class="dim">— Audio · Opcional</span></div>
+          <h2 class="title">Agregar <em>sonido</em> cinematográfico</h2>
+        </div>
+        <p class="body">Kling ofrece dos formas de agregar audio a los videos generados, según la duración y el nivel de control deseado.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Sound Generation</strong> — en el video aprobado, usar "Generate Sound". Describir el sonido deseado. Límite: <strong>5 segundos</strong>.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Native Audio</strong> — para videos más largos. Activar el toggle al exportar en <strong>1080p</strong>. Genera audio ambiental automático sincronizado.</div></div>
+  </div>
+  <div class="note info">
+    <span class="note-label">Regla práctica</span>
+    Sound Generation para clips cortos con descripción precisa. Native Audio al exportar 1080p para resultados más largos o automáticos.
+  </div>
+      </div>
+      <div class="right"><div class="visual">
+    <div class="visual-frame"><img src="assets/how/inmotion/inmotion_slide12.png" alt=""></div>
+    <div class="visual-meta">
+      <span class="caption cap">Kling Canvas · Sound Generation — botón visible al hacer clic en el video</span>
+      <span class="tag">08 / 13</span>
+    </div>
+  </div></div>
+    </div>
+  </div>
+
+  <div class="slide slide-section" data-index="12">
+    <div class="sd-wrap">
+      <div class="sd-num-big">03</div>
+      <div class="sd-main">
+        <div class="sd-label">Tercera escala</div>
+        <h1 class="sd-title"><em>Films.</em></h1>
+        <p class="sd-sub">Claude actúa como director de cine. Analiza tus imágenes, diseña el storyboard completo y genera cada escena con instrucciones exactas de <a href="how-reframes-v2.html" class="tool-link">Reframe</a> y Kling.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="13">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">03.1 <span class="dim">— Films · Paso 1</span></div>
+          <h2 class="title">Storyboard con <em>Claude FILM</em></h2>
+        </div>
+        <p class="body">El proyecto <strong>FILM en Claude</strong> está configurado como director de cine y cinematógrafo arquitectónico. Con una o más imágenes y un pequeño puntapié inicial, Claude toma la posta.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text">Subir la imagen del proyecto y darle una pequeña descripción o idea inicial — Claude va a empezar a hacer preguntas y desde ahí lo vas guiando.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">Claude analiza cinematográficamente la imagen y propone un storyboard con <strong>la cantidad de escenas que él crea necesarias</strong> según la duración que le dijiste — no siempre son 8.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text">Revisás el storyboard, ajustás si hace falta, y confirmás para avanzar al plan de ejecución.</div></div>
+  </div>
+  <div class="note">
+    <span class="note-label">Modelo</span>
+    Claude Opus 4.6 — proyecto FILM. El sistema prompt lo configura como director de cine + guionista + cinematógrafo de arquitectura.
+  </div>
+      </div>
+      <div class="right"><div class="visual">
+    <div class="visual-frame"><img src="assets/how/inmotion/inmotion_slide14.png" alt=""></div>
+    <div class="visual-meta">
+      <span class="caption cap">Claude FILM · analizando imagen y haciendo preguntas antes de armar el storyboard</span>
+      <span class="tag">10 / 13</span>
+    </div>
+  </div></div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="14">
+    <div style="padding: 40px 60px; width:100%; height:100%; display:flex; flex-direction:column; gap:24px; overflow-y:auto;">
+      <div>
+        <div class="eyebrow-num">03.2 <span class="dim">— Films · Ejemplo de storyboard</span></div>
+        <h2 class="title" style="margin-top:14px">DEVMARK · Manhattan — <em>40–70 seg</em></h2>
+      </div>
+      <table style="width:100%; border-collapse:collapse; font-family: 'Inter', sans-serif; color: var(--fg); font-size:13px; font-weight:300;">
+        <thead>
+          <tr style="text-align:left; color:var(--muted); font-size:9px; letter-spacing:.22em; text-transform:uppercase; border-bottom:1px solid var(--line); border-top:1px solid var(--line)">
+            <th style="padding:12px; width:40px; font-weight:400">#</th>
+            <th style="padding:12px; width:180px; font-weight:400">Nombre</th>
+            <th style="padding:12px; width:90px; font-weight:400">Duración</th>
+            <th style="padding:12px; font-weight:400">Descripción</th>
+          </tr>
+        </thead>
+        <tbody><tr><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">1</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft)"><strong style="color:var(--fg); font-weight:400">Desert Silence</strong></td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">5 seg</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted-2)">Solo dunas, arena y bruma dorada. Sin skyline. El vacío del desierto.</td></tr><tr><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">2</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft)"><strong style="color:var(--fg); font-weight:400">The Caravan</strong></td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">5 seg</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted-2)">Camellos y beduino en plano medio-largo. La caravana avanza de izquierda a derecha.</td></tr><tr><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">3</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft)"><strong style="color:var(--fg); font-weight:400">Reveal</strong></td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">5 seg</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted-2)">La cámara abre y aparece el skyline: el desierto ancestral vs. la hipermodernidad.</td></tr><tr><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">4</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft)"><strong style="color:var(--fg); font-weight:400">Tower Skin</strong></td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">5 seg</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted-2)">Zoom in a la piel diagrid de la torre. Detalle arquitectónico, geometría y luz.</td></tr><tr><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">5</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft)"><strong style="color:var(--fg); font-weight:400">Crown</strong></td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">4 seg</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted-2)">Contrapicado al remate de la torre. Verticalidad pura. Cielo limpio.</td></tr><tr><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">6</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft)"><strong style="color:var(--fg); font-weight:400">Scale</strong></td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">5 seg</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted-2)">La torre junto al Burj Khalifa. La escala del proyecto en contexto.</td></tr><tr><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">7</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft)"><strong style="color:var(--fg); font-weight:400">Golden Horizon</strong></td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">5 seg</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted-2)">Plano panorámico completo. Golden hour plena. El desierto en primer plano.</td></tr><tr><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">8</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft)"><strong style="color:var(--fg); font-weight:400">Nightfall</strong></td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted)">6 seg</td><td style="padding:14px 12px; border-bottom:1px solid var(--line-soft); color:var(--muted-2)">Misma composición pero de noche. Torre iluminada. Cierre con impacto. Corte a negro.</td></tr></tbody>
+      </table>
+      <p class="body" style="color:var(--cream-dim)">Este es el storyboard que Claude generó a partir del intercambio que vimos en el slide anterior — cada fila es una escena con nombre, duración y descripción cinematográfica. Una vez aprobado, Claude arranca a generar todo lo que vemos en los slides siguientes.</p>
+    </div>
+  </div>
+
+  <div class="slide" data-index="15">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">03.3 <span class="dim">— Films · Paso 2</span></div>
+          <h2 class="title">Plan de ejecución <em>por escena</em></h2>
+        </div>
+        <p class="body">Una vez aprobado el storyboard, Claude genera las <strong>ideas de ejecución</strong> para cada escena: instrucciones exactas para <a href="how-reframes-v2.html" class="tool-link">Reframe</a> y para Kling.</p>
+  <p class="caption" style="color:var(--cream); margin-top:4px">Por cada escena Claude especifica:</p>
+  <div class="k-list">
+    <div class="k-item"><div><strong>Reframe</strong>Qué variante de imagen generar: crop, ángulo, formato (16:9 · 2.39:1), lente y composición.</div></div>
+    <div class="k-item"><div><strong>Kling</strong>Movimiento de cámara, elementos en movimiento, duración y tipo de shot (Single Shot).</div></div>
+  </div>
+  <div class="note info">
+    <span class="note-label">Importante</span>
+    Para ejecutar cada escena hay que aplicar todo lo aprendido — tanto en la <em>presentación de <a href="how-reframes-v2.html" class="tool-link">Reframes</a></em> como en los slides anteriores. Todo ese conocimiento converge y culmina en la generación de un film.
+  </div>
+  <div class="note">
+    <span class="note-label">Última etapa</span>
+    Los clips generados se ensamblan y editan en <strong>Premiere Pro</strong> para componer el film final.
+  </div>
+  <div style="display:flex; align-items:center; gap:10px; font-size:10px; letter-spacing:0.18em; text-transform:uppercase; color:var(--muted); margin-top:8px; flex-wrap:wrap">
+    <span style="color:var(--cream)">Claude FILM</span>
+    <span>→</span>
+    <span style="color:var(--fg)">Reframe</span>
+    <span>→</span>
+    <span style="color:var(--fg)">Kling</span>
+    <span>→</span>
+    <span style="color:var(--cream)">Premiere Pro</span>
+  </div>
+      </div>
+      <div class="right"><div class="visual">
+    <div class="visual-frame"><img src="assets/how/inmotion/frame_0050.jpg" alt=""></div>
+    <div class="visual-meta">
+      <span class="caption cap">Claude FILM · ideas de ejecución — instrucciones Reframe + Kling por escena</span>
+      <span class="tag">12 / 13</span>
+    </div>
+  </div></div>
+    </div>
+  </div>
+
+  <div class="slide" data-index="16">
+    <div class="two">
+      <div class="left">
+        <div class="left-header">
+          <div class="eyebrow-num">03.4 <span class="dim">— Films · Paso 3</span></div>
+          <h2 class="title">Ensamble final en <em>Premiere Pro</em></h2>
+        </div>
+        <p class="body">Con todos los clips de Kling listos y aprobados por AD, se ensambla el film completo en Premiere Pro.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text">Importar todos los clips (1080p) en el orden del storyboard.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">Componer en <strong>Premiere Pro</strong>: música, transiciones entre escenas, corrección de color básica.<br><span style="color:var(--cream-dim)"><a href="https://www.youtube.com/watch?v=UkYnnV_aYFQ" target="_blank" class="tool-link">→ Tutorial de 10 min</a></span></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text">Acordar con AD la <strong>calidad de exportación</strong> final antes de renderizar.</div></div>
+  </div>
+  <div class="note">
+    <span class="note-label">Instalación</span>
+    Premiere Pro lo instala IT. Si necesitás upscale adicional: <strong>Topaz Video</strong> (calidad/FPS) o <strong><a href="https://magnific.ai/" target="_blank" class="tool-link">Magnify</a></strong> (personas/caras) — hablar con AD primero.
+  </div>
+  <div class="note info">
+    <span class="note-label">Ejemplo</span>
+    A la derecha pueden ver el punto de partida — una sola imagen del proyecto <strong>1428</strong> — y el producto final, el film completo.
+  </div>
+      </div>
+      <div class="right"><div class="visual tabs-group">
+  <div class="tabs">
+    <button class="tab active" data-tab="base">Imagen base</button>
+    <button class="tab" data-tab="film">Film final</button>
+  </div>
+  <div class="tab-panel active" data-panel="base">
+    <div class="visual-frame"><img src="assets/how/inmotion/inmotion_base_render.jpg" alt=""></div>
+    <div class="visual-meta"><span class="caption cap">Imagen base · proyecto 1428 — un solo render de referencia</span><span class="tag">13 / 13</span></div>
+  </div>
+  <div class="tab-panel" data-panel="film">
+    <div class="visual-frame" style="aspect-ratio: 9/16; max-height: 600px; margin: 0 auto; background: #000;"><iframe src="https://player.vimeo.com/video/1184598650?loop=1&muted=1&autopause=0&dnt=1" allow="autoplay; fullscreen; picture-in-picture" style="width:100%; height:100%; object-fit:contain; background:#000" frameborder="0"></iframe></div>
+    <div class="visual-meta"><span class="caption cap">Film final · proyecto 1428 ensamblado en Premiere Pro</span><span class="tag">13 / 13</span></div>
+  </div>
+</div></div>
+    </div>
+  </div>
+
+
+
+  <!-- ============================================
+       12 · ITERAR EN MIRO
+       ============================================ -->
+  
+
+
+  <!-- ============================================
+       13 · ENTREGA
+       ============================================ -->
+  
+
+
+
+
+<!-- NAV -->
+<div class="nav">
+  <button class="nav-btn" id="prev" aria-label="Anterior">←</button>
+  <div class="nav-dots" id="dots"></div>
+  <button class="nav-btn" id="next" aria-label="Siguiente">→</button>
+</div>
+
+
+<script>
+(function() {
+  var deck = document.getElementById('deck');
+  var slides = Array.from(deck.querySelectorAll('.slide'));
+  var total = slides.length;
+  var idx = 0;
+
+  // Build dots
+  var dotsWrap = document.getElementById('dots');
+  slides.forEach(function(_, i) {
+    var dot = document.createElement('span');
+    dot.className = 'dot' + (i === 0 ? ' active' : '');
+    dot.addEventListener('click', function() { goTo(i); });
+    dotsWrap.appendChild(dot);
+  });
+  var dots = Array.from(dotsWrap.querySelectorAll('.dot'));
+
+  var counterEl = document.getElementById('counter-cur');
+  var progressEl = document.getElementById('progress');
+
+  // Update counter total
+  document.querySelector('.counter .dim').textContent = '/ ' + String(total).padStart(2, '0');
+
+  function render() {
+    slides.forEach(function(s, i) {
+      s.classList.remove('active', 'exit');
+      if (i === idx) s.classList.add('active');
+      else if (i < idx) s.classList.add('exit');
+    });
+    dots.forEach(function(d, i) {
+      d.classList.toggle('active', i === idx);
+    });
+    counterEl.textContent = String(idx + 1).padStart(2, '0');
+    progressEl.style.width = ((idx + 1) / total * 100) + '%';
+
+    // Disable buttons at extremes
+    document.getElementById('prev').disabled = idx === 0;
+    document.getElementById('next').disabled = idx === total - 1;
+
+    // Refresh scroll hints after layout settles
+    setTimeout(function() {
+      document.querySelectorAll('.two .left').forEach(function(el) {
+        el.dispatchEvent(new Event('scroll'));
+      });
+    }, 50);
+  }
+
+  function goTo(n) {
+    if (n < 0 || n > total - 1) return;
+    idx = n;
+    try { localStorage.setItem('how_in_motion_v2_idx', String(idx)); } catch(e) {}
+    render();
+  }
+
+  // Restore — but reset to 0 if ?reset=1 is in URL (opened from index modal)
+  var resetMode = /[?&]reset=1\b/.test(location.search);
+  if (resetMode) {
+    try { localStorage.removeItem('how_in_motion_v2_idx'); } catch(e) {}
+    idx = 0;
+  } else {
+    try {
+      var saved = parseInt(localStorage.getItem('how_in_motion_v2_idx') || '0', 10);
+      if (!isNaN(saved) && saved >= 0 && saved < total) idx = saved;
+    } catch(e) {}
+  }
+  render();
+
+  document.getElementById('prev').addEventListener('click', function() { goTo(idx - 1); });
+  document.getElementById('next').addEventListener('click', function() { goTo(idx + 1); });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); goTo(idx + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); goTo(idx - 1); }
+    else if (e.key === 'Home') { goTo(0); }
+    else if (e.key === 'End') { goTo(total - 1); }
+    else if (e.key === 'Escape') {
+      try { window.parent.postMessage({ type: 'closeHowModal' }, '*'); } catch(e) {}
+    }
+  });
+
+  // Focus body so arrow keys work immediately
+  setTimeout(function() { document.body.focus(); }, 50);
+
+  // Scroll hint — append to each .left that overflows
+  function setupScrollHints() {
+    document.querySelectorAll('.two .left').forEach(function(leftEl) {
+      if (leftEl.querySelector('.scroll-hint')) return; // already set up
+      var hint = document.createElement('div');
+      hint.className = 'scroll-hint';
+      hint.innerHTML = '<div class="scroll-hint-inner"><span>scroll</span>' +
+        '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5 l3 3 l3 -3"/></svg></div>';
+      // append to parent (slide's .two) so hint sits over the column
+      leftEl.style.position = 'relative';
+      leftEl.appendChild(hint);
+
+      function update() {
+        var canScroll = leftEl.scrollHeight - leftEl.clientHeight > 4;
+        var atBottom = leftEl.scrollTop + leftEl.clientHeight >= leftEl.scrollHeight - 8;
+        hint.classList.toggle('visible', canScroll && !atBottom);
+      }
+      leftEl.addEventListener('scroll', update, { passive: true });
+      // Use ResizeObserver for layout changes
+      if (window.ResizeObserver) {
+        var ro = new ResizeObserver(update);
+        ro.observe(leftEl);
+      }
+      // initial
+      setTimeout(update, 100);
+      setTimeout(update, 600);
+    });
+  }
+  setupScrollHints();
+  // Re-check on slide change (in case fonts load)
+  window.addEventListener('resize', setupScrollHints);
+
+  // Tabs: inside any .tabs container, clicking .tab switches sibling .tab-panel
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.tab');
+    if (!btn) return;
+    var group = btn.closest('.tabs-group');
+    if (!group) return;
+    var target = btn.getAttribute('data-tab');
+    group.querySelectorAll('.tab').forEach(function(b){ b.classList.toggle('active', b === btn); });
+    group.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-panel') === target); });
+  });
+
+})();
+</script>
+
+
+
+</body></html>

@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Zips de entrega del kit (los archivos sin comprimir están en /files)
+*.zip
+
+# Copias antiguas de la entrega
+/nqs/
+/AI INTRANET*/
+
+# Las node_modules de cada subproyecto se manejan en su propio .gitignore
+node_modules/
+.next/
+.vercel/
+
+# Env files
+.env
+.env.local
+.env*.local
+!.env.local.example

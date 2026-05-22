@@ -1,0 +1,7 @@
+node_modules
+.next
+.vercel
+public/assets
+package-lock.json
+src/styles/components.css
+src/styles/screens.css

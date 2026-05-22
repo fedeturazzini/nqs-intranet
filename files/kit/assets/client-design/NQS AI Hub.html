@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NQS · AI Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=11" />
+  <link rel="stylesheet" href="screens.css?v=18" />
+  <link rel="stylesheet" href="organigrama.css?v=3" />
+  <style>
+    /* override serif → Instrument Serif (más editorial, en línea con NQS) */
+    :root { --serif: "Instrument Serif", "Times New Roman", serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="components.jsx"></script>
+  <script type="text/babel" src="screens.jsx"></script>
+  <script type="text/babel" src="extra-screens.jsx"></script>
+  <script type="text/babel" src="organigrama-data.jsx"></script>
+  <script type="text/babel" src="organigrama.jsx"></script>
+
+  <script type="text/babel">
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "theme": "light",
+      "density": "regular",
+      "accent": "#ffcb5c",
+      "layout": "grid",
+      "shotsEnabled": true,
+      "paranoidMode": false,
+      "marquee": true,
+      "loginTicker": "cube"
+    }/*EDITMODE-END*/;
+
+    function App() {
+      const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+      const [route, setRoute] = React.useState("login"); // login | hub | tool | admin
+      const [activeTool, setActiveTool] = React.useState(null);
+      const [access, setAccess] = React.useState(initialAccess);
+      const [pending, setPending] = React.useState(PENDING_REQUESTS);
+      const [toast, setToast] = React.useState(null);
+      const [reqModal, setReqModal] = React.useState(null);
+      const [isAdmin, setIsAdmin] = React.useState(false);
+
+      // aplicar tema y accent globalmente
+      React.useEffect(() => {
+        document.documentElement.setAttribute("data-theme", t.theme);
+        document.documentElement.setAttribute("data-density", t.density);
+        document.documentElement.style.setProperty("--accent", t.accent);
+      }, [t.theme, t.density, t.accent]);
+
+      const showToast = (toast) => {
+        setToast(toast);
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(() => setToast(null), 3500);
+      };
+
+      const onLogin = (asAdmin) => {
+        setIsAdmin(asAdmin === "admin");
+        setRoute(asAdmin === "admin" ? "admin" : "hub");
+        showToast({ title: "SESIÓN INICIADA", msg: asAdmin === "admin" ? "Bienvenida, admin. Tenés visión completa." : "Bienvenida, Sofía. 6h 36m hasta el cierre." });
+      };
+
+      const onOpenTool = (tool) => {
+        setActiveTool(tool);
+        setRoute("tool");
+      };
+
+      const onRequestTool = (tool) => {
+        setReqModal(tool);
+      };
+
+      const [tutorialAccess, setTutorialAccess] = React.useState("locked");
+      const onRequestTutorials = () => {
+        setTutorialAccess("pending");
+        showToast({ title: "SOLICITUD ENVIADA", msg: "Pediste acceso al módulo Tutoriales. Te avisamos cuando un admin lo apruebe." });
+      };
+
+      const submitRequest = (tool, reason, duration) => {
+        setAccess((a) => ({ ...a, [tool.id]: { status: "pending", requestedAt: "ahora" } }));
+        setReqModal(null);
+        showToast({ title: "SOLICITUD ENVIADA", msg: `Notificamos al admin por Slack y WhatsApp. Te avisamos cuando responda.`, color: tool.color });
+      };
+
+      const onApprove = (rid) => {
+        const r = pending.find((x) => x.id === rid);
+        setPending((p) => p.filter((x) => x.id !== rid));
+        showToast({ title: "ACCESO CONCEDIDO", msg: `${r.user.name} → ${TOOLS.find(t => t.id === r.tool).name} · ${r.duration}` });
+      };
+      const onReject = (rid) => {
+        const r = pending.find((x) => x.id === rid);
+        setPending((p) => p.filter((x) => x.id !== rid));
+        showToast({ title: "RECHAZADO", msg: `Notificamos a ${r.user.name}.` });
+      };
+
+      const setLayout = (l) => setTweak("layout", l);
+
+      const isImmersiveTool = route === "tool" && activeTool && activeTool.url;
+
+      return (
+        <div className={`app ${isImmersiveTool ? "is-immersive" : ""}`} data-screen-label={route}>
+          {route !== "login" && !isImmersiveTool && (
+            <header className="topbar">
+              <div className="topbar-l">
+                <div className="brand">
+                  <NqsLogo />
+                  <span>WORKSPACE</span>
+                  <span className="brand-pip" title="conectado"></span>
+                </div>
+                <nav className="nav">
+                  <button className={route === "hub" ? "active" : ""} onClick={() => setRoute("hub")}>Hub</button>
+                  <button className={route === "tutoriales" ? "active" : ""} onClick={() => setRoute("tutoriales")}>Tutoriales</button>
+                  <button className={route === "organigrama" ? "active" : ""} onClick={() => setRoute("organigrama")}>Organigrama</button>
+                  {isAdmin && (
+                    <button className={route === "admin" ? "active" : ""} onClick={() => setRoute("admin")}>
+                      Admin {pending.length > 0 && <span className="tag warn" style={{ marginLeft: 6, padding: "1px 5px" }}>{pending.length}</span>}
+                    </button>
+                  )}
+                </nav>
+              </div>
+              <div className="topbar-r">
+                <span className="t-meta">↳ {isAdmin ? "ADMIN" : "EQUIPO CREATIVO"}</span>
+                <div className="user-chip">
+                  <div className="av">{ME.initials}</div>
+                  <span>{ME.name.split(" ")[0]}</span>
+                  <span className="dim">·</span>
+                  <span className="dim">salir</span>
+                </div>
+              </div>
+            </header>
+          )}
+
+          {t.marquee && route !== "login" && route !== "tool" && (
+            <Marquee items={[
+              "ONE KEY · EVERY TOOL",
+              "DIRIGIDO, NO GENERADO",
+              "DESPLEGÁ IA EN MINUTOS",
+              "DUEÑOS DE TU STACK",
+              "NQS · AI HUB",
+              "BUILT IN ARGENTINA",
+            ]} />
+          )}
+
+          {route === "login" && <LoginScreen onLogin={onLogin} tickerVariant={t.loginTicker} />}
+          {route === "hub" && <HubScreen access={access} onOpenTool={onOpenTool} onRequestTool={onRequestTool} layout={t.layout} setLayout={setLayout} />}
+          {route === "tutoriales" && <TutorialsScreen tutorialAccess={tutorialAccess} onRequestTutorials={onRequestTutorials} />}
+          {route === "organigrama" && <OrganigramaScreen />}
+          {route === "tool" && activeTool && (
+            <ToolView
+              tool={activeTool}
+              access={access[activeTool.id]}
+              onBack={() => setRoute("hub")}
+              onCreditRequest={(payload) => {
+                showToast({ title: "PEDIDO ENVIADO", msg: `Pediste ${payload.amount} créditos extra de ${activeTool.name}. El admin recibirá tu solicitud.` });
+              }}
+            />
+          )}
+          {route === "admin" && <AdminScreen pending={pending} onApprove={onApprove} onReject={onReject} />}
+
+          <Modal open={!!reqModal} onClose={() => setReqModal(null)} title={reqModal ? `↳ SOLICITAR ACCESO · ${reqModal.name.toUpperCase()}` : ""}>
+            {reqModal && <RequestForm tool={reqModal} onSubmit={submitRequest} onCancel={() => setReqModal(null)} />}
+          </Modal>
+
+          <Toast toast={toast} />
+
+          <TweaksPanel title="Tweaks">
+            <TweakSection label="Tema" />
+            <TweakRadio label="Aspecto" value={t.theme} options={["dark", "light"]} onChange={(v) => setTweak("theme", v)} />
+            <TweakRadio label="Densidad" value={t.density} options={["compact", "regular", "comfy"]} onChange={(v) => setTweak("density", v)} />
+            <TweakColor label="Acento" value={t.accent} onChange={(v) => setTweak("accent", v)} />
+            <TweakSection label="Hub" />
+            <TweakRadio label="Layout" value={t.layout} options={["grid", "list"]} onChange={(v) => setTweak("layout", v)} />
+            <TweakToggle label="Marquee superior" value={t.marquee} onChange={(v) => setTweak("marquee", v)} />
+            <TweakSection label="Login" />
+            <TweakRadio label="Zócalo dinámico" value={t.loginTicker} options={["cube", "stack", "marquee"]} onChange={(v) => setTweak("loginTicker", v)} />
+            <TweakSection label="Shield" />
+            <TweakToggle label="Capturas cada 5 min" value={t.shotsEnabled} onChange={(v) => setTweak("shotsEnabled", v)} />
+            <TweakToggle label="Modo paranoid (audita prompts en vivo)" value={t.paranoidMode} onChange={(v) => setTweak("paranoidMode", v)} />
+            <TweakSection label="Tutoriales" />
+            <TweakRadio label="Acceso al módulo" value={tutorialAccess} options={["locked", "pending", "active"]} onChange={(v) => setTutorialAccess(v)} />
+            <TweakSection label="Demo" />
+            <TweakButton label="ir al login" onClick={() => setRoute("login")} secondary />
+            <TweakButton label="ir al hub" onClick={() => { setRoute("hub"); setIsAdmin(false); }} secondary />
+            <TweakButton label="ir al admin" onClick={() => { setRoute("admin"); setIsAdmin(true); }} secondary />
+            <TweakButton label="abrir Claude" onClick={() => { setActiveTool(TOOLS[0]); setRoute("tool"); }} secondary />
+            <TweakButton label="dispar­ar alerta crítica" onClick={() => showToast({ title: "ALERTA · SP-PROT-01", msg: "Lucía intentó extraer un system prompt en Claude. Bloqueado.", color: "var(--danger)" })} />
+          </TweaksPanel>
+        </div>
+      );
+    }
+
+    function RequestForm({ tool, onSubmit, onCancel }) {
+      const [reason, setReason] = React.useState("");
+      const [duration, setDuration] = React.useState("1 hora");
+      return (
+        <div className="col" style={{ gap: 18 }}>
+          <div className="row" style={{ gap: 14 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 10, background: "var(--bg-elev-2)", display: "grid", placeItems: "center", color: tool.color, fontSize: 32, fontFamily: "var(--serif)", fontStyle: "italic" }}>{tool.glyph}</div>
+            <div>
+              <div className="t-eyebrow">{tool.category}</div>
+              <div style={{ fontFamily: "var(--serif)", fontStyle: "italic", fontSize: 30, letterSpacing: "-0.02em", lineHeight: 1 }}>{tool.name}</div>
+              <div className="t-meta" style={{ marginTop: 4 }}>{tool.vendor} · cuenta corporativa NQS</div>
+            </div>
+          </div>
+
+          <div>
+            <div className="field-label">↳ MOTIVO (visible para el admin)</div>
+            <textarea className="field" style={{ minHeight: 70, paddingTop: 8, paddingBottom: 8, borderBottom: "1px solid var(--line-strong)", resize: "none", fontFamily: "var(--sans)" }}
+              value={reason} onChange={(e) => setReason(e.target.value)}
+              placeholder="ej. test de shot 02 para pitch Manhattan One" />
+          </div>
+          <div>
+            <div className="field-label">↳ DURACIÓN</div>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              {["30 min", "1 hora", "2 horas", "4 horas", "todo el día"].map((d) => (
+                <button key={d} type="button"
+                  className="btn sm" 
+                  style={{ background: duration === d ? "var(--accent)" : "transparent", color: duration === d ? "var(--accent-fg)" : "var(--fg-mute)", border: duration === d ? "0" : "1px solid var(--line-strong)" }}
+                  onClick={() => setDuration(d)}>{d}</button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card-pad" style={{ background: "var(--bg-elev-2)", borderRadius: 8, padding: 12 }}>
+            <div className="t-meta" style={{ lineHeight: 1.6 }}>
+              ↳ Cuando aprobado, el acceso se cierra automáticamente al cumplirse la duración.<br />
+              ↳ Tu sesión queda registrada en el log de actividad.<br />
+              ↳ El admin recibe la solicitud por Slack y WhatsApp.
+            </div>
+          </div>
+
+          <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+            <button className="btn secondary" onClick={onCancel}>cancelar</button>
+            <button className="btn" onClick={() => onSubmit(tool, reason, duration)}>enviar solicitud →</button>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
