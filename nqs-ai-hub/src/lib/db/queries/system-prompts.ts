@@ -7,7 +7,7 @@
  */
 import { createServerClient } from "@/lib/db/supabase";
 import { decrypt, encrypt } from "@/lib/utils/crypto";
-import type { SystemPromptRow, ToolId } from "@/types/db";
+import type { SystemPromptRow, ToolId } from "@/types/db-aliases";
 
 export type ActiveSystemPrompt = {
   id: string;

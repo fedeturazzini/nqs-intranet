@@ -5,7 +5,7 @@
  * service_role_key. No importar desde Client Components.
  */
 import { createServerClient } from "@/lib/db/supabase";
-import type { UserRow } from "@/types/db";
+import type { UserRow } from "@/types/db-aliases";
 
 export async function getUserById(id: string): Promise<UserRow | null> {
   const db = createServerClient();

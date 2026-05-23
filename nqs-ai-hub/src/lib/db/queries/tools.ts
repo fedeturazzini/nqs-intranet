@@ -4,7 +4,7 @@
  * Server-only.
  */
 import { createServerClient } from "@/lib/db/supabase";
-import type { ToolAccessRow, ToolId, ToolRow } from "@/types/db";
+import type { ToolAccessRow, ToolId, ToolRow } from "@/types/db-aliases";
 
 export async function getToolById(id: ToolId): Promise<ToolRow | null> {
   const db = createServerClient();

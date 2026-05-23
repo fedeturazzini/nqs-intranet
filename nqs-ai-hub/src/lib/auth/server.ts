@@ -20,7 +20,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { createServerClient } from "@/lib/db/supabase";
-import type { UserRole } from "@/types/db";
+import type { UserRole } from "@/types/db-aliases";
 
 export const ACCESS_TOKEN_COOKIE = "sb-access-token";
 export const REFRESH_TOKEN_COOKIE = "sb-refresh-token";

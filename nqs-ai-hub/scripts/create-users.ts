@@ -18,7 +18,8 @@
  */
 import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import type { Database, ToolId, UserRole } from "../src/types/db";
+import type { Database } from "../src/types/db";
+import type { ToolId, UserRole } from "../src/types/db-aliases";
 
 config({ path: ".env.local" });
 
