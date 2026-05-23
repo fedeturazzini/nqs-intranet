@@ -1,30 +1,919 @@
-/**
- * Tipos de la base de datos NQS AI Hub.
- *
- * ⚠️ Este archivo está hand-typed por ahora — fiel al schema en
- * `supabase/migrations/0001_initial_schema.sql`. Se va a regenerar con:
- *
- *   npx supabase login                                  # interactivo, abre browser
- *   npx supabase gen types typescript \
- *     --project-id nslliqinzpqjiysjlulm > src/types/db.ts
- *
- * Cualquier cambio de schema requiere regenerar. Mientras tanto, si tocan
- * la migration, también tocan este archivo.
- */
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
-export type UserRole = "admin" | "employee";
-export type ToolCategory = "text" | "visual" | "video" | "audio" | "assets";
-export type AccessStatus = "active" | "pending" | "locked" | "expired";
-export type MessageRole = "user" | "assistant";
-export type CreditTxType =
-  | "allocation"
-  | "consumption"
-  | "refund"
-  | "adjustment";
-export type RequestStatus = "pending" | "approved" | "rejected" | "expired";
-export type SecuritySeverity = "low" | "med" | "high";
-export type SnapVerdict = "ok" | "review" | "flag";
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  public: {
+    Tables: {
+      access_requests: {
+        Row: {
+          created_at: string | null
+          duration_minutes: number | null
+          id: string
+          reason: string | null
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: Database["public"]["Enums"]["request_status"] | null
+          tool_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          duration_minutes?: number | null
+          id?: string
+          reason?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["request_status"] | null
+          tool_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          duration_minutes?: number | null
+          id?: string
+          reason?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["request_status"] | null
+          tool_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_requests_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      claude_conversations: {
+        Row: {
+          created_at: string | null
+          id: string
+          title: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          title?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          title?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "claude_conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      claude_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string | null
+          id: string
+          images: Json | null
+          role: Database["public"]["Enums"]["message_role"]
+          tokens_input: number | null
+          tokens_output: number | null
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string | null
+          id?: string
+          images?: Json | null
+          role: Database["public"]["Enums"]["message_role"]
+          tokens_input?: number | null
+          tokens_output?: number | null
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string | null
+          id?: string
+          images?: Json | null
+          role?: Database["public"]["Enums"]["message_role"]
+          tokens_input?: number | null
+          tokens_output?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "claude_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "claude_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_allocations: {
+        Row: {
+          created_at: string | null
+          credits_assigned: number
+          credits_used: number
+          id: string
+          reset_at: string | null
+          tool_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          credits_assigned?: number
+          credits_used?: number
+          id?: string
+          reset_at?: string | null
+          tool_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          credits_assigned?: number
+          credits_used?: number
+          id?: string
+          reset_at?: string | null
+          tool_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_allocations_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_allocations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_pools: {
+        Row: {
+          cost_usd: number | null
+          created_at: string | null
+          id: string
+          purchase_note: string | null
+          purchased_by: string | null
+          tool_id: string
+          total_credits: number
+        }
+        Insert: {
+          cost_usd?: number | null
+          created_at?: string | null
+          id?: string
+          purchase_note?: string | null
+          purchased_by?: string | null
+          tool_id: string
+          total_credits: number
+        }
+        Update: {
+          cost_usd?: number | null
+          created_at?: string | null
+          id?: string
+          purchase_note?: string | null
+          purchased_by?: string | null
+          tool_id?: string
+          total_credits?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_pools_purchased_by_fkey"
+            columns: ["purchased_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_pools_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_transactions: {
+        Row: {
+          amount: number
+          created_at: string | null
+          id: string
+          performed_by: string | null
+          reason: string | null
+          tool_id: string
+          type: Database["public"]["Enums"]["credit_tx_type"]
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          id?: string
+          performed_by?: string | null
+          reason?: string | null
+          tool_id: string
+          type: Database["public"]["Enums"]["credit_tx_type"]
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          id?: string
+          performed_by?: string | null
+          reason?: string | null
+          tool_id?: string
+          type?: Database["public"]["Enums"]["credit_tx_type"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_transactions_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_transactions_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_transactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      screenshots: {
+        Row: {
+          created_at: string | null
+          id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          storage_path: string
+          tool_id: string | null
+          user_id: string
+          verdict: Database["public"]["Enums"]["snap_verdict"] | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          storage_path: string
+          tool_id?: string | null
+          user_id: string
+          verdict?: Database["public"]["Enums"]["snap_verdict"] | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          storage_path?: string
+          tool_id?: string | null
+          user_id?: string
+          verdict?: Database["public"]["Enums"]["snap_verdict"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "screenshots_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "screenshots_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "screenshots_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      security_events: {
+        Row: {
+          action_taken: string | null
+          created_at: string | null
+          excerpt: string | null
+          full_content: string | null
+          id: string
+          rule_id: string
+          severity: Database["public"]["Enums"]["security_severity"]
+          tool_id: string | null
+          user_id: string
+        }
+        Insert: {
+          action_taken?: string | null
+          created_at?: string | null
+          excerpt?: string | null
+          full_content?: string | null
+          id?: string
+          rule_id: string
+          severity: Database["public"]["Enums"]["security_severity"]
+          tool_id?: string | null
+          user_id: string
+        }
+        Update: {
+          action_taken?: string | null
+          created_at?: string | null
+          excerpt?: string | null
+          full_content?: string | null
+          id?: string
+          rule_id?: string
+          severity?: Database["public"]["Enums"]["security_severity"]
+          tool_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_events_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "security_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_prompts: {
+        Row: {
+          content_encrypted: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          tool_id: string
+          updated_at: string | null
+          version: number | null
+        }
+        Insert: {
+          content_encrypted: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          tool_id: string
+          updated_at?: string | null
+          version?: number | null
+        }
+        Update: {
+          content_encrypted?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          tool_id?: string
+          updated_at?: string | null
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_prompts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_prompts_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      time_windows: {
+        Row: {
+          created_at: string | null
+          day_of_week: number | null
+          end_hour: number | null
+          id: string
+          is_active: boolean | null
+          start_hour: number | null
+          timezone: string | null
+          tool_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          day_of_week?: number | null
+          end_hour?: number | null
+          id?: string
+          is_active?: boolean | null
+          start_hour?: number | null
+          timezone?: string | null
+          tool_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          day_of_week?: number | null
+          end_hour?: number | null
+          id?: string
+          is_active?: boolean | null
+          start_hour?: number | null
+          timezone?: string | null
+          tool_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_windows_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_windows_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tool_access: {
+        Row: {
+          expires_at: string | null
+          granted_at: string | null
+          granted_by: string | null
+          id: string
+          status: Database["public"]["Enums"]["access_status"]
+          tool_id: string
+          user_id: string
+        }
+        Insert: {
+          expires_at?: string | null
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["access_status"]
+          tool_id: string
+          user_id: string
+        }
+        Update: {
+          expires_at?: string | null
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["access_status"]
+          tool_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tool_access_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tool_access_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tool_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tools: {
+        Row: {
+          category: Database["public"]["Enums"]["tool_category"]
+          color: string | null
+          created_at: string | null
+          description: string | null
+          embed_url: string | null
+          glyph: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          uses_credits: boolean | null
+          vendor: string
+        }
+        Insert: {
+          category: Database["public"]["Enums"]["tool_category"]
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          embed_url?: string | null
+          glyph?: string | null
+          id: string
+          is_active?: boolean | null
+          name: string
+          uses_credits?: boolean | null
+          vendor: string
+        }
+        Update: {
+          category?: Database["public"]["Enums"]["tool_category"]
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          embed_url?: string | null
+          glyph?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          uses_credits?: boolean | null
+          vendor?: string
+        }
+        Relationships: []
+      }
+      usage_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          credits_consumed: number | null
+          id: string
+          ip_address: unknown
+          metadata: Json | null
+          tokens_consumed: number | null
+          tool_id: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          credits_consumed?: number | null
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          tokens_consumed?: number | null
+          tool_id?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          credits_consumed?: number | null
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          tokens_consumed?: number | null
+          tool_id?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_logs_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          dept: string | null
+          email: string
+          id: string
+          initials: string
+          is_active: boolean | null
+          job_title: string | null
+          name: string
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          dept?: string | null
+          email: string
+          id?: string
+          initials: string
+          is_active?: boolean | null
+          job_title?: string | null
+          name: string
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          dept?: string | null
+          email?: string
+          id?: string
+          initials?: string
+          is_active?: boolean | null
+          job_title?: string | null
+          name?: string
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      user_credits_view: {
+        Row: {
+          credits_assigned: number | null
+          credits_available: number | null
+          credits_used: number | null
+          tool_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          credits_assigned?: number | null
+          credits_available?: never
+          credits_used?: number | null
+          tool_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          credits_assigned?: number | null
+          credits_available?: never
+          credits_used?: number | null
+          tool_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_allocations_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_allocations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Functions: {
+      is_admin: { Args: never; Returns: boolean }
+    }
+    Enums: {
+      access_status: "active" | "pending" | "locked" | "expired"
+      credit_tx_type: "allocation" | "consumption" | "refund" | "adjustment"
+      message_role: "user" | "assistant"
+      request_status: "pending" | "approved" | "rejected" | "expired"
+      security_severity: "low" | "med" | "high"
+      snap_verdict: "ok" | "review" | "flag"
+      tool_category: "text" | "visual" | "video" | "audio" | "assets"
+      user_role: "admin" | "employee"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
 
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      access_status: ["active", "pending", "locked", "expired"],
+      credit_tx_type: ["allocation", "consumption", "refund", "adjustment"],
+      message_role: ["user", "assistant"],
+      request_status: ["pending", "approved", "rejected", "expired"],
+      security_severity: ["low", "med", "high"],
+      snap_verdict: ["ok", "review", "flag"],
+      tool_category: ["text", "visual", "video", "audio", "assets"],
+      user_role: ["admin", "employee"],
+    },
+  },
+} as const
+
+// ============================================================
+// CONVENIENCE ALIASES (append manual al output de `gen types`)
+// ============================================================
+// Si regenerás este archivo con `npx supabase gen types`, re-pegá este
+// bloque al final. Los aliases mantienen compat con el código del MVP
+// para que cambiar el shape no implique tocar cada query.
+//
+// Por qué no están autogenerados: Supabase emite `Tables<'users'>`,
+// `Enums<'user_role'>`, etc. Funciona pero es ruidoso en imports. Estos
+// re-exports le dan nombre semántico (UserRow, ToolId, …).
+//
+// `Tables<>` y `Enums<>` ya están declarados arriba en este mismo módulo
+// (vienen del autogen), así que no los importamos — los usamos directo.
+
+// Enums
+export type UserRole = Enums<"user_role">;
+export type ToolCategory = Enums<"tool_category">;
+export type AccessStatus = Enums<"access_status">;
+export type MessageRole = Enums<"message_role">;
+export type CreditTxType = Enums<"credit_tx_type">;
+export type RequestStatus = Enums<"request_status">;
+export type SecuritySeverity = Enums<"security_severity">;
+export type SnapVerdict = Enums<"snap_verdict">;
+
+// `tools.id` en DB es TEXT sin CHECK, así que el autogen lo tipa como
+// `string`. Acá lo restringimos al catálogo real del MVP — si sumamos
+// una tool nueva, primero updateamos esta union.
 export type ToolId =
   | "claude"
   | "weavy"
@@ -34,197 +923,15 @@ export type ToolId =
   | "highsfield"
   | "3dsky";
 
-// ============================================================
-// Tablas
-// ============================================================
-
-export type UserRow = {
-  id: string;
-  email: string;
-  name: string;
-  initials: string;
-  role: UserRole;
-  dept: string | null;
-  job_title: string | null;
-  avatar_url: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-};
-
-export type ToolRow = {
-  id: ToolId;
-  name: string;
-  vendor: string;
-  category: ToolCategory;
-  description: string | null;
-  color: string | null;
-  glyph: string | null;
-  is_active: boolean;
-  uses_credits: boolean;
-  embed_url: string | null;
-  created_at: string;
-};
-
-export type ToolAccessRow = {
-  id: string;
-  user_id: string;
-  tool_id: ToolId;
-  status: AccessStatus;
-  expires_at: string | null;
-  granted_by: string | null;
-  granted_at: string;
-};
-
-export type SystemPromptRow = {
-  id: string;
-  tool_id: ToolId;
-  name: string;
-  content_encrypted: string;
-  is_active: boolean;
-  version: number;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type ClaudeConversationRow = {
-  id: string;
-  user_id: string;
-  title: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type ClaudeMessageRow = {
-  id: string;
-  conversation_id: string;
-  role: MessageRole;
-  content: string;
-  images: unknown; // JSONB
-  tokens_input: number | null;
-  tokens_output: number | null;
-  created_at: string;
-};
-
-export type CreditPoolRow = {
-  id: string;
-  tool_id: ToolId;
-  total_credits: number;
-  cost_usd: number | null;
-  purchased_by: string | null;
-  purchase_note: string | null;
-  created_at: string;
-};
-
-export type CreditAllocationRow = {
-  id: string;
-  user_id: string;
-  tool_id: ToolId;
-  credits_assigned: number;
-  credits_used: number;
-  reset_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type CreditTransactionRow = {
-  id: string;
-  user_id: string;
-  tool_id: ToolId;
-  type: CreditTxType;
-  amount: number;
-  reason: string | null;
-  performed_by: string | null;
-  created_at: string;
-};
-
-export type UsageLogRow = {
-  id: string;
-  user_id: string;
-  tool_id: ToolId | null;
-  action: string;
-  metadata: unknown;
-  tokens_consumed: number | null;
-  credits_consumed: number | null;
-  ip_address: string | null;
-  user_agent: string | null;
-  created_at: string;
-};
-
-// ============================================================
-// Database (forma compatible con supabase-js generics)
-// ============================================================
-
-type TableDef<R, I = Partial<R>, U = Partial<R>> = {
-  Row: R;
-  Insert: I;
-  Update: U;
-  Relationships: [];
-};
-
-export type Database = {
-  public: {
-    Tables: {
-      users: TableDef<
-        UserRow,
-        Partial<UserRow> & Pick<UserRow, "email" | "name" | "initials">
-      >;
-      tools: TableDef<ToolRow, ToolRow>;
-      tool_access: TableDef<
-        ToolAccessRow,
-        Partial<ToolAccessRow> & Pick<ToolAccessRow, "user_id" | "tool_id">
-      >;
-      system_prompts: TableDef<
-        SystemPromptRow,
-        Partial<SystemPromptRow> &
-          Pick<SystemPromptRow, "tool_id" | "name" | "content_encrypted">
-      >;
-      claude_conversations: TableDef<
-        ClaudeConversationRow,
-        Partial<ClaudeConversationRow> & Pick<ClaudeConversationRow, "user_id">
-      >;
-      claude_messages: TableDef<
-        ClaudeMessageRow,
-        Partial<ClaudeMessageRow> &
-          Pick<ClaudeMessageRow, "conversation_id" | "role" | "content">
-      >;
-      credit_pools: TableDef<
-        CreditPoolRow,
-        Partial<CreditPoolRow> &
-          Pick<CreditPoolRow, "tool_id" | "total_credits">
-      >;
-      credit_allocations: TableDef<
-        CreditAllocationRow,
-        Partial<CreditAllocationRow> &
-          Pick<CreditAllocationRow, "user_id" | "tool_id">
-      >;
-      credit_transactions: TableDef<
-        CreditTransactionRow,
-        Partial<CreditTransactionRow> &
-          Pick<
-            CreditTransactionRow,
-            "user_id" | "tool_id" | "type" | "amount"
-          >
-      >;
-      usage_logs: TableDef<
-        UsageLogRow,
-        Partial<UsageLogRow> & Pick<UsageLogRow, "user_id" | "action">
-      >;
-    };
-    Views: Record<string, never>;
-    Functions: {
-      is_admin: { Args: Record<string, never>; Returns: boolean };
-    };
-    Enums: {
-      user_role: UserRole;
-      tool_category: ToolCategory;
-      access_status: AccessStatus;
-      message_role: MessageRole;
-      credit_tx_type: CreditTxType;
-      request_status: RequestStatus;
-      security_severity: SecuritySeverity;
-      snap_verdict: SnapVerdict;
-    };
-  };
-};
+// Row aliases — el resto del código importa `UserRow` en vez de
+// `Tables<'users'>` para que las firmas queden limpias.
+export type UserRow = Tables<"users">;
+export type ToolRow = Tables<"tools">;
+export type ToolAccessRow = Tables<"tool_access">;
+export type SystemPromptRow = Tables<"system_prompts">;
+export type ClaudeConversationRow = Tables<"claude_conversations">;
+export type ClaudeMessageRow = Tables<"claude_messages">;
+export type CreditPoolRow = Tables<"credit_pools">;
+export type CreditAllocationRow = Tables<"credit_allocations">;
+export type CreditTransactionRow = Tables<"credit_transactions">;
+export type UsageLogRow = Tables<"usage_logs">;

@@ -39,9 +39,14 @@ export async function getActiveSystemPrompt(
 
   return {
     id: data.id,
-    toolId: data.tool_id,
+    // El autogen tipa `tool_id` como `string` (la columna es TEXT FK a
+    // tools.id sin CHECK constraint). Es una FK válida a tools, así que
+    // siempre cae en el catálogo de ToolId.
+    toolId: data.tool_id as ToolId,
     name: data.name,
-    version: data.version,
+    // `version` tiene DEFAULT 1 pero el autogen lo marca nullable. Si
+    // viniera null caemos a 1 — semánticamente equivalente al default.
+    version: data.version ?? 1,
     content: decrypt(data.content_encrypted),
   };
 }
