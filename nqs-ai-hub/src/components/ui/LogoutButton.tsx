@@ -6,11 +6,13 @@ import { useState } from "react";
 type LogoutButtonProps = Readonly<{
   className?: string;
   children?: React.ReactNode;
+  style?: React.CSSProperties;
 }>;
 
 export function LogoutButton({
   className = "btn sm",
   children = "salir",
+  style,
 }: LogoutButtonProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -32,6 +34,7 @@ export function LogoutButton({
     <button
       type="button"
       className={className}
+      style={style}
       onClick={handleClick}
       disabled={busy}
     >

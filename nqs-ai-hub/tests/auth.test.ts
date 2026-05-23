@@ -41,7 +41,13 @@ vi.mock("next/navigation", () => ({
 // El stub se reemplaza por test via `setSupabaseStub`.
 type SupabaseStub = {
   authGetUser: ReturnType<typeof vi.fn>;
-  profile: { id: string; email: string; name: string; role: string } | null;
+  profile: {
+    id: string;
+    email: string;
+    name: string;
+    initials: string;
+    role: string;
+  } | null;
 };
 let supabaseStub: SupabaseStub | null = null;
 
@@ -111,6 +117,7 @@ describe("getSession", () => {
         id: "user-1",
         email: "sofia@nqs.test",
         name: "Sofía Galván",
+        initials: "SG",
         role: "employee",
       },
     });
@@ -119,6 +126,7 @@ describe("getSession", () => {
       userId: "user-1",
       email: "sofia@nqs.test",
       name: "Sofía Galván",
+      initials: "SG",
       role: "employee",
     });
   });
@@ -142,6 +150,7 @@ describe("requireAdmin", () => {
         id: "user-1",
         email: "sofia@nqs.test",
         name: "Sofía Galván",
+        initials: "SG",
         role: "employee",
       },
     });
@@ -159,6 +168,7 @@ describe("requireAdmin", () => {
         id: "user-0",
         email: "tomas@nqs.test",
         name: "Tomás Pérez",
+        initials: "TP",
         role: "admin",
       },
     });

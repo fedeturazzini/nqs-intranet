@@ -29,6 +29,7 @@ export type Session = {
   userId: string;
   email: string;
   name: string;
+  initials: string;
   role: UserRole;
 };
 
@@ -49,7 +50,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
 
   const { data: profile, error: profErr } = await db
     .from("users")
-    .select("id, email, name, role")
+    .select("id, email, name, initials, role")
     .eq("id", userData.user.id)
     .maybeSingle();
 
@@ -59,6 +60,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     userId: profile.id,
     email: profile.email,
     name: profile.name,
+    initials: profile.initials,
     role: profile.role,
   };
 });
