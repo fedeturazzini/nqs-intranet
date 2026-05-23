@@ -1,29 +1,20 @@
 /**
- * /hub — placeholder. El layout `(dashboard)` ya garantiza que hay
- * sesión, así que acá no hace falta `requireAuth` (lo deja por defensa
- * en profundidad — `cache()` por request evita doble query).
+ * /hub — catálogo del workspace.
  *
- * El Hub real (grid de tools + filtros) se construye en sesión 05.
+ * Server Component: resuelve sesión + tools-con-acceso desde la DB,
+ * pasa todo prerendered al `HubScreen` (Client). Sin fetch HTTP entre
+ * server y client — query directa en el mismo proceso.
  */
+import { HubScreen } from "@/components/screens/HubScreen";
 import { requireAuth } from "@/lib/auth/server";
+import { listToolsWithAccess } from "@/lib/db/queries/access";
 
 export const dynamic = "force-dynamic";
 
 export default async function HubPage() {
-  await requireAuth();
+  const session = await requireAuth();
+  const tools = await listToolsWithAccess(session.userId);
+  const firstName = session.name.split(" ")[0] ?? session.name;
 
-  return (
-    <div className="page">
-      <div className="t-eyebrow" style={{ marginBottom: 12 }}>
-        ↳ DASHBOARD · HUB
-      </div>
-      <h1 className="t-display" style={{ fontSize: 48, margin: 0 }}>
-        Hub <em style={{ fontFamily: "var(--serif)" }}>(próxima sesión)</em>
-      </h1>
-      <p className="muted" style={{ marginTop: 12, maxWidth: 520 }}>
-        El grid de herramientas se construye en{" "}
-        <span className="mono">prompts/mvp/05-hub.md</span>.
-      </p>
-    </div>
-  );
+  return <HubScreen tools={tools} userFirstName={firstName} />;
 }
