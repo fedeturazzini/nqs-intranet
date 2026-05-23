@@ -40,11 +40,16 @@ export function proxy(request: NextRequest): NextResponse {
     return NextResponse.redirect(url);
   }
 
-  // Anónimo y va a una ruta privada → al login
+  // Anónimo y va a una ruta privada:
+  //   - Rutas de API (`/api/*`): 401 JSON. Los API clients esperan JSON,
+  //     no un redirect HTML.
+  //   - Páginas: redirect a /login con `?next=` para volver después.
   if (!hasSession && !isPublicPath(pathname)) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    // Preservamos a dónde quería ir para redirigirlo después del login.
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
