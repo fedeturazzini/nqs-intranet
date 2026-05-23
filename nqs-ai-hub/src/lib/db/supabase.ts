@@ -13,10 +13,7 @@
  *     de permisos (`lib/middleware/permissions.ts`).
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-
-// Cuando regeneremos types con `supabase gen types`, reemplazamos `Database`
-// por el tipo real y desaparece el genérico libre.
-type Database = unknown;
+import type { Database } from "@/types/db";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
