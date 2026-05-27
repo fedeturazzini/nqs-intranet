@@ -33,12 +33,17 @@ export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(ACCESS_TOKEN_COOKIE)?.value);
 
-  // Logueado y va al login → al hub
-  if (hasSession && pathname === "/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/hub";
-    return NextResponse.redirect(url);
-  }
+  // OJO: NO redirigimos /login → /hub aunque haya cookie. Razón:
+  // si el JWT está stale (revocado en Supabase, kicked, o expiró), la
+  // cookie sigue presente pero `getSession()` devuelve null y la page
+  // de /hub redirige a /login. Si el proxy ahora bouncea /login → /hub,
+  // entramos en loop infinito (ERR_TOO_MANY_REDIRECTS).
+  //
+  // La pantalla de /login YA hace el redirect a /hub o /admin si la
+  // sesión es válida (vía `getSession()` que SÍ chequea Supabase). Si
+  // la sesión es inválida, /login renderea el form como corresponde y
+  // el user puede re-loguearse (el POST de /api/auth/login sobrescribe
+  // las cookies stale con tokens frescos).
 
   // Anónimo y va a una ruta privada:
   //   - Rutas de API (`/api/*`): 401 JSON. Los API clients esperan JSON,
