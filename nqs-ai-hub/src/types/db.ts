@@ -305,7 +305,7 @@ export type Database = {
           entered_at: string
           exited_at: string | null
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           tool_id: string
           user_agent: string | null
           user_id: string
@@ -315,7 +315,7 @@ export type Database = {
           entered_at?: string
           exited_at?: string | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           tool_id: string
           user_agent?: string | null
           user_id: string
@@ -325,7 +325,7 @@ export type Database = {
           entered_at?: string
           exited_at?: string | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           tool_id?: string
           user_agent?: string | null
           user_id?: string
@@ -791,16 +791,16 @@ export type Database = {
       }
     }
     Functions: {
-      is_admin: { Args: never; Returns: boolean }
       consume_credit_atomic: {
         Args: {
-          p_user_id: string
-          p_tool_id: string
           p_amount: number
           p_reason: string
+          p_tool_id: string
+          p_user_id: string
         }
         Returns: Json
       }
+      is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       access_status: "active" | "pending" | "locked" | "expired"

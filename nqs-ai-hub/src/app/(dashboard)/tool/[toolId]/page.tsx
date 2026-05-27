@@ -1,18 +1,19 @@
 /**
- * /tool/[toolId] — Server Component que despacha a la vista correcta.
+ * /tool/[toolId] — Server Component dispatcher de tools sin ruta propia.
  *
- * En MVP solo Claude y 3DSky tienen vista. Cualquier otra cosa
- * (incluyendo IDs inválidos) → redirect a /hub.
+ * En MVP `/tool/3dsky/page.tsx` es una ruta estática dedicada (la
+ * sesión 09 le dio su propia view), así que esta dispatcher solo ve:
+ *   - claude → renderea ClaudeView.
+ *   - cualquier otro id (válido o no) → redirect a /hub.
  *
- * Verificamos permisos server-side antes de renderizar — si el user
- * no tiene acceso, lo mandamos al hub. El middleware/proxy igual
- * cubrió la auth básica antes.
+ * Si en el futuro sumamos más tools con vista propia, crear su
+ * /tool/<id>/page.tsx (estático) y dejar este dispatcher para tools
+ * sin vista todavía.
  *
- * En Next 16 `params` viene como Promise (cambio de Next 15).
+ * En Next 16 `params` viene como Promise.
  */
 import { redirect } from "next/navigation";
 import { ClaudeView } from "@/components/screens/ClaudeView";
-import { ThreeDSkyPlaceholder } from "@/components/screens/ThreeDSkyPlaceholder";
 import { requireAuth } from "@/lib/auth/server";
 import { canUseTool } from "@/lib/middleware/permissions";
 
@@ -26,26 +27,18 @@ export default async function ToolPage({ params }: ToolPageProps) {
   const session = await requireAuth();
   const { toolId } = await params;
 
-  // En MVP solo dos tools tienen vista operativa.
-  if (toolId !== "claude" && toolId !== "3dsky") {
+  if (toolId !== "claude") {
     redirect("/hub");
   }
 
-  // Permisos: si no puede, lo mandamos al hub (la card va a estar
-  // bloqueada igual). Admin pasa por arriba por convención del middleware.
   const perm = await canUseTool(session.userId, toolId);
   if (!perm.allowed) {
     redirect("/hub");
   }
 
-  if (toolId === "claude") {
-    return (
-      <ClaudeView
-        user={{ name: session.name, initials: session.initials }}
-      />
-    );
-  }
-
-  // toolId === "3dsky"
-  return <ThreeDSkyPlaceholder />;
+  return (
+    <ClaudeView
+      user={{ name: session.name, initials: session.initials }}
+    />
+  );
 }
