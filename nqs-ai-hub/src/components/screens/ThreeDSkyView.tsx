@@ -3,16 +3,19 @@
 /**
  * Vista del módulo 3DSky para el empleado.
  *
- * Estructura:
- *   ┌────────────────────────────────────────────┐
- *   │ Header (back + brand) + créditos + horario │
- *   ├────────────────────────────────────────────┤
- *   │ Iframe a https://3dsky.org/es/             │
- *   │ (con preloader + fallback)                 │
- *   └────────────────────────────────────────────┘
+ * Estructura (post-refactor sesión 09b — header alineado al diseño del
+ * cliente con `.tool-view-bar`):
+ *
+ *   ┌─────────────────────────────────────────────────────────────┐
+ *   │ ← intranet  ↳ /  ◈ 3DSky · 3dsky.org   [pill] [pedir más]  │  ← ToolViewBar
+ *   ├─────────────────────────────────────────────────────────────┤
+ *   │ ↳ HORARIOS · Lun-Vie 09:00–18:00   · activo ahora           │  ← ScheduleIndicator (si hay schedule)
+ *   ├─────────────────────────────────────────────────────────────┤
+ *   │ Iframe a https://3dsky.org/es/ (preloader + fallback)       │
+ *   └─────────────────────────────────────────────────────────────┘
  *
  * Modales overlay:
- *   - DeclareConsumptionPrompt al "volver al hub"
+ *   - DeclareConsumptionPrompt al "← intranet"
  *   - CreditRequestModal cuando pide más créditos
  *   - CreditsBlockOverlay cuando credits === 0 durante la sesión
  *
@@ -22,10 +25,10 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreditRequestModal } from "@/components/tool/CreditRequestModal";
 import { CreditsBlockOverlay } from "@/components/tool/CreditsBlockOverlay";
-import { CreditsHeader } from "@/components/tool/CreditsHeader";
 import { DeclareConsumptionPrompt } from "@/components/tool/DeclareConsumptionPrompt";
 import { EmbeddedSite } from "@/components/tool/EmbeddedSite";
 import { ScheduleIndicator } from "@/components/tool/ScheduleIndicator";
+import { ToolViewBar } from "@/components/tool/ToolViewBar";
 import { useThreeDSkySession } from "@/lib/hooks/useThreeDSkySession";
 import { showToast } from "@/lib/store/toast";
 import type { ToolSchedule } from "@/types/db-aliases";
@@ -109,53 +112,17 @@ export function ThreeDSkyView({
         background: "var(--bg)",
       }}
     >
-      {/* Top bar de la vista */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "12px 32px",
-          borderBottom: "1px solid var(--line)",
+      <ToolViewBar
+        toolName="3DSky"
+        toolGlyph="◈"
+        toolColor="#4FD1C5"
+        vendorHost="3dsky.org"
+        credits={{
+          left: chat.credits.credits,
+          total: chat.credits.creditsTotal,
+          warnAt: 5,
         }}
-      >
-        <button
-          type="button"
-          onClick={openDeclareThenLeave}
-          className="t-meta"
-          style={{
-            background: "transparent",
-            border: 0,
-            color: "var(--fg-mute)",
-            cursor: "pointer",
-            fontFamily: "var(--mono)",
-            fontSize: 11,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            padding: 0,
-          }}
-        >
-          ← volver al hub
-        </button>
-        <div className="brand" style={{ gap: 10 }}>
-          <span
-            className="brand-mark"
-            style={{ background: "#4FD1C5", color: "#fff" }}
-            title="3DSky · assets"
-          >
-            ◈
-          </span>
-          <span>3DSKY</span>
-          <span className="brand-pip" title="sesión activa" />
-        </div>
-        <div className="t-meta dim" style={{ fontSize: 10 }}>
-          ↳ {chat.sessionId ? "SESIÓN ACTIVA" : "INICIANDO…"}
-        </div>
-      </div>
-
-      <CreditsHeader
-        credits={chat.credits.credits}
-        creditsTotal={chat.credits.creditsTotal}
+        onBack={openDeclareThenLeave}
         onRequestMore={onRequestMore}
       />
 
