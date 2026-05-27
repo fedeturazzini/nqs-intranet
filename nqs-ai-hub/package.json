@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:seed-users": "tsx scripts/create-users.ts",
-    "db:test": "tsx scripts/test-db.ts"
+    "db:test": "tsx scripts/test-db.ts",
+    "db:race-test": "tsx scripts/test-credit-race.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

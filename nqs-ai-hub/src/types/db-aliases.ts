@@ -65,3 +65,36 @@ export type CreditPoolRow = Tables<"credit_pools">;
 export type CreditAllocationRow = Tables<"credit_allocations">;
 export type CreditTransactionRow = Tables<"credit_transactions">;
 export type UsageLogRow = Tables<"usage_logs">;
+export type ModuleSessionRow = Tables<"module_sessions">;
+
+// ============================================================
+// SCHEDULE — schema del JSONB en tool_access.schedule
+// ============================================================
+// El autogen lo tipa como `Json` (correcto al nivel DB). Acá le damos
+// shape para que el código de horarios sea type-safe.
+
+export type DayOfWeek =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
+
+/** Ventana horaria por día. `enabled=false` → bloqueado ese día. */
+export type DaySchedule =
+  | { enabled: true; from: string /* "HH:MM" */; to: string /* "HH:MM" */ }
+  | { enabled: false };
+
+export type ToolSchedule = Partial<Record<DayOfWeek, DaySchedule>>;
+
+export const DAYS_OF_WEEK: readonly DayOfWeek[] = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+] as const;

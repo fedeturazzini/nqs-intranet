@@ -17,6 +17,7 @@ export type Database = {
       access_requests: {
         Row: {
           created_at: string | null
+          credits_requested: number | null
           duration_minutes: number | null
           id: string
           reason: string | null
@@ -29,6 +30,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          credits_requested?: number | null
           duration_minutes?: number | null
           id?: string
           reason?: string | null
@@ -41,6 +43,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          credits_requested?: number | null
           duration_minutes?: number | null
           id?: string
           reason?: string | null
@@ -296,6 +299,54 @@ export type Database = {
           },
         ]
       }
+      module_sessions: {
+        Row: {
+          declared_consumption: number | null
+          entered_at: string
+          exited_at: string | null
+          id: string
+          ip_address: unknown | null
+          tool_id: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          declared_consumption?: number | null
+          entered_at?: string
+          exited_at?: string | null
+          id?: string
+          ip_address?: unknown | null
+          tool_id: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          declared_consumption?: number | null
+          entered_at?: string
+          exited_at?: string | null
+          id?: string
+          ip_address?: unknown | null
+          tool_id?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "module_sessions_tool_id_fkey"
+            columns: ["tool_id"]
+            isOneToOne: false
+            referencedRelation: "tools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "module_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       screenshots: {
         Row: {
           created_at: string | null
@@ -510,6 +561,7 @@ export type Database = {
           granted_at: string | null
           granted_by: string | null
           id: string
+          schedule: Json | null
           status: Database["public"]["Enums"]["access_status"]
           tool_id: string
           user_id: string
@@ -519,6 +571,7 @@ export type Database = {
           granted_at?: string | null
           granted_by?: string | null
           id?: string
+          schedule?: Json | null
           status?: Database["public"]["Enums"]["access_status"]
           tool_id: string
           user_id: string
@@ -528,6 +581,7 @@ export type Database = {
           granted_at?: string | null
           granted_by?: string | null
           id?: string
+          schedule?: Json | null
           status?: Database["public"]["Enums"]["access_status"]
           tool_id?: string
           user_id?: string
@@ -738,6 +792,15 @@ export type Database = {
     }
     Functions: {
       is_admin: { Args: never; Returns: boolean }
+      consume_credit_atomic: {
+        Args: {
+          p_user_id: string
+          p_tool_id: string
+          p_amount: number
+          p_reason: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       access_status: "active" | "pending" | "locked" | "expired"

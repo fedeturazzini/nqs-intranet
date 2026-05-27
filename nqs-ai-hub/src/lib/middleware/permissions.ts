@@ -10,7 +10,9 @@
  */
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/db/supabase";
+import { checkSchedule } from "@/lib/utils/schedule";
 import type { ToolId } from "@/lib/adapters/types";
+import type { ToolSchedule } from "@/types/db-aliases";
 
 export type PermissionReason =
   | "not_authenticated"
@@ -82,11 +84,20 @@ export async function canUseTool(
     return { allowed: false, reason: "expired" };
   }
 
-  // ─── CHECK 3: [FUTURE] ventana horaria — módulo horarios ───
-  // TODO: cuando exista el módulo de horarios, llamar a
-  //   checkTimeWindow(userId, toolId) y devolver `outside_hours` si
-  //   no estamos dentro de la ventana habilitada. Usa la tabla
-  //   `time_windows` (ya creada vacía en la migration 0001).
+  // ─── CHECK 3: ventana horaria (tool_access.schedule) ───
+  // Si el admin configuró `schedule` para este (user, tool), validamos
+  // que estemos dentro de la ventana del día actual. El check vive en
+  // `lib/utils/schedule.ts` y trabaja en TZ America/Argentina/Buenos_Aires.
+  if (access.schedule) {
+    const schedCheck = checkSchedule(access.schedule as ToolSchedule);
+    if (!schedCheck.allowed) {
+      return {
+        allowed: false,
+        reason: "outside_hours",
+        message: schedCheck.humanMessage,
+      };
+    }
+  }
 
   // ─── CHECK 4: créditos disponibles (si la tool los usa) ───
   const { data: tool, error: toolErr } = await db
