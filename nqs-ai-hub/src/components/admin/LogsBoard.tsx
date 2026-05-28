@@ -1,11 +1,26 @@
 "use client";
 
 /**
- * Tablero de logs con 3 pestañas. Cada pestaña fetcha su endpoint
- * la primera vez que se abre y cachea el resultado en memoria del
- * componente.
+ * Tablero de logs con 3 pestañas + filtros sincronizados con URL.
+ *
+ * Filtros (compartidos entre tabs):
+ *   - dateRange (since / until)
+ *   - userId
+ *   - toolId
+ *   - action prefix (solo en tab "usage")
+ *   - txType (solo en tab "transactions")
+ *
+ * URL state: `?tab=usage&userId=...&since=2026-05-01T00:00:00Z` etc.
+ * Refrescar mantiene los filtros + se puede compartir el link.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  LogsFilters,
+  type FilterTool,
+  type FilterUser,
+  type LogFilters,
+} from "./LogsFilters";
 
 type Tab = "usage" | "sessions" | "transactions";
 
@@ -54,16 +69,84 @@ function dt(iso: string | null): string {
   return DT.format(new Date(iso));
 }
 
-export function LogsBoard() {
-  const [tab, setTab] = useState<Tab>("usage");
+type LogsBoardProps = Readonly<{
+  users: FilterUser[];
+  tools: FilterTool[];
+}>;
+
+export function LogsBoard({ users, tools }: LogsBoardProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ─── State derivado de la URL ───
+  const tab = useMemo<Tab>(() => {
+    const t = searchParams.get("tab");
+    if (t === "sessions" || t === "transactions") return t;
+    return "usage";
+  }, [searchParams]);
+
+  const filters = useMemo<LogFilters>(
+    () => ({
+      since: searchParams.get("since") ?? undefined,
+      until: searchParams.get("until") ?? undefined,
+      userId: searchParams.get("userId") ?? undefined,
+      toolId: searchParams.get("toolId") ?? undefined,
+      action: searchParams.get("action") ?? undefined,
+      txType:
+        (searchParams.get("txType") as LogFilters["txType"]) ?? undefined,
+    }),
+    [searchParams],
+  );
+
+  // ─── Data cache por tab (resetea al cambiar filtros) ───
   const [usage, setUsage] = useState<UsageRow[] | null>(null);
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
   const [txs, setTxs] = useState<TxRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Sincroniza tab + filtros con la URL (`replace`, no `push`, para no
+  // saturar la pila de history).
+  const updateUrl = useCallback(
+    (next: { tab?: Tab; filters?: LogFilters }) => {
+      const p = new URLSearchParams();
+      const t = next.tab ?? tab;
+      if (t !== "usage") p.set("tab", t);
+      const f = next.filters ?? filters;
+      if (f.since) p.set("since", f.since);
+      if (f.until) p.set("until", f.until);
+      if (f.userId) p.set("userId", f.userId);
+      if (f.toolId) p.set("toolId", f.toolId);
+      if (f.action) p.set("action", f.action);
+      if (f.txType) p.set("txType", f.txType);
+      const qs = p.toString();
+      router.replace(qs ? `/admin/logs?${qs}` : "/admin/logs", {
+        scroll: false,
+      });
+    },
+    [filters, tab, router],
+  );
+
+  const setTab = useCallback(
+    (t: Tab) => updateUrl({ tab: t }),
+    [updateUrl],
+  );
+  const setFilters = useCallback(
+    (next: LogFilters) => updateUrl({ filters: next }),
+    [updateUrl],
+  );
+
+  // Si los filtros cambian, invalidamos cualquier cache previo.
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+
   const fetchUsage = useCallback(async () => {
+    const p = new URLSearchParams({ limit: "100" });
+    if (filters.userId) p.set("userId", filters.userId);
+    if (filters.toolId) p.set("toolId", filters.toolId);
+    if (filters.action) p.set("action", filters.action);
+    if (filters.since) p.set("since", filters.since);
+    if (filters.until) p.set("until", filters.until);
     try {
-      const res = await fetch("/api/admin/logs?limit=100", {
+      const res = await fetch(`/api/admin/logs?${p.toString()}`, {
         cache: "no-store",
       });
       const data = (await res.json()) as { logs?: UsageRow[]; error?: string };
@@ -72,34 +155,60 @@ export function LogsBoard() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "network");
     }
-  }, []);
+  }, [filters]);
 
   const fetchSessions = useCallback(async () => {
+    const p = new URLSearchParams({ limit: "100" });
+    if (filters.userId) p.set("userId", filters.userId);
+    if (filters.toolId) p.set("toolId", filters.toolId);
+    // El endpoint module-sessions usa `from`/`to` en vez de `since`/`until`.
+    if (filters.since) p.set("from", filters.since);
+    if (filters.until) p.set("to", filters.until);
     try {
-      const res = await fetch("/api/admin/module-sessions?limit=100", {
+      const res = await fetch(`/api/admin/module-sessions?${p.toString()}`, {
         cache: "no-store",
       });
-      const data = (await res.json()) as { sessions?: SessionRow[]; error?: string };
+      const data = (await res.json()) as {
+        sessions?: SessionRow[];
+        error?: string;
+      };
       if (data.sessions) setSessions(data.sessions);
       else setError(data.error ?? "fetch_failed");
     } catch (e) {
       setError(e instanceof Error ? e.message : "network");
     }
-  }, []);
+  }, [filters]);
 
   const fetchTxs = useCallback(async () => {
+    const p = new URLSearchParams({ limit: "100" });
+    if (filters.userId) p.set("userId", filters.userId);
+    if (filters.toolId) p.set("toolId", filters.toolId);
+    if (filters.txType) p.set("type", filters.txType);
     try {
-      const res = await fetch("/api/admin/credit-transactions?limit=100", {
-        cache: "no-store",
-      });
-      const data = (await res.json()) as { transactions?: TxRow[]; error?: string };
+      const res = await fetch(
+        `/api/admin/credit-transactions?${p.toString()}`,
+        { cache: "no-store" },
+      );
+      const data = (await res.json()) as {
+        transactions?: TxRow[];
+        error?: string;
+      };
       if (data.transactions) setTxs(data.transactions);
       else setError(data.error ?? "fetch_failed");
     } catch (e) {
       setError(e instanceof Error ? e.message : "network");
     }
-  }, []);
+  }, [filters]);
 
+  // Invalidate cache cuando cambian filtros.
+  useEffect(() => {
+    setUsage(null);
+    setSessions(null);
+    setTxs(null);
+    setError(null);
+  }, [filtersKey]);
+
+  // Fetch on demand: solo el tab actual.
   useEffect(() => {
     if (tab === "usage" && usage === null) void fetchUsage();
     if (tab === "sessions" && sessions === null) void fetchSessions();
@@ -115,7 +224,11 @@ export function LogsBoard() {
           borderBottom: "1px solid var(--line)",
         }}
       >
-        <TabBtn label="usage logs" active={tab === "usage"} onClick={() => setTab("usage")} />
+        <TabBtn
+          label="usage logs"
+          active={tab === "usage"}
+          onClick={() => setTab("usage")}
+        />
         <TabBtn
           label="module sessions"
           active={tab === "sessions"}
@@ -127,6 +240,15 @@ export function LogsBoard() {
           onClick={() => setTab("transactions")}
         />
       </div>
+
+      <LogsFilters
+        filters={filters}
+        onChange={setFilters}
+        users={users}
+        tools={tools}
+        showAction={tab === "usage"}
+        showTxType={tab === "transactions"}
+      />
 
       {error && (
         <div
@@ -239,9 +361,7 @@ function Table<T>({
   columns: Column<T>[];
   emptyMsg: string;
 }>) {
-  const gridTemplate = columns
-    .map((c) => c.width ?? "1fr")
-    .join(" ");
+  const gridTemplate = columns.map((c) => c.width ?? "1fr").join(" ");
 
   if (loading) {
     return (
