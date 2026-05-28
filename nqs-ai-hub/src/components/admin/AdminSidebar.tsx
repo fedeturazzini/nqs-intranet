@@ -51,15 +51,19 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
       badge: pendingRequests,
     },
     {
+      label: "Créditos · pool",
+      href: "/admin/credits",
+      match: (p) => p.startsWith("/admin/credits"),
+    },
+    {
       label: "Logs",
       href: "/admin/logs",
       match: (p) => p.startsWith("/admin/logs"),
     },
   ];
 
-  // Items que vendrán post-MVP (sesión 11+).
+  // Items que vendrán post-MVP.
   const futureItems: { label: string }[] = [
-    { label: "Créditos · pool" },
     { label: "Shield" },
     { label: "Snaps" },
   ];
