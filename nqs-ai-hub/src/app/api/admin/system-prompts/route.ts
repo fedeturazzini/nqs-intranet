@@ -23,8 +23,10 @@ const ALLOWED_MODELS = [
 
 const NewPromptSchema = z.object({
   toolId: z.string().min(1),
+  type: z.enum(["system", "memory"]).optional().default("system"),
   name: z.string().min(2).max(120),
-  content: z.string().min(20).max(50_000),
+  // memory puede ser vacía (ej. "no hay contexto activo"); system no
+  content: z.string().min(0).max(50_000),
   model: z.enum(ALLOWED_MODELS),
   activate: z.boolean().optional().default(false),
 });
@@ -35,22 +37,31 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const url = new URL(request.url);
   const toolId = url.searchParams.get("toolId");
+  const typeFilter = url.searchParams.get("type");
   if (!toolId) {
     return NextResponse.json(
       { error: "bad_request", message: "missing toolId" },
       { status: 400 },
     );
   }
+  if (typeFilter && typeFilter !== "system" && typeFilter !== "memory") {
+    return NextResponse.json(
+      { error: "bad_request", message: "type debe ser 'system' o 'memory'" },
+      { status: 400 },
+    );
+  }
 
   const db = createServerClient();
-  const { data, error } = await db
+  let q = db
     .from("system_prompts")
     .select(
-      "id, tool_id, name, model, is_active, version, created_by, created_at, updated_at, users!system_prompts_created_by_fkey(name)",
+      "id, tool_id, type, name, model, is_active, version, created_by, created_at, updated_at, users!system_prompts_created_by_fkey(name)",
     )
     .eq("tool_id", toolId)
     .order("version", { ascending: false })
     .limit(50);
+  if (typeFilter) q = q.eq("type", typeFilter);
+  const { data, error } = await q;
   if (error) {
     return NextResponse.json(
       { error: "db_error", message: error.message },
@@ -77,15 +88,17 @@ export async function POST(request: Request): Promise<NextResponse> {
       { status: 400 },
     );
   }
-  const { toolId, name, content, model, activate } = parsed.data;
+  const { toolId, type, name, content, model, activate } = parsed.data;
 
   const db = createServerClient();
 
-  // Próxima version = max(version) + 1.
+  // Próxima version = max(version) + 1, SOLO entre prompts del mismo type
+  // (cada type lleva su propia secuencia de versiones).
   const { data: last } = await db
     .from("system_prompts")
     .select("version")
     .eq("tool_id", toolId)
+    .eq("type", type)
     .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -95,6 +108,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     .from("system_prompts")
     .insert({
       tool_id: toolId,
+      type,
       name,
       content_encrypted: encrypt(content),
       model,
@@ -102,7 +116,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       version: nextVersion,
       created_by: guard.userId,
     })
-    .select("id, tool_id, name, model, is_active, version, created_at")
+    .select("id, tool_id, type, name, model, is_active, version, created_at")
     .single();
   if (insErr || !inserted) {
     return NextResponse.json(
@@ -112,11 +126,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   if (activate) {
-    // Desactivar las demás versiones de la misma tool y activar esta.
+    // Desactivar las demás versiones del mismo (toolId, type) y activar
+    // esta. Importante: NO desactivar el otro type — memoria y system
+    // tienen activos independientes.
     await db
       .from("system_prompts")
       .update({ is_active: false })
       .eq("tool_id", toolId)
+      .eq("type", type)
       .neq("id", inserted.id);
     const { error: actErr } = await db
       .from("system_prompts")

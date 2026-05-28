@@ -1,29 +1,30 @@
 /**
- * /admin/prompt — Editor del prompt padre + selector de modelo.
+ * /admin/prompt — Editor del prompt padre + memoria del workspace.
  *
- * Server Component pre-carga las versiones (sin contenido — el contenido
- * es el plaintext desencriptado y se levanta on-demand cuando el admin
- * selecciona una version).
+ * Server Component pre-carga versiones de los 2 types (system + memory)
+ * y el contenido del activo de cada uno para que el editor abra sin
+ * wait visible. Las versiones inactivas se cargan al click.
  */
-import { PromptManager } from "@/components/admin/PromptManager";
+import { PromptTabs } from "@/components/admin/PromptTabs";
 import { createServerClient } from "@/lib/db/supabase";
 import { decrypt } from "@/lib/utils/crypto";
 
 export const dynamic = "force-dynamic";
 
-async function loadInitialState() {
+type PromptType = "system" | "memory";
+
+async function loadInitialStateForType(type: PromptType) {
   const db = createServerClient();
   const { data: versions } = await db
     .from("system_prompts")
     .select(
-      "id, tool_id, name, model, is_active, version, created_by, created_at, users!system_prompts_created_by_fkey(name)",
+      "id, tool_id, type, name, model, is_active, version, created_by, created_at, users!system_prompts_created_by_fkey(name)",
     )
     .eq("tool_id", "claude")
+    .eq("type", type)
     .order("version", { ascending: false })
     .limit(50);
 
-  // Pre-cargamos el contenido del ACTIVO para que el editor abra sin
-  // wait visible. Los demás se cargan al click.
   const active = versions?.find((v) => v.is_active);
   let activeContent: string | null = null;
   if (active) {
@@ -34,6 +35,9 @@ async function loadInitialState() {
       .maybeSingle();
     if (full?.content_encrypted) {
       activeContent = decrypt(full.content_encrypted);
+    } else {
+      // Memoria recién creada puede tener content_encrypted = ''.
+      activeContent = "";
     }
   }
 
@@ -46,7 +50,11 @@ async function loadInitialState() {
 }
 
 export default async function AdminPromptPage() {
-  const state = await loadInitialState();
+  const [systemState, memoryState] = await Promise.all([
+    loadInitialStateForType("system"),
+    loadInitialStateForType("memory"),
+  ]);
+
   return (
     <div style={{ padding: 32, height: "100%", overflow: "auto" }}>
       <div className="t-eyebrow" style={{ marginBottom: 14 }}>
@@ -59,14 +67,14 @@ export default async function AdminPromptPage() {
         Cerebro de <em style={{ fontFamily: "var(--serif)" }}>Claude</em>
       </h1>
       <p className="muted" style={{ marginTop: 6, marginBottom: 22 }}>
-        Texto que se manda como <code>system</code> en cada llamada. NUNCA
-        se devuelve al cliente.
+        Lo que se manda como <code>system</code> en cada llamada. El system
+        prompt (instrucciones) y la memoria (contexto del workspace) se
+        editan por separado y se concatenan automáticamente al
+        ejecutar.
       </p>
-      <PromptManager
-        versions={state.versions}
-        activeId={state.activeId}
-        activeContent={state.activeContent}
-        activeModel={state.activeModel}
+      <PromptTabs
+        systemState={systemState}
+        memoryState={memoryState}
       />
     </div>
   );

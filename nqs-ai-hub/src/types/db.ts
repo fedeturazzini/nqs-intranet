@@ -463,6 +463,7 @@ export type Database = {
           model: string
           name: string
           tool_id: string
+          type: string
           updated_at: string | null
           version: number | null
         }
@@ -475,6 +476,7 @@ export type Database = {
           model?: string
           name: string
           tool_id: string
+          type?: string
           updated_at?: string | null
           version?: number | null
         }
@@ -487,6 +489,7 @@ export type Database = {
           model?: string
           name?: string
           tool_id?: string
+          type?: string
           updated_at?: string | null
           version?: number | null
         }

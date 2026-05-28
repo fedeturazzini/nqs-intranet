@@ -31,7 +31,7 @@ import {
 } from "@/lib/anthropic/client";
 import { createServerClient } from "@/lib/db/supabase";
 import { getToolAccess } from "@/lib/db/queries/tools";
-import { getActiveSystemPrompt } from "@/lib/db/queries/system-prompts";
+import { getActiveSystemAndMemory } from "@/lib/db/queries/system-prompts";
 import { logToolUsage } from "./utils";
 import type {
   AccessState,
@@ -94,8 +94,12 @@ export const claudeAdapter: ToolAdapter = {
     try {
       const db = createServerClient();
 
-      // 1. System prompt (plaintext, ya desencriptado).
-      const systemPrompt = await getActiveSystemPrompt(TOOL_ID);
+      // 1. System prompt + memoria (plaintext, ya desencriptados).
+      //    Concatenamos con tags <system_prompt> / <workspace_memory>.
+      //    Si la memoria está vacía, no incluimos el bloque.
+      const prompts = await getActiveSystemAndMemory(TOOL_ID);
+      const systemPrompt = prompts.system;
+      const memoryPrompt = prompts.memory;
       if (!systemPrompt) {
         return {
           ok: false,
@@ -104,6 +108,10 @@ export const claudeAdapter: ToolAdapter = {
           ),
         };
       }
+      const memoryText = memoryPrompt?.content.trim() ?? "";
+      const fullSystem = memoryText
+        ? `<system_prompt>${systemPrompt.content}</system_prompt>\n<workspace_memory>${memoryText}</workspace_memory>`
+        : systemPrompt.content;
 
       // 2. Construir history si vino conversationId.
       const messages: ClaudeMessage[] = [];
@@ -150,9 +158,10 @@ export const claudeAdapter: ToolAdapter = {
       });
 
       // 3. Anthropic.
-      // El modelo viene de DB (system_prompts.model). El admin lo
-      // configura desde /admin/prompt; el SDK lo recibe en cada call.
-      const response = await callClaude(systemPrompt.content, messages, {
+      // El modelo viene de DB (system_prompts.model del type='system').
+      // El admin lo configura desde /admin/prompt; el SDK lo recibe en
+      // cada call.
+      const response = await callClaude(fullSystem, messages, {
         model: systemPrompt.model,
       });
 
@@ -237,6 +246,8 @@ export const claudeAdapter: ToolAdapter = {
           promptLength: params.prompt.length,
           model: systemPrompt.model,
           promptVersion: systemPrompt.version,
+          memoryVersion: memoryPrompt?.version ?? null,
+          memoryLength: memoryText.length,
         },
         tokensConsumed: response.tokensInput + response.tokensOutput,
       });

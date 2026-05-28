@@ -28,10 +28,10 @@ export async function POST(
   }
 
   const db = createServerClient();
-  // Buscamos la version para saber a qué tool pertenece.
+  // Buscamos la version para saber a qué (tool, type) pertenece.
   const { data: target, error: lookupErr } = await db
     .from("system_prompts")
-    .select("id, tool_id")
+    .select("id, tool_id, type")
     .eq("id", id)
     .maybeSingle();
   if (lookupErr) {
@@ -44,11 +44,13 @@ export async function POST(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  // Desactivar el resto de la misma tool.
+  // Desactivar el resto del mismo (tool, type) — system y memory tienen
+  // activos independientes.
   await db
     .from("system_prompts")
     .update({ is_active: false })
     .eq("tool_id", target.tool_id)
+    .eq("type", target.type)
     .neq("id", id);
 
   // Activar esta.

@@ -30,7 +30,7 @@ export async function GET(
   const { data, error } = await db
     .from("system_prompts")
     .select(
-      "id, tool_id, name, content_encrypted, model, is_active, version, created_by, created_at, updated_at",
+      "id, tool_id, type, name, content_encrypted, model, is_active, version, created_by, created_at, updated_at",
     )
     .eq("id", id)
     .maybeSingle();
@@ -48,8 +48,10 @@ export async function GET(
     prompt: {
       id: data.id,
       toolId: data.tool_id,
+      type: data.type,
       name: data.name,
-      content: decrypt(data.content_encrypted),
+      // Empty content_encrypted (ej. memoria recién creada) → plaintext "".
+      content: data.content_encrypted ? decrypt(data.content_encrypted) : "",
       model: data.model,
       isActive: data.is_active,
       version: data.version,

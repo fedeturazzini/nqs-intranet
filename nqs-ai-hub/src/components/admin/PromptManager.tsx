@@ -40,11 +40,15 @@ type VersionRow = {
   users: { name: string } | null;
 };
 
+export type PromptKind = "system" | "memory";
+
 type PromptManagerProps = Readonly<{
   versions: VersionRow[];
   activeId: string | null;
   activeContent: string | null;
   activeModel: string;
+  /** Si es "memory", oculta el ModelSelector y permite content vacío. */
+  type?: PromptKind;
 }>;
 
 const DT = new Intl.DateTimeFormat("es-AR", {
@@ -63,7 +67,11 @@ export function PromptManager({
   activeId,
   activeContent,
   activeModel,
+  type = "system",
 }: PromptManagerProps) {
+  const isMemory = type === "memory";
+  const minContentLen = isMemory ? 0 : 20;
+  const namePrefix = isMemory ? "Memoria Claude" : "Brain Claude";
   const [versions, setVersions] = useState(initialVersions);
   const [selectedId, setSelectedId] = useState<string | null>(activeId);
   const [content, setContent] = useState(activeContent ?? "");
@@ -114,27 +122,29 @@ export function PromptManager({
   }, []);
 
   const refreshVersions = useCallback(async () => {
-    const res = await fetch("/api/admin/system-prompts?toolId=claude", {
-      cache: "no-store",
-    });
+    const res = await fetch(
+      `/api/admin/system-prompts?toolId=claude&type=${type}`,
+      { cache: "no-store" },
+    );
     if (!res.ok) return;
     const data = (await res.json()) as { prompts: VersionRow[] };
     setVersions(data.prompts);
-  }, []);
+  }, [type]);
 
   async function saveAsNewVersion() {
-    if (content.trim().length < 20) {
+    if (content.length < minContentLen) {
       showToast({
         title: "MUY CORTO",
-        msg: "El prompt necesita al menos 20 caracteres.",
+        msg: `El ${isMemory ? "contexto" : "prompt"} necesita al menos ${minContentLen} caracteres.`,
         color: "var(--warn)",
       });
       return;
     }
     if (activateOnSave) {
       const ok = confirm(
-        "Vas a CREAR una versión nueva y ACTIVARLA inmediatamente. " +
-          "Esto afecta a TODOS los usuarios que usen Claude. ¿Continuar?",
+        isMemory
+          ? "Vas a CREAR una versión nueva de la MEMORIA y ACTIVARLA inmediatamente. Esto cambia el contexto que recibe Claude en cada llamada. ¿Continuar?"
+          : "Vas a CREAR una versión nueva del SYSTEM PROMPT y ACTIVARLA inmediatamente. Esto afecta a TODOS los usuarios que usen Claude. ¿Continuar?",
       );
       if (!ok) return;
     }
@@ -145,8 +155,9 @@ export function PromptManager({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           toolId: "claude",
-          name: `Brain Claude v${(versions[0]?.version ?? 0) + 1}`,
-          content: content.trim(),
+          type,
+          name: `${namePrefix} v${(versions[0]?.version ?? 0) + 1}`,
+          content,
           model,
           activate: activateOnSave,
         }),
@@ -261,33 +272,39 @@ export function PromptManager({
       }}
     >
       <div>
-        <div style={{ marginBottom: 18 }}>
-          <ModelSelector
-            value={model}
-            currentlyActive={savedModel}
-            onChange={setModel}
-          />
-          {modelDirty && !contentDirty && selectedId && (
-            <button
-              type="button"
-              className="btn sm"
-              onClick={saveModelOnly}
-              disabled={busy}
-              style={{ marginTop: 10 }}
-            >
-              guardar cambio de modelo →
-            </button>
-          )}
-        </div>
+        {!isMemory && (
+          <div style={{ marginBottom: 18 }}>
+            <ModelSelector
+              value={model}
+              currentlyActive={savedModel}
+              onChange={setModel}
+            />
+            {modelDirty && !contentDirty && selectedId && (
+              <button
+                type="button"
+                className="btn sm"
+                onClick={saveModelOnly}
+                disabled={busy}
+                style={{ marginTop: 10 }}
+              >
+                guardar cambio de modelo →
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="t-eyebrow" style={{ marginBottom: 8 }}>
-          ↳ CONTENIDO DEL PROMPT
+          ↳ {isMemory ? "CONTENIDO DE LA MEMORIA" : "CONTENIDO DEL PROMPT"}
         </div>
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
           disabled={busy || (selectedVersion != null && !isViewingActive)}
-          placeholder="Sos el asistente creativo interno de NQS. Tu rol es…"
+          placeholder={
+            isMemory
+              ? "Contexto compartido del workspace: proyectos activos, clientes, glosario interno, decisiones tomadas. Se concatena al system prompt en cada llamada a Claude."
+              : "Sos el asistente creativo interno de NQS. Tu rol es…"
+          }
           style={{
             width: "100%",
             minHeight: 360,
