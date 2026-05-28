@@ -721,6 +721,7 @@ export type Database = {
           job_title: string | null
           name: string
           role: Database["public"]["Enums"]["user_role"]
+          theme_preference: string
           updated_at: string | null
         }
         Insert: {
@@ -734,6 +735,7 @@ export type Database = {
           job_title?: string | null
           name: string
           role?: Database["public"]["Enums"]["user_role"]
+          theme_preference?: string
           updated_at?: string | null
         }
         Update: {
@@ -747,6 +749,7 @@ export type Database = {
           job_title?: string | null
           name?: string
           role?: Database["public"]["Enums"]["user_role"]
+          theme_preference?: string
           updated_at?: string | null
         }
         Relationships: []

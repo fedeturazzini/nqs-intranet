@@ -25,12 +25,15 @@ import type { UserRole } from "@/types/db-aliases";
 export const ACCESS_TOKEN_COOKIE = "sb-access-token";
 export const REFRESH_TOKEN_COOKIE = "sb-refresh-token";
 
+export type Theme = "light" | "dark";
+
 export type Session = {
   userId: string;
   email: string;
   name: string;
   initials: string;
   role: UserRole;
+  theme: Theme;
 };
 
 /**
@@ -50,11 +53,16 @@ export const getSession = cache(async (): Promise<Session | null> => {
 
   const { data: profile, error: profErr } = await db
     .from("users")
-    .select("id, email, name, initials, role")
+    .select("id, email, name, initials, role, theme_preference")
     .eq("id", userData.user.id)
     .maybeSingle();
 
   if (profErr || !profile) return null;
+
+  // El CHECK constraint en DB asegura que theme_preference es 'light'|'dark'.
+  // Si por algún motivo viene otro valor, fallback a 'light' (no rompemos).
+  const theme: Theme =
+    profile.theme_preference === "dark" ? "dark" : "light";
 
   return {
     userId: profile.id,
@@ -62,6 +70,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     name: profile.name,
     initials: profile.initials,
     role: profile.role,
+    theme,
   };
 });
 

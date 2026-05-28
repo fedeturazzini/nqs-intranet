@@ -7,6 +7,7 @@
  * Adaptado de NQS AI Hub.html líneas 113-140.
  */
 import { NqsLogo } from "./NqsLogo";
+import { ThemeToggle } from "./ThemeToggle";
 import { TopbarNav } from "./TopbarNav";
 import { UserChip } from "./UserChip";
 import type { UserRole } from "@/types/db-aliases";
@@ -16,6 +17,7 @@ type TopbarProps = Readonly<{
     name: string;
     initials: string;
     role: UserRole;
+    theme: "light" | "dark";
   };
   /** Cantidad de solicitudes pendientes para badge en Admin (post-MVP). */
   pendingCount?: number;
@@ -38,6 +40,7 @@ export function Topbar({ user, pendingCount = 0 }: TopbarProps) {
         <span className="t-meta">
           ↳ {isAdmin ? "ADMIN" : "EQUIPO CREATIVO"}
         </span>
+        <ThemeToggle initial={user.theme} />
         <UserChip user={{ name: user.name, initials: user.initials }} />
       </div>
     </header>

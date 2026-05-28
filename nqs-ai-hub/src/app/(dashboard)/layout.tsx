@@ -47,6 +47,7 @@ export default async function DashboardLayout({
           name: session.name,
           initials: session.initials,
           role: session.role,
+          theme: session.theme,
         }}
         pendingCount={PENDING_COUNT_PLACEHOLDER}
       />

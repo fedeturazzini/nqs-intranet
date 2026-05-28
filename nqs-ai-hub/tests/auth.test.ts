@@ -47,6 +47,7 @@ type SupabaseStub = {
     name: string;
     initials: string;
     role: string;
+    theme_preference?: string;
   } | null;
 };
 let supabaseStub: SupabaseStub | null = null;
@@ -119,6 +120,7 @@ describe("getSession", () => {
         name: "Sofía Galván",
         initials: "SG",
         role: "employee",
+        theme_preference: "light",
       },
     });
     const s = await getSession();
@@ -128,6 +130,7 @@ describe("getSession", () => {
       name: "Sofía Galván",
       initials: "SG",
       role: "employee",
+      theme: "light",
     });
   });
 });
