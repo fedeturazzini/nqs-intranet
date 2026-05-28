@@ -460,6 +460,7 @@ export type Database = {
           created_by: string | null
           id: string
           is_active: boolean | null
+          model: string
           name: string
           tool_id: string
           updated_at: string | null
@@ -471,6 +472,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_active?: boolean | null
+          model?: string
           name: string
           tool_id: string
           updated_at?: string | null
@@ -482,6 +484,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_active?: boolean | null
+          model?: string
           name?: string
           tool_id?: string
           updated_at?: string | null

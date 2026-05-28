@@ -12,15 +12,16 @@
  *   - Lazy init del cliente: la API key se valida la primera vez que
  *     se usa, no al levantar el módulo. Esto permite tests/scripts que
  *     no necesiten Anthropic sin tener que stubear la env.
- *   - Modelo default: `claude-sonnet-4-5` (Sonnet 4.5 — el modelo más
- *     reciente al cierre del proyecto). El kit menciona `claude-sonnet-4-6`
- *     pero ese alias no resuelve hoy en la API; lo dejamos como TODO de
- *     bump cuando Anthropic lo publique. Override por `model` en el call.
+ *   - Modelo default: `claude-sonnet-4-6` (Sonnet 4.6 — feb 2026). Solo
+ *     se usa como fallback si el `system_prompts.model` activo viene
+ *     vacío (caso edge: data corrupta o seed manual). En producción el
+ *     modelo se lee dinámicamente desde DB → adapter pasa `options.model`
+ *     al SDK por cada call.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import type { ExecuteImage } from "@/lib/adapters/types";
 
-export const DEFAULT_MODEL = "claude-sonnet-4-5";
+export const DEFAULT_MODEL = "claude-sonnet-4-6";
 export const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_RETRIES = 3;
@@ -54,7 +55,7 @@ function getClient(): Anthropic {
 export type ClaudeMessage = Anthropic.Messages.MessageParam;
 
 export type CallClaudeOptions = {
-  /** Override del modelo. Default: `claude-sonnet-4-5`. */
+  /** Override del modelo. Default: `claude-sonnet-4-6`. */
   model?: string;
   /** Default: 4096. */
   maxTokens?: number;

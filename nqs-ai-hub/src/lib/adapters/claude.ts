@@ -150,7 +150,11 @@ export const claudeAdapter: ToolAdapter = {
       });
 
       // 3. Anthropic.
-      const response = await callClaude(systemPrompt.content, messages);
+      // El modelo viene de DB (system_prompts.model). El admin lo
+      // configura desde /admin/prompt; el SDK lo recibe en cada call.
+      const response = await callClaude(systemPrompt.content, messages, {
+        model: systemPrompt.model,
+      });
 
       // 4. Persistencia. Best-effort: si falla algo acá, igual devolvemos
       // la respuesta al user porque ya pagamos los tokens.
@@ -219,7 +223,9 @@ export const claudeAdapter: ToolAdapter = {
         // Seguimos: el user recibe su texto. La conv queda inconsistente.
       }
 
-      // 5. Log de uso (también best-effort).
+      // 5. Log de uso (también best-effort). Incluimos `model` en metadata
+      // para que el admin pueda filtrar logs por modelo usado (ej. ver
+      // si un cambio a Haiku bajó la calidad).
       await logToolUsage({
         userId,
         toolId: TOOL_ID,
@@ -229,6 +235,8 @@ export const claudeAdapter: ToolAdapter = {
           messageId,
           imagesCount: params.images?.length ?? 0,
           promptLength: params.prompt.length,
+          model: systemPrompt.model,
+          promptVersion: systemPrompt.version,
         },
         tokensConsumed: response.tokensInput + response.tokensOutput,
       });

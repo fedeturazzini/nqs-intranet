@@ -14,6 +14,8 @@ export type ActiveSystemPrompt = {
   toolId: ToolId;
   name: string;
   version: number;
+  /** Modelo a usar para esta versión (Haiku/Sonnet/Opus). */
+  model: string;
   content: string; // plaintext, ya desencriptado
 };
 
@@ -47,6 +49,7 @@ export async function getActiveSystemPrompt(
     // `version` tiene DEFAULT 1 pero el autogen lo marca nullable. Si
     // viniera null caemos a 1 — semánticamente equivalente al default.
     version: data.version ?? 1,
+    model: data.model,
     content: decrypt(data.content_encrypted),
   };
 }
