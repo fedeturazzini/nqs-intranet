@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { OutsideHoursModal } from "@/components/tool/OutsideHoursModal";
+import { RequestAccessModal } from "@/components/tool/RequestAccessModal";
 import { ToolCard } from "@/components/tool/ToolCard";
 import { ToolRow } from "@/components/tool/ToolRow";
 import { showToast } from "@/lib/store/toast";
@@ -191,6 +192,8 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
   const [outsideHoursTool, setOutsideHoursTool] = useState<ToolWithAccess | null>(
     null,
   );
+  const [requestAccessTool, setRequestAccessTool] =
+    useState<ToolWithAccess | null>(null);
 
   const onOpen = (tool: ToolWithAccess) => {
     const schedule = tool.access.schedule ?? null;
@@ -204,11 +207,12 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
     router.push(`/tool/${tool.id}`);
   };
 
+  // El user clickeó una tool sin acceso (locked) → modal para pedir
+  // que el admin se la habilite. Tools coming_soon no llegan acá (la
+  // card las muestra disabled).
   const onRequest = (tool: ToolWithAccess) => {
-    showToast({
-      title: "SOLICITAR ACCESO",
-      msg: `El flujo de solicitudes para ${tool.name} se habilita en una próxima sesión del roadmap.`,
-    });
+    if (tool.access.status === "coming_soon") return;
+    setRequestAccessTool(tool);
   };
 
   // ─── header dinámico ─────────────────────────────────────
@@ -356,6 +360,18 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
         onClose={() => setOutsideHoursTool(null)}
         onSubmitted={() => {
           setOutsideHoursTool(null);
+        }}
+      />
+
+      <RequestAccessModal
+        open={requestAccessTool !== null}
+        toolId={requestAccessTool?.id ?? ""}
+        toolName={requestAccessTool?.name ?? ""}
+        toolGlyph={requestAccessTool?.glyph}
+        toolColor={requestAccessTool?.color}
+        onClose={() => setRequestAccessTool(null)}
+        onSubmitted={() => {
+          setRequestAccessTool(null);
         }}
       />
     </div>

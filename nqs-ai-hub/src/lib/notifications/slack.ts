@@ -23,6 +23,16 @@ export type SlackRequestNotification = {
   adminUrl?: string;
 };
 
+/** Solicitud de ACCESO a una tool que el user no tiene habilitada. */
+export type SlackAccessRequestNotification = {
+  kind: "access_request";
+  userName: string;
+  toolName: string;
+  reason: string;
+  requestId: string;
+  adminUrl?: string;
+};
+
 export type SlackApprovalNotification = {
   kind: "credits_approved" | "credits_rejected";
   userName: string;
@@ -30,11 +40,25 @@ export type SlackApprovalNotification = {
   amount?: number;
   note?: string;
   requestId: string;
+  /** Admin que resolvió la solicitud (opcional). */
+  adminName?: string;
+};
+
+/** Resolución (aprobar/rechazar) de una solicitud de acceso a tool. */
+export type SlackAccessResolutionNotification = {
+  kind: "access_approved" | "access_rejected";
+  userName: string;
+  toolName: string;
+  adminName: string;
+  note?: string;
+  requestId: string;
 };
 
 export type SlackNotification =
   | SlackRequestNotification
-  | SlackApprovalNotification;
+  | SlackAccessRequestNotification
+  | SlackApprovalNotification
+  | SlackAccessResolutionNotification;
 
 /**
  * Manda una notificación a Slack. Promesa resuelve siempre — el caller
@@ -159,30 +183,121 @@ function buildPayload(n: SlackNotification): SlackPayload {
     return { text, blocks };
   }
 
-  // approved / rejected
-  const verb = n.kind === "credits_approved" ? "aprobó" : "rechazó";
-  const emoji = n.kind === "credits_approved" ? "✅" : "⛔";
-  const lines: string[] = [
-    `*Empleado*\n${n.userName}`,
-    `*Herramienta*\n${n.toolName}`,
-  ];
-  if (n.amount != null) lines.push(`*Créditos*\n${n.amount}`);
-  if (n.note) lines.push(`*Nota*\n${n.note}`);
-  lines.push(`*ID solicitud*\n\`${n.requestId}\``);
-
-  return {
-    text: `${emoji} Solicitud ${verb}: ${n.userName} · ${n.toolName}`,
-    blocks: [
+  if (n.kind === "access_request") {
+    const text = `🔓 ${n.userName} pidió acceso a ${n.toolName}`;
+    const blocks: SlackBlock[] = [
       {
         type: "header",
         text: {
           type: "plain_text",
-          text: `${emoji} Solicitud ${verb}`,
+          text: "🔓 Solicitud de acceso a herramienta",
         },
       },
       {
         type: "section",
-        fields: lines.map((t) => ({ type: "mrkdwn", text: t })),
+        fields: [
+          { type: "mrkdwn", text: `*Empleado*\n${n.userName}` },
+          { type: "mrkdwn", text: `*Herramienta*\n${n.toolName}` },
+          { type: "mrkdwn", text: `*ID solicitud*\n\`${n.requestId}\`` },
+        ],
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Motivo:*\n> ${n.reason}\n\n_Este empleado todavía no tiene esta herramienta habilitada._`,
+        },
+      },
+    ];
+    if (n.adminUrl) {
+      blocks.push({
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Ver en panel" },
+            url: n.adminUrl,
+            style: "primary",
+          },
+        ],
+      });
+    }
+    return { text, blocks };
+  }
+
+  if (n.kind === "access_approved" || n.kind === "access_rejected") {
+    const approved = n.kind === "access_approved";
+    const emoji = approved ? "✅" : "❌";
+    const verb = approved ? "aprobó" : "rechazó";
+    const tail = approved
+      ? `${n.userName} ahora tiene acceso a ${n.toolName}`
+      : `${n.userName} pidió acceso a ${n.toolName}`;
+    const lines: string[] = [
+      `*Empleado*\n${n.userName}`,
+      `*Herramienta*\n${n.toolName}`,
+      `*Resuelto por*\n${n.adminName}`,
+    ];
+    if (n.note) lines.push(`*Nota*\n${n.note}`);
+    lines.push(`*ID solicitud*\n\`${n.requestId}\``);
+    return {
+      text: `${emoji} ${n.adminName} ${verb} acceso: ${tail}`,
+      blocks: [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `${emoji} Acceso ${approved ? "aprobado" : "rechazado"}`,
+          },
+        },
+        {
+          type: "section",
+          fields: lines.map((t) => ({ type: "mrkdwn" as const, text: t })),
+        },
+      ],
+    };
+  }
+
+  // approved / rejected (créditos)
+  if (n.kind === "credits_approved" || n.kind === "credits_rejected") {
+    const verb = n.kind === "credits_approved" ? "aprobó" : "rechazó";
+    const emoji = n.kind === "credits_approved" ? "✅" : "⛔";
+    const lines: string[] = [
+      `*Empleado*\n${n.userName}`,
+      `*Herramienta*\n${n.toolName}`,
+    ];
+    if (n.amount != null) lines.push(`*Créditos*\n${n.amount}`);
+    if (n.note) lines.push(`*Nota*\n${n.note}`);
+    lines.push(`*ID solicitud*\n\`${n.requestId}\``);
+
+    return {
+      text: `${emoji} Solicitud ${verb}: ${n.userName} · ${n.toolName}`,
+      blocks: [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `${emoji} Solicitud ${verb}`,
+          },
+        },
+        {
+          type: "section",
+          fields: lines.map((t) => ({ type: "mrkdwn", text: t })),
+        },
+      ],
+    };
+  }
+
+  // Fallback inalcanzable en la práctica — los 5 kinds tienen su propio
+  // bloque con return arriba. No usamos `const _: never = n` para el
+  // exhaustiveness check porque TS no estrecha del todo cuando el
+  // discriminante `kind` es una unión (caso de SlackApprovalNotification
+  // y SlackAccessResolutionNotification). El runtime queda cubierto igual.
+  return {
+    text: "notificación NQS AI Hub",
+    blocks: [
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: "notificación NQS AI Hub" },
       },
     ],
   };

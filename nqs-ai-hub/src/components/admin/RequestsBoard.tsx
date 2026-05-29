@@ -410,7 +410,11 @@ function RequestCard({ req, onApprove, onReject }: RequestCardProps) {
             rechazar
           </button>
           <button type="button" className="btn" onClick={onApprove}>
-            aprobar +{req.credits_requested ?? 0} →
+            {isAccess
+              ? "aprobar y habilitar →"
+              : isExceptional
+                ? "aprobar acceso →"
+                : `aprobar +${req.credits_requested ?? 0} →`}
           </button>
         </div>
       )}

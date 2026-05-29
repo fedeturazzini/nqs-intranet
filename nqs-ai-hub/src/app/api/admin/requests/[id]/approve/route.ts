@@ -3,21 +3,21 @@
  *
  * Body: { note?: string }
  *
- * Aprueba una solicitud de créditos:
- *   1. Marca la request como `approved`.
- *   2. Suma `credits_requested` al allocation del user (upsert).
- *   3. Inserta `credit_transaction` con type='allocation'.
- *   4. Notif a Slack (best-effort).
+ * Aprueba una solicitud según su request_type:
+ *   - credits             → suma créditos al allocation + tx
+ *   - exceptional_access  → tool_access temporal con expires_at
+ *   - access              → tool_access permanente (habilita la tool)
+ * En todos los casos marca la request como `approved` + notif a Slack.
  *
- * Validamos:
- *   - request existe + status='pending' (no aprobamos dos veces).
- *   - `credits_requested` no es null.
+ * Validamos: request existe + status='pending' (no aprobar dos veces).
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
 import { createServerClient } from "@/lib/db/supabase";
+import { logToolUsage } from "@/lib/adapters/utils";
 import { notifySlack } from "@/lib/notifications/slack";
+import type { ToolId } from "@/types/db-aliases";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -85,11 +85,39 @@ export async function POST(
   let newAssigned: number | null = null;
   let expiresAt: string | null = null;
 
-  // ─── Flow para acceso excepcional ───
-  // No suma créditos: crea/actualiza tool_access con expires_at futuro
-  // y schedule=null (temporalmente sin restricción horaria). Cuando
-  // pase expires_at, el middleware lo trata como expired.
-  if (reqType === "exceptional_access") {
+  // ─── Flow para solicitud de acceso a tool ───
+  // El user no tenía la tool habilitada. Upsert de tool_access a
+  // status='active' permanente (sin expires_at). schedule queda null
+  // (24/7) — si el admin quiere restringir horarios lo hace después
+  // desde /admin/access.
+  if (reqType === "access") {
+    const { error: tAccErr } = await db.from("tool_access").upsert(
+      {
+        user_id: req.user_id,
+        tool_id: req.tool_id,
+        status: "active",
+        granted_by: guard.userId,
+      },
+      { onConflict: "user_id,tool_id" },
+    );
+    if (tAccErr) {
+      return NextResponse.json(
+        { error: "db_error", message: tAccErr.message },
+        { status: 500 },
+      );
+    }
+    // Log de auditoría — admin habilitó acceso a una tool.
+    await logToolUsage({
+      userId: guard.userId,
+      toolId: req.tool_id as ToolId,
+      action: "admin.access.grant",
+      metadata: { targetUserId: req.user_id, requestId: id },
+    });
+  } else if (reqType === "exceptional_access") {
+    // ─── Flow para acceso excepcional ───
+    // No suma créditos: crea/actualiza tool_access con expires_at futuro
+    // y schedule=null (temporalmente sin restricción horaria). Cuando
+    // pase expires_at, el middleware lo trata como expired.
     const mins = req.exceptional_duration_minutes;
     if (mins == null || mins <= 0) {
       return NextResponse.json(
@@ -201,20 +229,33 @@ export async function POST(
     (req.users as unknown as { name?: string } | null)?.name ?? "—";
   const toolName =
     (req.tools as unknown as { name?: string } | null)?.name ?? req.tool_id;
-  await notifySlack({
-    kind: "credits_approved",
-    userName,
-    toolName,
-    amount:
-      reqType === "exceptional_access"
-        ? req.exceptional_duration_minutes ?? undefined
-        : req.credits_requested ?? undefined,
-    note:
-      reqType === "exceptional_access"
-        ? `⏰ Acceso excepcional aprobado · expira ${expiresAt}${parsed.data.note ? ` · ${parsed.data.note}` : ""}`
-        : parsed.data.note,
-    requestId: id,
-  });
+
+  if (reqType === "access") {
+    // Notif con el kind de resolución de acceso (incluye quién aprobó).
+    await notifySlack({
+      kind: "access_approved",
+      userName,
+      toolName,
+      adminName: guard.name,
+      note: parsed.data.note,
+      requestId: id,
+    });
+  } else {
+    await notifySlack({
+      kind: "credits_approved",
+      userName,
+      toolName,
+      amount:
+        reqType === "exceptional_access"
+          ? req.exceptional_duration_minutes ?? undefined
+          : req.credits_requested ?? undefined,
+      note:
+        reqType === "exceptional_access"
+          ? `⏰ Acceso excepcional aprobado · expira ${expiresAt}${parsed.data.note ? ` · ${parsed.data.note}` : ""}`
+          : parsed.data.note,
+      requestId: id,
+    });
+  }
 
   return NextResponse.json({
     ok: true,

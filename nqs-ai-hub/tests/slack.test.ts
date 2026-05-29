@@ -108,4 +108,33 @@ describe("buildPayload — shape", () => {
     expect(p.text).toContain("✅");
     expect(p.blocks.some((b) => b.type === "actions")).toBe(false);
   });
+
+  test("access_request incluye header 🔓 + botón cuando hay adminUrl", () => {
+    const p = __testing.buildPayload({
+      kind: "access_request",
+      userName: "Bruno",
+      toolName: "Claude",
+      reason: "necesito Claude para análisis de copy",
+      requestId: "req-1",
+      adminUrl: "https://hub.nqs/admin/requests",
+    });
+    expect(p.text).toContain("🔓");
+    expect(p.text).toContain("Claude");
+    expect(p.blocks.some((b) => b.type === "header")).toBe(true);
+    expect(p.blocks.some((b) => b.type === "actions")).toBe(true);
+  });
+
+  test("access_approved menciona al admin que aprobó", () => {
+    const p = __testing.buildPayload({
+      kind: "access_approved",
+      userName: "Bruno",
+      toolName: "Claude",
+      adminName: "Tomás",
+      requestId: "req-1",
+    });
+    expect(p.text).toContain("✅");
+    expect(p.text).toContain("Tomás");
+    expect(p.text).toContain("Bruno");
+    expect(p.blocks.some((b) => b.type === "actions")).toBe(false);
+  });
 });

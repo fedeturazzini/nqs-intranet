@@ -49,7 +49,7 @@ export async function POST(
   const { data: req, error: reqErr } = await db
     .from("access_requests")
     .select(
-      "id, user_id, tool_id, credits_requested, status, users!access_requests_user_id_fkey(name), tools!access_requests_tool_id_fkey(name)",
+      "id, user_id, tool_id, credits_requested, request_type, status, users!access_requests_user_id_fkey(name), tools!access_requests_tool_id_fkey(name)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -89,14 +89,27 @@ export async function POST(
     (req.users as unknown as { name?: string } | null)?.name ?? "—";
   const toolName =
     (req.tools as unknown as { name?: string } | null)?.name ?? req.tool_id;
-  await notifySlack({
-    kind: "credits_rejected",
-    userName,
-    toolName,
-    amount: req.credits_requested ?? undefined,
-    note: parsed.data.note,
-    requestId: id,
-  });
+  const reqType = req.request_type ?? "credits";
+
+  if (reqType === "access") {
+    await notifySlack({
+      kind: "access_rejected",
+      userName,
+      toolName,
+      adminName: guard.name,
+      note: parsed.data.note,
+      requestId: id,
+    });
+  } else {
+    await notifySlack({
+      kind: "credits_rejected",
+      userName,
+      toolName,
+      amount: req.credits_requested ?? undefined,
+      note: parsed.data.note,
+      requestId: id,
+    });
+  }
 
   return NextResponse.json({ ok: true, requestId: id });
 }
