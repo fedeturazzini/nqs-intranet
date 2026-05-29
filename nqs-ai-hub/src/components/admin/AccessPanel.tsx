@@ -259,8 +259,14 @@ export function AccessPanel({
                   `${selectedUser.id}::${tool.id}`,
                 );
                 return (
+                  // key incluye el user: al cambiar de usuario, React
+                  // remonta cada card y `ToolAccessCard` re-inicializa su
+                  // estado `showSchedule` desde el `access.schedule` del
+                  // user correcto (si la key fuera solo `tool.id`, la
+                  // instancia se reusaría entre usuarios y el estado
+                  // quedaría stale → mostraba "24/7" aunque hubiera schedule).
                   <ToolAccessCard
-                    key={tool.id}
+                    key={`${selectedUser.id}::${tool.id}`}
                     tool={tool}
                     access={access ?? null}
                     onStatusToggle={(next) =>
