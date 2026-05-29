@@ -45,10 +45,21 @@ export function createServerClient(): SupabaseClient<Database> {
 /**
  * Cliente con anon_key. Apto para frontend (browser) y para Server
  * Components que sólo leen datos públicos respetando RLS.
+ *
+ * ⚠️ IMPORTANTE: las `NEXT_PUBLIC_*` se referencian de forma ESTÁTICA
+ * (`process.env.NEXT_PUBLIC_X` literal), NO vía `requireEnv(name)`. Next.js
+ * solo incrusta estas vars en el bundle del browser cuando las ve escritas
+ * literalmente en build-time; un acceso dinámico `process.env[name]` queda
+ * `undefined` en el cliente en producción (en dev funciona igual, por eso
+ * el bug solo aparecía deployado).
  */
 export function createBrowserClient(): SupabaseClient<Database> {
-  const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
-  const anonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error(
+      "Missing required env var: NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY. Revisá .env.local y .env.local.example.",
+    );
+  }
   return createClient<Database>(url, anonKey);
 }
