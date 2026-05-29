@@ -10,7 +10,7 @@
   --fg-mute: rgba(245, 241, 232, 0.62);
   --fg-dim: rgba(245, 241, 232, 0.38);
   --fg-faint: rgba(245, 241, 232, 0.18);
-  --accent: #e8ff3d;        /* amarillo señalética */
+  --accent: #ffcb5c;        /* amarillo dorado / ámbar (elección final del cliente) */
   --accent-fg: #0a0908;
   --warn: #ff8a3d;
   --danger: #ff5c5c;
@@ -31,7 +31,9 @@
   --fg-mute: rgba(10, 9, 8, 0.62);
   --fg-dim: rgba(10, 9, 8, 0.38);
   --fg-faint: rgba(10, 9, 8, 0.18);
-  --accent: #d8ec1a;
+  /* Tono ligeramente más oscuro que #ffcb5c para mantener contraste
+     sobre el fondo crema (#f5f1e8) en light mode. */
+  --accent: #e8b143;
   --accent-fg: #0a0908;
 }
 
