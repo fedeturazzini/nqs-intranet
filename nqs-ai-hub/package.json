@@ -10,6 +10,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "db:seed-users": "tsx scripts/create-users.ts",
     "db:test": "tsx scripts/test-db.ts",
     "db:race-test": "tsx scripts/test-credit-race.ts"
@@ -28,6 +29,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.7",
     "@vitest/ui": "^4.1.7",
     "dotenv": "^17.4.2",
     "prettier": "^3.8.3",
