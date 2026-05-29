@@ -19,7 +19,6 @@
  * al store.
  */
 import { useCallback, useState } from "react";
-import type { ImagePayload } from "@/lib/utils/images";
 
 // ============================================================
 // Tipos del chat (UI-side)
@@ -63,6 +62,8 @@ type ConversationDetailResponse = {
     content: string;
     tokens_input: number | null;
     tokens_output: number | null;
+    /** Signed download URLs (1h) generadas por el endpoint. */
+    imageUrls?: string[];
   }>;
 };
 
@@ -103,6 +104,8 @@ export function useClaudeChat() {
           content: m.content,
           tokensInput: m.tokens_input ?? undefined,
           tokensOutput: m.tokens_output ?? undefined,
+          imagePreviews:
+            m.imageUrls && m.imageUrls.length > 0 ? m.imageUrls : undefined,
         })),
       );
     } catch (err) {
@@ -111,14 +114,15 @@ export function useClaudeChat() {
   }, []);
 
   /**
-   * Envía un mensaje. Si hay imágenes, ya vienen en base64.
-   * Devuelve el nuevo conversationId si era una conv nueva, o null si
-   * algo falló (ya seteamos el error en `messages`).
+   * Envía un mensaje. Las imágenes ya fueron subidas a Storage por el
+   * caller (ChatInput) — acá solo recibimos los `imagePaths` y los
+   * `imagePreviews` (data URLs locales para el optimistic render).
+   * Devuelve el nuevo conversationId si era una conv nueva, o el error.
    */
   const sendMessage = useCallback(
     async (
       prompt: string,
-      images: ImagePayload[],
+      imagePaths: string[],
       imagePreviews: string[],
     ): Promise<{ ok: true; conversationId: string } | { ok: false; error: string }> => {
       const userMsgId = `local-${crypto.randomUUID()}`;
@@ -148,7 +152,7 @@ export function useClaudeChat() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             prompt,
-            images: images.length > 0 ? images : undefined,
+            imagePaths: imagePaths.length > 0 ? imagePaths : undefined,
             conversationId: conversationId ?? undefined,
           }),
         });

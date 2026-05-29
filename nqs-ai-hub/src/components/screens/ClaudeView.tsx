@@ -20,9 +20,9 @@ import Link from "next/link";
 import { showToast } from "@/lib/store/toast";
 import { useClaudeChat } from "@/lib/hooks/useClaudeChat";
 import { ChatInput } from "@/components/tool/ChatInput";
+// (ImagePayload ya no se usa — las imágenes viajan como paths de Storage)
 import { ChatMessages } from "@/components/tool/ChatMessages";
 import { ConversationsSidebar } from "@/components/tool/ConversationsSidebar";
-import type { ImagePayload } from "@/lib/utils/images";
 
 type ClaudeViewProps = Readonly<{
   user: {
@@ -42,11 +42,11 @@ export function ClaudeView({ user }: ClaudeViewProps) {
   const onSend = useCallback(
     async (
       prompt: string,
-      images: ImagePayload[],
+      imagePaths: string[],
       previews: string[],
     ) => {
       const wasNew = chat.conversationId === null;
-      const result = await chat.sendMessage(prompt, images, previews);
+      const result = await chat.sendMessage(prompt, imagePaths, previews);
       if (!result.ok) {
         showToast({
           title: "ERROR",
@@ -171,7 +171,11 @@ export function ClaudeView({ user }: ClaudeViewProps) {
             />
           </div>
 
-          <ChatInput isSending={chat.isSending} onSend={onSend} />
+          <ChatInput
+            isSending={chat.isSending}
+            conversationId={chat.conversationId}
+            onSend={onSend}
+          />
         </main>
       </div>
     </div>

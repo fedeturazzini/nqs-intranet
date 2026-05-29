@@ -27,10 +27,9 @@ import { showToast } from "@/lib/store/toast";
 import {
   ACCEPTED_MEDIA_TYPES,
   MAX_IMAGES_PER_MESSAGE,
-  fileToBase64,
   fileToPreviewUrl,
+  uploadImages,
   validateImage,
-  type ImagePayload,
 } from "@/lib/utils/images";
 
 const TEXTAREA_MIN_ROWS = 1;
@@ -46,13 +45,26 @@ type Attachment = {
 
 type ChatInputProps = Readonly<{
   isSending: boolean;
-  onSend: (prompt: string, images: ImagePayload[], previews: string[]) => void;
+  /** Conversación actual — para armar el path de Storage. null = nueva. */
+  conversationId: string | null;
+  /** `imagePaths` son paths de Storage ya subidos; `previews` son data
+   *  URLs locales para el render optimista. */
+  onSend: (
+    prompt: string,
+    imagePaths: string[],
+    previews: string[],
+  ) => void;
 }>;
 
-export function ChatInput({ isSending, onSend }: ChatInputProps) {
+export function ChatInput({
+  isSending,
+  conversationId,
+  onSend,
+}: ChatInputProps) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -126,24 +138,33 @@ export function ChatInput({ isSending, onSend }: ChatInputProps) {
 
   async function handleSend() {
     const trimmed = text.trim();
-    if (!trimmed || isSending) return;
+    if (!trimmed || isSending || uploading) return;
 
-    let images: ImagePayload[] = [];
-    try {
-      images = await Promise.all(
-        attachments.map((a) => fileToBase64(a.file)),
-      );
-    } catch (err) {
-      showToast({
-        title: "ERROR",
-        msg: err instanceof Error ? err.message : "no pude leer las imágenes",
-        color: "var(--danger, #ff5c5c)",
-      });
-      return;
+    // Subimos las imágenes a Storage ANTES de mandar el mensaje. El
+    // execute recibe los paths, no los bytes (esquiva el límite de
+    // body de Vercel). Si la subida falla, no enviamos.
+    let imagePaths: string[] = [];
+    if (attachments.length > 0) {
+      setUploading(true);
+      try {
+        imagePaths = await uploadImages(
+          attachments.map((a) => a.file),
+          conversationId,
+        );
+      } catch (err) {
+        showToast({
+          title: "ERROR AL SUBIR",
+          msg: err instanceof Error ? err.message : "no pude subir las imágenes",
+          color: "var(--danger, #ff5c5c)",
+        });
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
     }
 
     const previews = attachments.map((a) => a.previewUrl);
-    onSend(trimmed, images, previews);
+    onSend(trimmed, imagePaths, previews);
     setText("");
     setAttachments([]);
   }
@@ -312,15 +333,18 @@ export function ChatInput({ isSending, onSend }: ChatInputProps) {
         <button
           type="button"
           onClick={() => void handleSend()}
-          disabled={isSending || !text.trim()}
+          disabled={isSending || uploading || !text.trim()}
           aria-label="enviar"
           className="btn sm"
           style={{
-            opacity: isSending || !text.trim() ? 0.5 : 1,
-            cursor: isSending || !text.trim() ? "not-allowed" : "pointer",
+            opacity: isSending || uploading || !text.trim() ? 0.5 : 1,
+            cursor:
+              isSending || uploading || !text.trim()
+                ? "not-allowed"
+                : "pointer",
           }}
         >
-          {isSending ? "…" : "→"}
+          {uploading ? "↑" : isSending ? "…" : "→"}
         </button>
       </div>
     </div>

@@ -21,20 +21,13 @@ import { requireToolAccess } from "@/lib/middleware/permissions";
 const MAX_PROMPT_CHARS = 10_000;
 const MAX_IMAGES = 5;
 
-const ImageSchema = z.object({
-  type: z.literal("base64"),
-  media_type: z.enum([
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-  ]),
-  data: z.string().min(1),
-});
-
+// Las imágenes ya viajaron a Storage (vía /upload-url). Acá solo
+// recibimos los PATHS — el adapter valida ownership y genera signed
+// URLs. El body queda chico (no más base64) → sin problema con el
+// límite de 4.5MB de Vercel.
 const ExecuteSchema = z.object({
   prompt: z.string().min(1).max(MAX_PROMPT_CHARS),
-  images: z.array(ImageSchema).max(MAX_IMAGES).optional(),
+  imagePaths: z.array(z.string().min(1).max(500)).max(MAX_IMAGES).optional(),
   conversationId: z.string().uuid().optional(),
 });
 

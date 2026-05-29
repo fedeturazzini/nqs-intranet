@@ -32,6 +32,10 @@ import {
 import { createServerClient } from "@/lib/db/supabase";
 import { getToolAccess } from "@/lib/db/queries/tools";
 import { getActiveSystemAndMemory } from "@/lib/db/queries/system-prompts";
+import {
+  pathBelongsToUser,
+  signDownloadUrls,
+} from "@/lib/storage/claude-uploads";
 import { logToolUsage } from "./utils";
 import type {
   AccessState,
@@ -151,10 +155,20 @@ export const claudeAdapter: ToolAdapter = {
         }
       }
 
+      // Imágenes: validamos ownership de cada path y generamos signed
+      // download URLs (1h) para que Anthropic las descargue. Los paths
+      // ya fueron subidos a Storage por el cliente vía signed upload URL.
+      const imagePaths = (params.imagePaths ?? []).filter((p) =>
+        pathBelongsToUser(p, userId),
+      );
+      const signed =
+        imagePaths.length > 0 ? await signDownloadUrls(imagePaths) : [];
+      const imageUrls = signed.map((s) => s.url);
+
       // Mensaje del user actual (texto + imágenes).
       messages.push({
         role: "user",
-        content: buildUserContent(params.prompt, params.images),
+        content: buildUserContent(params.prompt, imageUrls),
       });
 
       // 3. Anthropic.
@@ -181,9 +195,9 @@ export const claudeAdapter: ToolAdapter = {
         }
 
         // Insertamos los 2 mensajes de la vuelta actual (user + assistant)
-        // en un solo batch. Para imágenes, en MVP guardamos `[]` —
-        // mover a Supabase Storage cuando exista el módulo de uploads
-        // (queda como TODO).
+        // en un solo batch. En el mensaje del user persistimos los PATHS
+        // de Storage (no las URLs firmadas, que expiran). Al renderear
+        // histórico se vuelven a firmar on-demand.
         const { data: inserted, error: msgErr } = await db
           .from("claude_messages")
           .insert([
@@ -191,7 +205,7 @@ export const claudeAdapter: ToolAdapter = {
               conversation_id: conversationId,
               role: "user" as const,
               content: params.prompt,
-              images: [],
+              images: imagePaths,
             },
             {
               conversation_id: conversationId,
@@ -242,7 +256,7 @@ export const claudeAdapter: ToolAdapter = {
         metadata: {
           conversationId,
           messageId,
-          imagesCount: params.images?.length ?? 0,
+          imagesCount: imagePaths.length,
           promptLength: params.prompt.length,
           model: systemPrompt.model,
           promptVersion: systemPrompt.version,

@@ -44,15 +44,16 @@ export type Result<T, E = Error> =
 // Execute — parámetros y resultado
 // ============================================================
 
-export type ExecuteImage = {
-  type: "base64";
-  media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-  data: string;
-};
-
 export type ExecuteParams = {
   prompt: string;
-  images?: ExecuteImage[];
+  /**
+   * Paths de imágenes ya subidas a Supabase Storage (bucket
+   * `claude-uploads`). El adapter genera signed download URLs y se las
+   * pasa a Anthropic. Reemplaza el viejo `images` base64 — ahora los
+   * archivos viajan directo cliente → Storage, no por la API route
+   * (esquiva el límite de 4.5MB de Vercel).
+   */
+  imagePaths?: string[];
   /** Si viene, se appendea a la conversación existente. Si no, se crea una nueva. */
   conversationId?: string;
 };

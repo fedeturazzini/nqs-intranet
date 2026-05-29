@@ -19,7 +19,6 @@
  *     al SDK por cada call.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import type { ExecuteImage } from "@/lib/adapters/types";
 
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
 export const DEFAULT_MAX_TOKENS = 4096;
@@ -107,20 +106,18 @@ export async function callClaude(
 
 export function buildUserContent(
   prompt: string,
-  images?: ExecuteImage[],
+  imageUrls?: string[],
 ): Anthropic.Messages.ContentBlockParam[] {
   const blocks: Anthropic.Messages.ContentBlockParam[] = [];
-  if (images && images.length > 0) {
+  if (imageUrls && imageUrls.length > 0) {
     // Convención de la API: imágenes ANTES del texto da mejores
     // resultados (Anthropic lo recomienda en sus docs de vision).
-    for (const img of images) {
+    // Usamos `source: { type: "url" }` con signed download URLs de
+    // Supabase Storage — Anthropic las descarga server-side.
+    for (const url of imageUrls) {
       blocks.push({
         type: "image",
-        source: {
-          type: "base64",
-          media_type: img.media_type,
-          data: img.data,
-        },
+        source: { type: "url", url },
       });
     }
   }

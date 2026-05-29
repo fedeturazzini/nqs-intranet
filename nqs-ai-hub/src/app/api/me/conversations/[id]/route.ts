@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
+import { signDownloadUrls } from "@/lib/storage/claude-uploads";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -62,6 +63,32 @@ export async function GET(
     );
   }
 
+  // Las imágenes se guardan como PATHS de Storage. Para mostrarlas hay
+  // que firmar URLs de descarga on-demand (1h). Juntamos todos los paths
+  // de la conversación, firmamos en un solo batch, y devolvemos
+  // `imageUrls` por mensaje.
+  const allPaths: string[] = [];
+  for (const m of messages ?? []) {
+    const imgs = Array.isArray(m.images) ? (m.images as unknown[]) : [];
+    for (const p of imgs) {
+      if (typeof p === "string" && p.length > 0) allPaths.push(p);
+    }
+  }
+  const signedByPath = new Map<string, string>();
+  if (allPaths.length > 0) {
+    const signed = await signDownloadUrls(allPaths);
+    for (const s of signed) signedByPath.set(s.path, s.url);
+  }
+
+  const messagesWithUrls = (messages ?? []).map((m) => {
+    const imgs = Array.isArray(m.images) ? (m.images as unknown[]) : [];
+    const imageUrls = imgs
+      .filter((p): p is string => typeof p === "string")
+      .map((p) => signedByPath.get(p))
+      .filter((u): u is string => Boolean(u));
+    return { ...m, imageUrls };
+  });
+
   return NextResponse.json({
     conversation: {
       id: conv.id,
@@ -69,6 +96,6 @@ export async function GET(
       createdAt: conv.created_at,
       updatedAt: conv.updated_at,
     },
-    messages: messages ?? [],
+    messages: messagesWithUrls,
   });
 }
