@@ -19,8 +19,10 @@ export type Database = {
           created_at: string | null
           credits_requested: number | null
           duration_minutes: number | null
+          exceptional_duration_minutes: number | null
           id: string
           reason: string | null
+          request_type: string
           review_note: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -32,8 +34,10 @@ export type Database = {
           created_at?: string | null
           credits_requested?: number | null
           duration_minutes?: number | null
+          exceptional_duration_minutes?: number | null
           id?: string
           reason?: string | null
+          request_type?: string
           review_note?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -45,8 +49,10 @@ export type Database = {
           created_at?: string | null
           credits_requested?: number | null
           duration_minutes?: number | null
+          exceptional_duration_minutes?: number | null
           id?: string
           reason?: string | null
+          request_type?: string
           review_note?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null

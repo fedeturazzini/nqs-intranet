@@ -14,7 +14,7 @@ async function loadRequests() {
   const { data } = await db
     .from("access_requests")
     .select(
-      "id, user_id, tool_id, credits_requested, reason, status, reviewed_by, reviewed_at, review_note, created_at, users!access_requests_user_id_fkey(name, initials, dept), tools!access_requests_tool_id_fkey(name, color, glyph)",
+      "id, user_id, tool_id, credits_requested, exceptional_duration_minutes, request_type, reason, status, reviewed_by, reviewed_at, review_note, created_at, users!access_requests_user_id_fkey(name, initials, dept), tools!access_requests_tool_id_fkey(name, color, glyph)",
     )
     .order("created_at", { ascending: false })
     .limit(200);

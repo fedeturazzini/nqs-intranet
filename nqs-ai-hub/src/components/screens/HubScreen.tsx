@@ -17,9 +17,11 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { OutsideHoursModal } from "@/components/tool/OutsideHoursModal";
 import { ToolCard } from "@/components/tool/ToolCard";
 import { ToolRow } from "@/components/tool/ToolRow";
 import { showToast } from "@/lib/store/toast";
+import { checkSchedule } from "@/lib/utils/schedule";
 import type { ToolWithAccess } from "@/lib/db/queries/access";
 import type { ToolId } from "@/types/db-aliases";
 
@@ -183,7 +185,22 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
     };
 
   // ─── handlers de acción ──────────────────────────────────
+  // Si la tool tiene schedule configurado y estamos fuera de horario,
+  // abrimos el modal en lugar de redirigir. Server igual valida con
+  // canUseTool, así que esto es una mejora UX (no de seguridad).
+  const [outsideHoursTool, setOutsideHoursTool] = useState<ToolWithAccess | null>(
+    null,
+  );
+
   const onOpen = (tool: ToolWithAccess) => {
+    const schedule = tool.access.schedule ?? null;
+    if (schedule) {
+      const check = checkSchedule(schedule);
+      if (!check.allowed) {
+        setOutsideHoursTool(tool);
+        return;
+      }
+    }
     router.push(`/tool/${tool.id}`);
   };
 
@@ -330,6 +347,17 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
           ↳ no hay herramientas que coincidan con el filtro
         </div>
       )}
+
+      <OutsideHoursModal
+        open={outsideHoursTool !== null}
+        toolId={outsideHoursTool?.id ?? ""}
+        toolName={outsideHoursTool?.name ?? ""}
+        schedule={outsideHoursTool?.access.schedule ?? null}
+        onClose={() => setOutsideHoursTool(null)}
+        onSubmitted={() => {
+          setOutsideHoursTool(null);
+        }}
+      />
     </div>
   );
 }

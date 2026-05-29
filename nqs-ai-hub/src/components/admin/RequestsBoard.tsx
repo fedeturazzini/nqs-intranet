@@ -6,11 +6,18 @@
 import { useMemo, useState } from "react";
 import { showToast } from "@/lib/store/toast";
 
+type RequestType = "credits" | "access" | "exceptional_access";
+
 type RequestRow = {
   id: string;
   user_id: string;
   tool_id: string;
   credits_requested: number | null;
+  exceptional_duration_minutes: number | null;
+  // El CHECK constraint en DB asegura que es uno de los 3 valores;
+  // el autogen lo tipa como `string`. La validación a runtime la
+  // hacemos al leer (con `as RequestType` cuando lo precisamos).
+  request_type: string | null;
   reason: string | null;
   status: "pending" | "approved" | "rejected" | "expired" | null;
   reviewed_by: string | null;
@@ -22,6 +29,7 @@ type RequestRow = {
 };
 
 type Tab = "pending" | "approved" | "rejected" | "all";
+type KindFilter = "all" | RequestType;
 
 type RequestsBoardProps = Readonly<{
   initialRequests: RequestRow[];
@@ -42,6 +50,7 @@ function fmtRelative(iso: string | null): string {
 export function RequestsBoard({ initialRequests }: RequestsBoardProps) {
   const [requests, setRequests] = useState(initialRequests);
   const [tab, setTab] = useState<Tab>("pending");
+  const [kind, setKind] = useState<KindFilter>("all");
 
   const counts = useMemo(() => {
     const c = { pending: 0, approved: 0, rejected: 0, all: requests.length };
@@ -53,10 +62,23 @@ export function RequestsBoard({ initialRequests }: RequestsBoardProps) {
     return c;
   }, [requests]);
 
+  const kindCounts = useMemo(() => {
+    const c = { credits: 0, access: 0, exceptional_access: 0 };
+    for (const r of requests) {
+      const t = (r.request_type ?? "credits") as RequestType;
+      if (t in c) c[t]++;
+    }
+    return c;
+  }, [requests]);
+
   const filtered = useMemo(() => {
-    if (tab === "all") return requests;
-    return requests.filter((r) => r.status === tab);
-  }, [requests, tab]);
+    return requests.filter((r) => {
+      const statusOk = tab === "all" || r.status === tab;
+      const typeOk =
+        kind === "all" || (r.request_type ?? "credits") === kind;
+      return statusOk && typeOk;
+    });
+  }, [requests, tab, kind]);
 
   async function refresh() {
     try {
@@ -143,6 +165,48 @@ export function RequestsBoard({ initialRequests }: RequestsBoardProps) {
         />
       </div>
 
+      {/* Sub-filtro por tipo de solicitud */}
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          marginTop: 14,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <span
+          className="t-meta dim"
+          style={{ fontSize: 10, marginRight: 4 }}
+        >
+          ↳ TIPO:
+        </span>
+        <KindChip
+          label={`todos · ${counts.all}`}
+          active={kind === "all"}
+          onClick={() => setKind("all")}
+          color={null}
+        />
+        <KindChip
+          label={`créditos · ${kindCounts.credits}`}
+          active={kind === "credits"}
+          onClick={() => setKind("credits")}
+          color="var(--accent)"
+        />
+        <KindChip
+          label={`acceso · ${kindCounts.access}`}
+          active={kind === "access"}
+          onClick={() => setKind("access")}
+          color="#5BC0EB"
+        />
+        <KindChip
+          label={`⏰ excepcional · ${kindCounts.exceptional_access}`}
+          active={kind === "exceptional_access"}
+          onClick={() => setKind("exceptional_access")}
+          color="#FF8A3D"
+        />
+      </div>
+
       <div
         style={{
           display: "flex",
@@ -182,11 +246,43 @@ function RequestCard({ req, onApprove, onReject }: RequestCardProps) {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectNote, setRejectNote] = useState("");
   const status = req.status ?? "pending";
+  const reqType = (req.request_type ?? "credits") as RequestType;
+  const isExceptional = reqType === "exceptional_access";
+  const isAccess = reqType === "access";
+
+  // Color + label del badge según el tipo de solicitud.
+  const typeBadge =
+    reqType === "exceptional_access"
+      ? { color: "#FF8A3D", bg: "rgba(255,138,61,0.10)", label: "⏰ acceso excepcional" }
+      : reqType === "access"
+        ? { color: "#5BC0EB", bg: "rgba(91,192,235,0.10)", label: "acceso a tool" }
+        : { color: "var(--accent-fg)", bg: "var(--accent)", label: "créditos" };
+
+  // Texto principal del "qué pidió" según el tipo.
+  let askedLabel: string;
+  if (isExceptional) {
+    const mins = req.exceptional_duration_minutes ?? 0;
+    askedLabel =
+      mins >= 60 && mins % 60 === 0
+        ? `${mins / 60}h fuera de horario`
+        : `${mins} min fuera de horario`;
+  } else if (isAccess) {
+    askedLabel = "acceso a la tool";
+  } else {
+    askedLabel = `+${req.credits_requested ?? 0} créditos`;
+  }
 
   return (
     <div
       style={{
-        border: "1px solid var(--line)",
+        border: isExceptional
+          ? "1px solid rgba(255,138,61,0.32)"
+          : "1px solid var(--line)",
+        borderLeft: isExceptional
+          ? "3px solid #FF8A3D"
+          : isAccess
+            ? "3px solid #5BC0EB"
+            : "1px solid var(--line)",
         borderRadius: 10,
         padding: 16,
         background: "var(--bg-elev)",
@@ -238,8 +334,28 @@ function RequestCard({ req, onApprove, onReject }: RequestCardProps) {
           <span style={{ fontSize: 13 }}>
             {req.tools?.name ?? req.tool_id}
           </span>
-          <span className="tag accent" style={{ padding: "2px 8px" }}>
-            +{req.credits_requested ?? 0} créditos
+          <span
+            className="tag"
+            style={{
+              padding: "2px 8px",
+              background: typeBadge.bg,
+              color: typeBadge.color,
+              border: isExceptional || isAccess
+                ? `1px solid ${typeBadge.color}`
+                : undefined,
+            }}
+          >
+            {typeBadge.label}
+          </span>
+          <span
+            className="tag"
+            style={{
+              padding: "2px 8px",
+              fontFamily: "var(--mono)",
+              fontSize: 10,
+            }}
+          >
+            {askedLabel}
           </span>
           {status !== "pending" && (
             <span
@@ -385,6 +501,39 @@ function Tab({
         cursor: "pointer",
         fontSize: 11,
         letterSpacing: "0.08em",
+        textTransform: "uppercase",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function KindChip({
+  label,
+  active,
+  onClick,
+  color,
+}: Readonly<{
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  color: string | null;
+}>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: "4px 10px",
+        border: `1px solid ${active ? (color ?? "var(--accent)") : "var(--line)"}`,
+        borderRadius: 999,
+        background: active && color ? `${color}22` : "transparent",
+        color: active ? "var(--fg)" : "var(--fg-mute)",
+        cursor: "pointer",
+        fontSize: 10,
+        fontFamily: "var(--mono)",
+        letterSpacing: "0.06em",
         textTransform: "uppercase",
       }}
     >

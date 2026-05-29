@@ -13,7 +13,11 @@
  * desde `credit_allocations`.
  */
 import { createServerClient } from "@/lib/db/supabase";
-import type { AccessStatus, ToolId } from "@/types/db-aliases";
+import type {
+  AccessStatus,
+  ToolId,
+  ToolSchedule,
+} from "@/types/db-aliases";
 
 export type ToolWithAccess = {
   id: ToolId;
@@ -34,6 +38,8 @@ export type ToolWithAccess = {
     expiresInMin?: number;
     requestedAt?: string;
     expiredAt?: string;
+    /** Schedule del user para esta tool. null = sin restricción. */
+    schedule?: ToolSchedule | null;
   };
 };
 
@@ -94,7 +100,11 @@ export async function listToolsWithAccess(
       glyph: tool.glyph ?? "◇",
       isActive: tool.is_active ?? false,
       usesCredits: tool.uses_credits ?? false,
-      access: { status, ...creditsInfo },
+      access: {
+        status,
+        ...creditsInfo,
+        schedule: (access?.schedule ?? null) as ToolSchedule | null,
+      },
     };
   });
 
