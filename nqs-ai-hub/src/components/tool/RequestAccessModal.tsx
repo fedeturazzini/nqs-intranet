@@ -25,6 +25,13 @@ type RequestAccessModalProps = Readonly<{
   toolName: string;
   toolGlyph?: string;
   toolColor?: string;
+  /**
+   * "request" (default): el user nunca tuvo acceso → "solicitar acceso".
+   * "renewal": el acceso expiró → copy de renovación. FEEDBACK NQS v2.0:
+   * el acceso expirado ahora se maneja desde el hub con este modal en vez
+   * de la pantalla full del módulo.
+   */
+  variant?: "request" | "renewal";
   onClose: () => void;
   onSubmitted: (requestId: string) => void;
 }>;
@@ -39,9 +46,11 @@ export function RequestAccessModal({
   toolName,
   toolGlyph = "◇",
   toolColor = "var(--accent)",
+  variant = "request",
   onClose,
   onSubmitted,
 }: RequestAccessModalProps) {
+  const isRenewal = variant === "renewal";
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,12 +60,18 @@ export function RequestAccessModal({
 
   useEffect(() => {
     if (open) {
-      setReason("");
+      // En renovación pre-cargamos un motivo (cumple el mín. de 10 chars)
+      // para que el user pueda pedir con un click; igual lo puede editar.
+      setReason(
+        variant === "renewal"
+          ? `Mi acceso a ${toolName} expiró y necesito renovarlo para seguir trabajando.`
+          : "",
+      );
       setError(null);
       setAlreadyPending(false);
       setTimeout(() => textareaRef.current?.focus(), 50);
     }
-  }, [open]);
+  }, [open, variant, toolName]);
 
   useEffect(() => {
     if (!open) return;
@@ -118,8 +133,11 @@ export function RequestAccessModal({
     >
       <div onClick={(e) => e.stopPropagation()} style={cardStyle}>
         <div style={hdStyle}>
-          <div className="t-eyebrow" style={{ color: "#5BC0EB" }}>
-            🔓 SOLICITAR ACCESO
+          <div
+            className="t-eyebrow"
+            style={{ color: isRenewal ? "#FF8A3D" : "#5BC0EB" }}
+          >
+            {isRenewal ? "⏳ TU ACCESO EXPIRÓ" : "🔓 SOLICITAR ACCESO"}
           </div>
           <button
             type="button"
@@ -132,13 +150,14 @@ export function RequestAccessModal({
         </div>
 
         <h2 id="request-access-title" style={titleStyle}>
-          No tenés acceso a{" "}
+          {isRenewal ? "Expiró tu acceso a " : "No tenés acceso a "}
           <span style={{ color: toolColor }}>{toolGlyph}</span>{" "}
           <em style={{ fontFamily: "var(--serif)" }}>{toolName}</em>
         </h2>
         <p className="t-meta dim" style={{ lineHeight: 1.55, margin: 0 }}>
-          Esta herramienta no está habilitada para tu usuario. Si la
-          necesitás para tu trabajo, podés solicitarle acceso al admin.
+          {isRenewal
+            ? "Tu acceso a esta herramienta venció. Pedile al admin que te lo renueve para seguir usándola."
+            : "Esta herramienta no está habilitada para tu usuario. Si la necesitás para tu trabajo, podés solicitarle acceso al admin."}
         </p>
 
         <label style={{ display: "block", marginTop: 18 }}>
@@ -200,7 +219,11 @@ export function RequestAccessModal({
             onClick={handleSubmit}
             disabled={!canSubmit}
           >
-            {submitting ? "enviando…" : "enviar solicitud →"}
+            {submitting
+              ? "enviando…"
+              : isRenewal
+                ? "pedir renovación →"
+                : "enviar solicitud →"}
           </button>
         </div>
       </div>

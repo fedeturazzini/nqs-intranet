@@ -165,7 +165,13 @@ export function RequestsBoard({ initialRequests }: RequestsBoardProps) {
         />
       </div>
 
-      {/* Sub-filtro por tipo de solicitud */}
+      {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
+          Sub-filtro por TIPO de solicitud (chips todos/créditos/acceso/
+          excepcional). Se oculta: las solicitudes se muestran todas
+          mezcladas y cada card mantiene su badge de color para distinguir
+          el tipo. El state `kind` queda fijo en "all" (filtered no filtra
+          por tipo). KindChip + kindCounts quedan para re-habilitar. */}
+      {/*
       <div
         style={{
           display: "flex",
@@ -206,6 +212,7 @@ export function RequestsBoard({ initialRequests }: RequestsBoardProps) {
           color="#FF8A3D"
         />
       </div>
+      */}
 
       <div
         style={{

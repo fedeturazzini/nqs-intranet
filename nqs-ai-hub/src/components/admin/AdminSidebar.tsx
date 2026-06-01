@@ -50,23 +50,30 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
       match: (p) => p.startsWith("/admin/requests"),
       badge: pendingRequests,
     },
-    {
-      label: "Créditos · pool",
-      href: "/admin/credits",
-      match: (p) => p.startsWith("/admin/credits"),
-    },
-    {
-      label: "Logs",
-      href: "/admin/logs",
-      match: (p) => p.startsWith("/admin/logs"),
-    },
+    // FEEDBACK NQS v2.0: hidden by request, may re-enable.
+    // "Créditos · pool" se oculta del sidebar. La página /admin/credits y su
+    // código quedan intactos (se rediseña a USD en prompt 17).
+    // {
+    //   label: "Créditos · pool",
+    //   href: "/admin/credits",
+    //   match: (p) => p.startsWith("/admin/credits"),
+    // },
+    // FEEDBACK NQS v2.0: hidden by request, may re-enable.
+    // "Logs" se oculta del sidebar. El código de /admin/logs queda intacto
+    // (se rediseña a USD en prompt 17).
+    // {
+    //   label: "Logs",
+    //   href: "/admin/logs",
+    //   match: (p) => p.startsWith("/admin/logs"),
+    // },
   ];
 
-  // Items que vendrán post-MVP.
-  const futureItems: { label: string }[] = [
-    { label: "Shield" },
-    { label: "Snaps" },
-  ];
+  // FEEDBACK NQS v2.0: hidden by request, may re-enable.
+  // Sección "PRÓXIMAMENTE" con Shield y Snaps (cards "SHIELD V2"/"SNAPS V2").
+  // const futureItems: { label: string }[] = [
+  //   { label: "Shield" },
+  //   { label: "Snaps" },
+  // ];
 
   return (
     <aside
@@ -118,6 +125,9 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
         );
       })}
 
+      {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
+          Sección "PRÓXIMAMENTE" (Shield V2 / Snaps V2). */}
+      {/*
       <div
         className="t-eyebrow"
         style={{
@@ -149,6 +159,7 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
           </span>
         </div>
       ))}
+      */}
     </aside>
   );
 }

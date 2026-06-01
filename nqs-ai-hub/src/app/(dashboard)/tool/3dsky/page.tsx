@@ -15,6 +15,7 @@
  * La schedule se carga incluso cuando estamos fuera de horario, porque
  * `OutsideHoursScreen` la usa para mostrar la próxima ventana al user.
  */
+import { redirect } from "next/navigation";
 import { ThreeDSkyView } from "@/components/screens/ThreeDSkyView";
 import { OutsideHoursScreen } from "@/components/screens/OutsideHoursScreen";
 import { NoCreditsScreen } from "@/components/screens/NoCreditsScreen";
@@ -52,10 +53,16 @@ export default async function ThreeDSkyPage() {
     if (perm.reason === "no_credits") {
       return <NoCreditsScreen />;
     }
+    // FEEDBACK NQS v2.0: el acceso expirado se maneja desde el hub (card
+    // con status + modal de renovación), no con la pantalla full del
+    // módulo. Mandamos al hub para que el user vea la card expirada.
+    if (perm.reason === "expired") {
+      redirect("/hub");
+    }
     if (
       perm.reason === "no_access" ||
-      perm.reason === "pending_approval" ||
-      perm.reason === "expired"
+      perm.reason === "pending_approval"
+      // "expired" se maneja arriba con redirect a /hub (FEEDBACK NQS v2.0)
     ) {
       return (
         <NoAccessScreen reason={perm.reason} message={perm.message ?? null} />

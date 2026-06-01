@@ -49,6 +49,16 @@ export function ThreeDSkyView({
   const [declareOpen, setDeclareOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
 
+  // FEEDBACK NQS v2.0: el modal "declarar consumo" se ocultó. Al salir,
+  // cerramos la sesión silenciosamente con declaredConsumption=0 (el
+  // backend de /session/end sigue funcionando). Si el end falla, el
+  // beacon de unmount del hook igual cierra la sesión con 0.
+  const leaveToHub = useCallback(async () => {
+    await chat.declareAndEnd(0);
+    router.push("/hub");
+  }, [chat, router]);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const openDeclareThenLeave = useCallback(() => {
     setDeclareOpen(true);
   }, []);
@@ -122,7 +132,7 @@ export function ThreeDSkyView({
           total: chat.credits.creditsTotal,
           warnAt: 5,
         }}
-        onBack={openDeclareThenLeave}
+        onBack={leaveToHub}
         onRequestMore={onRequestMore}
       />
 
@@ -152,6 +162,12 @@ export function ThreeDSkyView({
         )}
       </div>
 
+      {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
+          Modal de declaración de consumo al salir. Se reemplazó por cierre
+          silencioso (leaveToHub → declareAndEnd(0)). El componente y sus
+          handlers (openDeclareThenLeave/confirmDeclareAndLeave/cancelDeclare)
+          quedan para re-habilitar. */}
+      {/*
       <DeclareConsumptionPrompt
         open={declareOpen}
         maxAvailable={chat.credits.credits}
@@ -159,6 +175,7 @@ export function ThreeDSkyView({
         onCancel={cancelDeclare}
         onConfirm={confirmDeclareAndLeave}
       />
+      */}
 
       <CreditRequestModal
         open={requestOpen}

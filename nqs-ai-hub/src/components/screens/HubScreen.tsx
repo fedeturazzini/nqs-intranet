@@ -258,6 +258,12 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
         </div>
       </div>
 
+      {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
+          Chule pidió dejar solo el saludo + el grid de cards. Se comenta
+          la toolbar completa (tabs Todas/Activas/Pendientes/Bloqueadas,
+          buscador, y toggle Grid/Lista). La lógica de filter/query/layout
+          queda intacta abajo para re-habilitar sin reescribir. */}
+      {/*
       <div className="hub-toolbar">
         <div className="hub-filters">
           <FilterButton
@@ -310,6 +316,7 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
           />
         </div>
       </div>
+      */}
 
       {layout === "grid" ? (
         <div className="hub-grid">
@@ -369,6 +376,13 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
         toolName={requestAccessTool?.name ?? ""}
         toolGlyph={requestAccessTool?.glyph}
         toolColor={requestAccessTool?.color}
+        // FEEDBACK NQS v2.0: si la tool está expirada, el modal usa la
+        // copy de renovación; si está locked, la de solicitud normal.
+        variant={
+          requestAccessTool?.access.status === "expired"
+            ? "renewal"
+            : "request"
+        }
         onClose={() => setRequestAccessTool(null)}
         onSubmitted={() => {
           setRequestAccessTool(null);

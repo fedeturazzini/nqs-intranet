@@ -184,6 +184,11 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
                 />
               </Field>
             </div>
+            {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
+                Campo "JOB TITLE" oculto. El state jobTitle y el envío al
+                endpoint quedan (manda undefined) para re-habilitar. Dept
+                ocupa todo el ancho de la fila. */}
+            {/*
             <div style={{ flex: 1 }}>
               <Field label="JOB TITLE">
                 <input
@@ -196,6 +201,7 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
                 />
               </Field>
             </div>
+            */}
           </div>
           <div style={{ display: "flex", gap: 12 }}>
             <div style={{ flex: 1 }}>

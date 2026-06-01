@@ -89,6 +89,11 @@ export function ToolViewBar({
       </div>
 
       <div className="tool-view-bar-r">
+        {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
+            El contador "X créditos · de Y" se oculta del topbar. El sistema
+            de créditos sigue funcionando internamente (canUseTool, overlay
+            de bloqueo, etc.); solo se esconde el pill. */}
+        {/*
         {credits && (
           <span className={pillClass}>
             <span
@@ -98,6 +103,7 @@ export function ToolViewBar({
             {credits.left} créditos · de {credits.total}
           </span>
         )}
+        */}
         {credits && onRequestMore && (
           <button
             type="button"

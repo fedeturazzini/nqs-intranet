@@ -45,7 +45,10 @@ export function ToolCard({
   const { access } = tool;
   const isActive = access.status === "active";
   const isPending = access.status === "pending";
-  const isLocked = access.status === "locked" || access.status === "expired";
+  // FEEDBACK NQS v2.0: expired se separa de locked para mostrar el flujo
+  // de renovación desde el hub (antes solo la pantalla full del módulo).
+  const isExpired = access.status === "expired";
+  const isLocked = access.status === "locked";
   const isComingSoon = access.status === "coming_soon";
   const hasCredits = access.credits != null && access.creditsTotal != null;
 
@@ -65,8 +68,10 @@ export function ToolCard({
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      onClick={() => (isActive ? onOpen(tool) : undefined)}
-      style={{ cursor: isActive ? "pointer" : undefined }}
+      onClick={() =>
+        isActive ? onOpen(tool) : isExpired ? onRequest(tool) : undefined
+      }
+      style={{ cursor: isActive || isExpired ? "pointer" : undefined }}
     >
       <div className="tool-card-top">
         <div className="tool-card-num t-eyebrow">
@@ -124,6 +129,19 @@ export function ToolCard({
             }}
           >
             solicitar acceso
+          </button>
+        )}
+
+        {isExpired && (
+          <button
+            className="btn sm secondary"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRequest(tool);
+            }}
+            style={{ color: "#FF8A3D" }}
+          >
+            pedir renovación
           </button>
         )}
 
