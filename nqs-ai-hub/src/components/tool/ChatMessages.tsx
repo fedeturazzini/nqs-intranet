@@ -10,8 +10,9 @@
  * Auto-scroll al último mensaje cada vez que cambia la lista o entra un
  * mensaje en estado pending.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { showToast } from "@/lib/store/toast";
+import { ImageLightbox } from "@/components/chat/ImageLightbox";
 import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
 
 type ChatMessagesProps = Readonly<{
@@ -77,6 +78,13 @@ function MessageBubble({
   const avatarText = isAi ? "C" : userInitials;
   const cssClass = `chat-msg ${isAi ? "ai" : "user"}`;
 
+  // FEEDBACK NQS v2.0 (Part 6): visor de imágenes en grande.
+  const images = msg.imagePreviews ?? [];
+  const [lightbox, setLightbox] = useState<{ open: boolean; index: number }>({
+    open: false,
+    index: 0,
+  });
+
   return (
     <div className={cssClass}>
       <div className={`av ${isAi ? "ai" : ""}`}>{avatarText}</div>
@@ -117,7 +125,7 @@ function MessageBubble({
           <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
         )}
 
-        {msg.imagePreviews && msg.imagePreviews.length > 0 && (
+        {images.length > 0 && (
           <div
             style={{
               display: "flex",
@@ -126,24 +134,34 @@ function MessageBubble({
               flexWrap: "wrap",
             }}
           >
-            {msg.imagePreviews.map((src, i) => (
+            {images.map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={i}
                 src={src}
                 alt=""
+                onClick={() => setLightbox({ open: true, index: i })}
+                title="ver en grande"
                 style={{
                   width: 100,
                   height: 100,
                   objectFit: "cover",
                   borderRadius: 8,
                   border: "1px solid var(--line)",
+                  cursor: "zoom-in",
                 }}
               />
             ))}
           </div>
         )}
       </div>
+
+      <ImageLightbox
+        open={lightbox.open}
+        images={images}
+        initialIndex={lightbox.index}
+        onClose={() => setLightbox({ open: false, index: 0 })}
+      />
     </div>
   );
 }
