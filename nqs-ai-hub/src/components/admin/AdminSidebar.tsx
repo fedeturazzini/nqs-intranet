@@ -60,9 +60,10 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
     //   href: "/admin/credits",
     //   match: (p) => p.startsWith("/admin/credits"),
     // },
+    // TODO Prompt 17: rediseñar /admin/logs para mostrar gasto USD por usuario
+    // en vez de tokens. Mantener funcionalidad pero cambiar UI/UX.
     // FEEDBACK NQS v2.0: hidden by request, may re-enable.
-    // "Logs" se oculta del sidebar. El código de /admin/logs queda intacto
-    // (se rediseña a USD en prompt 17).
+    // "Logs" se oculta del sidebar. El código de /admin/logs queda intacto.
     // {
     //   label: "Logs",
     //   href: "/admin/logs",
@@ -70,12 +71,11 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
     // },
   ];
 
-  // FEEDBACK NQS v2.0: hidden by request, may re-enable.
-  // Sección "PRÓXIMAMENTE" con Shield y Snaps (cards "SHIELD V2"/"SNAPS V2").
-  // const futureItems: { label: string }[] = [
-  //   { label: "Shield" },
-  //   { label: "Snaps" },
-  // ];
+  // Items que vendrán post-MVP (sección "PRÓXIMAMENTE": SHIELD V2 / SNAPS V2).
+  const futureItems: { label: string }[] = [
+    { label: "Shield" },
+    { label: "Snaps" },
+  ];
 
   return (
     <aside
@@ -127,9 +127,6 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
         );
       })}
 
-      {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
-          Sección "PRÓXIMAMENTE" (Shield V2 / Snaps V2). */}
-      {/*
       <div
         className="t-eyebrow"
         style={{
@@ -161,7 +158,6 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
           </span>
         </div>
       ))}
-      */}
     </aside>
   );
 }
