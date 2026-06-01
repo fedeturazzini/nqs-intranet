@@ -81,7 +81,7 @@ describe("notifySlack — graceful degradation", () => {
 });
 
 describe("buildPayload — shape", () => {
-  test("credits_request incluye header + section + actions cuando hay adminUrl", () => {
+  test("credits_request: @channel + header + actions cuando hay adminUrl", () => {
     const p = __testing.buildPayload({
       kind: "credits_request",
       userName: "Sofía",
@@ -93,7 +93,27 @@ describe("buildPayload — shape", () => {
     });
     expect(p.text).toContain("Sofía");
     expect(p.text).toContain("10");
+    // FEEDBACK NQS v2.0: @channel en solicitudes nuevas.
+    expect(p.text).toContain("<!channel>");
     expect(p.blocks.some((b) => b.type === "header")).toBe(true);
+    expect(p.blocks.some((b) => b.type === "actions")).toBe(true);
+    // El motivo largo ya no va en el mensaje principal.
+    expect(p.text).not.toContain("render fin de semana");
+  });
+
+  test("exceptional_request: @channel + formato simplificado", () => {
+    const p = __testing.buildPayload({
+      kind: "exceptional_request",
+      userName: "Sofía",
+      toolName: "3DSky",
+      durationMinutes: 120,
+      reason: "deadline",
+      requestId: "exc-1",
+      adminUrl: "https://hub.nqs/admin/requests",
+    });
+    expect(p.text).toContain("<!channel>");
+    expect(p.text).toContain("Sofía");
+    expect(p.text).toContain("2h");
     expect(p.blocks.some((b) => b.type === "actions")).toBe(true);
   });
 
@@ -109,7 +129,7 @@ describe("buildPayload — shape", () => {
     expect(p.blocks.some((b) => b.type === "actions")).toBe(false);
   });
 
-  test("access_request incluye header 🔓 + botón cuando hay adminUrl", () => {
+  test("access_request: formato simplificado con @channel + botón", () => {
     const p = __testing.buildPayload({
       kind: "access_request",
       userName: "Bruno",
@@ -118,13 +138,14 @@ describe("buildPayload — shape", () => {
       requestId: "req-1",
       adminUrl: "https://hub.nqs/admin/requests",
     });
-    expect(p.text).toContain("🔓");
+    expect(p.text).toContain("<!channel>");
+    expect(p.text).toContain("Nueva solicitud");
     expect(p.text).toContain("Claude");
     expect(p.blocks.some((b) => b.type === "header")).toBe(true);
     expect(p.blocks.some((b) => b.type === "actions")).toBe(true);
   });
 
-  test("access_approved menciona al admin que aprobó", () => {
+  test("access_approved menciona al admin y NO lleva @channel (es informativo)", () => {
     const p = __testing.buildPayload({
       kind: "access_approved",
       userName: "Bruno",
@@ -135,6 +156,7 @@ describe("buildPayload — shape", () => {
     expect(p.text).toContain("✅");
     expect(p.text).toContain("Tomás");
     expect(p.text).toContain("Bruno");
+    expect(p.text).not.toContain("<!channel>");
     expect(p.blocks.some((b) => b.type === "actions")).toBe(false);
   });
 });

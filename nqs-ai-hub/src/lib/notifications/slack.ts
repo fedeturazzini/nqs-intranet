@@ -33,6 +33,17 @@ export type SlackAccessRequestNotification = {
   adminUrl?: string;
 };
 
+/** Solicitud de acceso EXCEPCIONAL fuera de horario. */
+export type SlackExceptionalRequestNotification = {
+  kind: "exceptional_request";
+  userName: string;
+  toolName: string;
+  durationMinutes: number;
+  reason: string;
+  requestId: string;
+  adminUrl?: string;
+};
+
 export type SlackApprovalNotification = {
   kind: "credits_approved" | "credits_rejected";
   userName: string;
@@ -57,8 +68,25 @@ export type SlackAccessResolutionNotification = {
 export type SlackNotification =
   | SlackRequestNotification
   | SlackAccessRequestNotification
+  | SlackExceptionalRequestNotification
   | SlackApprovalNotification
   | SlackAccessResolutionNotification;
+
+/**
+ * Identidad del bot en Slack (FEEDBACK NQS v2.0 5.1): nombre + logo.
+ * Si `SLACK_ICON_URL` está seteada (opcional), usa esa imagen pública del
+ * logo NQS; si no, cae al emoji 🟡 (large_yellow_circle, el amarillo de la
+ * marca). No requiere env nueva — la variable es opcional.
+ */
+function slackIdentity(): {
+  username: string;
+  icon_url?: string;
+  icon_emoji?: string;
+} {
+  const iconUrl = process.env.SLACK_ICON_URL?.trim();
+  if (iconUrl) return { username: "NQS AI Hub", icon_url: iconUrl };
+  return { username: "NQS AI Hub", icon_emoji: ":large_yellow_circle:" };
+}
 
 /**
  * Manda una notificación a Slack. Promesa resuelve siempre — el caller
@@ -77,7 +105,7 @@ export async function notifySlack(payload: SlackNotification): Promise<void> {
     return;
   }
 
-  const body = buildPayload(payload);
+  const body = { ...slackIdentity(), ...buildPayload(payload) };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SLACK_TIMEOUT_MS);
@@ -142,87 +170,85 @@ type SlackPayload = {
   blocks: SlackBlock[];
 };
 
-function buildPayload(n: SlackNotification): SlackPayload {
-  if (n.kind === "credits_request") {
-    const text = `🔔 ${n.userName} pidió ${n.amount} créditos de ${n.toolName}`;
-    const blocks: SlackBlock[] = [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: "🔔 Nueva solicitud de créditos",
+/**
+ * Formato unificado de solicitud NUEVA (FEEDBACK NQS v2.0 5.2/5.3):
+ *   - `<!channel>` para pingear al canal (solo solicitudes nuevas).
+ *   - header "🔔 Nueva solicitud".
+ *   - dos campos: Empleado / Pide.
+ *   - botón "Ver detalle" al panel.
+ * Sin el campo "motivo" largo (el admin lo lee en /admin/solicitudes).
+ */
+function newRequestPayload(
+  userName: string,
+  pide: string,
+  adminUrl?: string,
+): SlackPayload {
+  const text = `<!channel> 🔔 Nueva solicitud — ${userName} pide ${pide}`;
+  const blocks: SlackBlock[] = [
+    {
+      type: "header",
+      text: { type: "plain_text", text: "🔔 Nueva solicitud" },
+    },
+    // El <!channel> va en una section mrkdwn (el header es plain_text y no
+    // renderiza menciones).
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: "<!channel>" },
+    },
+    {
+      type: "section",
+      fields: [
+        { type: "mrkdwn", text: `*Empleado:*\n${userName}` },
+        { type: "mrkdwn", text: `*Pide:*\n${pide}` },
+      ],
+    },
+  ];
+  if (adminUrl) {
+    blocks.push({
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Ver detalle" },
+          url: adminUrl,
+          style: "primary",
         },
-      },
-      {
-        type: "section",
-        fields: [
-          { type: "mrkdwn", text: `*Empleado*\n${n.userName}` },
-          { type: "mrkdwn", text: `*Herramienta*\n${n.toolName}` },
-          { type: "mrkdwn", text: `*Cantidad*\n${n.amount} créditos` },
-          { type: "mrkdwn", text: `*ID solicitud*\n\`${n.requestId}\`` },
-        ],
-      },
-      {
-        type: "section",
-        text: { type: "mrkdwn", text: `*Motivo:*\n> ${n.reason}` },
-      },
-    ];
-    if (n.adminUrl) {
-      blocks.push({
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "Ver en panel" },
-            url: n.adminUrl,
-            style: "primary",
-          },
-        ],
-      });
-    }
-    return { text, blocks };
+      ],
+    });
+  }
+  return { text, blocks };
+}
+
+function buildPayload(n: SlackNotification): SlackPayload {
+  // ── Solicitudes NUEVAS → @channel + formato simplificado (FEEDBACK v2.0
+  //    5.2/5.3): mismo formato para los 3 tipos (créditos, acceso,
+  //    excepcional). Sin el campo "motivo" largo — el admin lo ve en el
+  //    panel vía "Ver detalle". ──
+  if (n.kind === "credits_request") {
+    return newRequestPayload(
+      n.userName,
+      `${n.amount} créditos para ${n.toolName}`,
+      n.adminUrl,
+    );
   }
 
   if (n.kind === "access_request") {
-    const text = `🔓 ${n.userName} pidió acceso a ${n.toolName}`;
-    const blocks: SlackBlock[] = [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: "🔓 Solicitud de acceso a herramienta",
-        },
-      },
-      {
-        type: "section",
-        fields: [
-          { type: "mrkdwn", text: `*Empleado*\n${n.userName}` },
-          { type: "mrkdwn", text: `*Herramienta*\n${n.toolName}` },
-          { type: "mrkdwn", text: `*ID solicitud*\n\`${n.requestId}\`` },
-        ],
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*Motivo:*\n> ${n.reason}\n\n_Este empleado todavía no tiene esta herramienta habilitada._`,
-        },
-      },
-    ];
-    if (n.adminUrl) {
-      blocks.push({
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "Ver en panel" },
-            url: n.adminUrl,
-            style: "primary",
-          },
-        ],
-      });
-    }
-    return { text, blocks };
+    return newRequestPayload(
+      n.userName,
+      `acceso a ${n.toolName}`,
+      n.adminUrl,
+    );
+  }
+
+  if (n.kind === "exceptional_request") {
+    const mins = n.durationMinutes;
+    const dur =
+      mins >= 60 && mins % 60 === 0 ? `${mins / 60}h` : `${mins} min`;
+    return newRequestPayload(
+      n.userName,
+      `acceso excepcional (${dur}) a ${n.toolName}`,
+      n.adminUrl,
+    );
   }
 
   if (n.kind === "access_approved" || n.kind === "access_rejected") {

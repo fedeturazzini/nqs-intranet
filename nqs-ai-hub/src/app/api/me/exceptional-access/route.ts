@@ -74,11 +74,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     : undefined;
 
   await notifySlack({
-    kind: "credits_request",
+    kind: "exceptional_request",
     userName: session.name,
     toolName: tool?.name ?? parsed.data.toolId,
-    amount: parsed.data.duration,
-    reason: `⏰ ACCESO EXCEPCIONAL fuera de horario · ${parsed.data.duration} min · ${parsed.data.reason}`,
+    durationMinutes: parsed.data.duration,
+    reason: parsed.data.reason,
     requestId: data.id,
     adminUrl,
   });
