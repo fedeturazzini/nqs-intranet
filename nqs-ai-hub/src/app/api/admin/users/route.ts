@@ -11,6 +11,23 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
 import { createServerClient } from "@/lib/db/supabase";
+import type { ToolSchedule } from "@/types/db-aliases";
+
+/**
+ * FEEDBACK NQS v2.0 (7.1): default restrictivo. Lo único habilitado por
+ * default para un user nuevo es 3DSky, dentro del horario laboral
+ * (Lun-Vie 09:00-18:00). El resto de tools quedan sin registro de
+ * tool_access → el user las ve bloqueadas y puede solicitarlas.
+ */
+const DEFAULT_3DSKY_SCHEDULE: ToolSchedule = {
+  monday: { enabled: true, from: "09:00", to: "18:00" },
+  tuesday: { enabled: true, from: "09:00", to: "18:00" },
+  wednesday: { enabled: true, from: "09:00", to: "18:00" },
+  thursday: { enabled: true, from: "09:00", to: "18:00" },
+  friday: { enabled: true, from: "09:00", to: "18:00" },
+  saturday: { enabled: false },
+  sunday: { enabled: false },
+};
 
 const NewUserSchema = z.object({
   email: z.string().email().max(254),
@@ -145,6 +162,28 @@ export async function POST(request: Request): Promise<NextResponse> {
         message: insertErr?.message ?? "profile_missing",
       },
       { status: 500 },
+    );
+  }
+
+  // 3) FEEDBACK NQS v2.0 (7.1): acceso default SOLO a 3DSky en horario
+  // laboral. Best-effort: si falla, el user igual quedó creado (el admin
+  // puede habilitar accesos desde /admin/access).
+  const { error: accessErr } = await db.from("tool_access").insert({
+    user_id: auth.user.id,
+    tool_id: "3dsky",
+    status: "active",
+    schedule: DEFAULT_3DSKY_SCHEDULE,
+    granted_by: guard.userId,
+    granted_at: new Date().toISOString(),
+  });
+  if (accessErr) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "default 3dsky tool_access insert failed",
+        userId: auth.user.id,
+        error: accessErr.message,
+      }),
     );
   }
 

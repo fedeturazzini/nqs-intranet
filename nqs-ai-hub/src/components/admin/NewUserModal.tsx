@@ -245,6 +245,23 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
           </div>
         </div>
 
+        {/* FEEDBACK NQS v2.0 (7.2): aclaración del default restrictivo. */}
+        <div
+          className="t-meta dim"
+          style={{
+            marginTop: 14,
+            padding: "8px 10px",
+            border: "1px solid var(--line)",
+            borderRadius: 6,
+            lineHeight: 1.5,
+            fontSize: 11,
+          }}
+        >
+          ↳ Por default, el usuario tendrá acceso solo a <strong>3DSky</strong>{" "}
+          en horario laboral (Lun-Vie 9-18hs). Podés habilitar más
+          herramientas desde <em>Accesos &amp; Horarios</em>.
+        </div>
+
         {error && (
           <div
             className="t-meta"
