@@ -23,6 +23,12 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 const BodySchema = z.object({
   note: z.string().max(500).optional(),
+  // FEEDBACK NQS v2.0 (8.3): quick access. Duración rápida (en minutos)
+  // para excepcional y access; o un expires_at custom (ISO). Si no viene
+  // ninguno, access se aprueba permanente y excepcional usa la duración
+  // que pidió el user.
+  duration_minutes: z.number().int().positive().max(525_600).optional(),
+  custom_expires_at: z.string().datetime().optional(),
 });
 
 export async function POST(
@@ -91,11 +97,24 @@ export async function POST(
   // (24/7) — si el admin quiere restringir horarios lo hace después
   // desde /admin/access.
   if (reqType === "access") {
+    // FEEDBACK NQS v2.0 (8.3): la duración la elige el admin con los quick
+    // buttons. custom_expires_at gana; si no, duration_minutes; si no hay
+    // ninguno, el acceso es permanente (expires_at=null).
+    if (parsed.data.custom_expires_at) {
+      expiresAt = parsed.data.custom_expires_at;
+    } else if (parsed.data.duration_minutes) {
+      expiresAt = new Date(
+        Date.now() + parsed.data.duration_minutes * 60_000,
+      ).toISOString();
+    } else {
+      expiresAt = null;
+    }
     const { error: tAccErr } = await db.from("tool_access").upsert(
       {
         user_id: req.user_id,
         tool_id: req.tool_id,
         status: "active",
+        expires_at: expiresAt,
         granted_by: guard.userId,
       },
       { onConflict: "user_id,tool_id" },
@@ -118,17 +137,25 @@ export async function POST(
     // No suma créditos: crea/actualiza tool_access con expires_at futuro
     // y schedule=null (temporalmente sin restricción horaria). Cuando
     // pase expires_at, el middleware lo trata como expired.
-    const mins = req.exceptional_duration_minutes;
-    if (mins == null || mins <= 0) {
-      return NextResponse.json(
-        {
-          error: "invalid_duration",
-          message: "la request no tiene exceptional_duration_minutes",
-        },
-        { status: 422 },
-      );
+    // FEEDBACK NQS v2.0 (8.3): el admin puede sobreescribir la duración con
+    // los quick buttons (1h/2h/3h/4h) o un custom_expires_at ("fin del
+    // día"). Si no manda nada, usamos lo que pidió el user.
+    if (parsed.data.custom_expires_at) {
+      expiresAt = parsed.data.custom_expires_at;
+    } else {
+      const mins =
+        parsed.data.duration_minutes ?? req.exceptional_duration_minutes;
+      if (mins == null || mins <= 0) {
+        return NextResponse.json(
+          {
+            error: "invalid_duration",
+            message: "no hay duración (ni en la request ni en el body)",
+          },
+          { status: 422 },
+        );
+      }
+      expiresAt = new Date(Date.now() + mins * 60_000).toISOString();
     }
-    expiresAt = new Date(Date.now() + mins * 60_000).toISOString();
     const { error: tAccErr } = await db.from("tool_access").upsert(
       {
         user_id: req.user_id,

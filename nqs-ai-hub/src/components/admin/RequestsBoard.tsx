@@ -5,6 +5,7 @@
  */
 import { useMemo, useState } from "react";
 import { showToast } from "@/lib/store/toast";
+import { QuickAccessButtons, type ApproveOpts } from "./QuickAccessButtons";
 
 type RequestType = "credits" | "access" | "exceptional_access";
 
@@ -93,18 +94,40 @@ export function RequestsBoard({ initialRequests }: RequestsBoardProps) {
     }
   }
 
-  async function approve(r: RequestRow) {
+  async function approve(r: RequestRow, opts?: ApproveOpts) {
+    // FEEDBACK NQS v2.0 (8.3): solo mandamos duration/custom si vinieron.
+    // Permanente (access) = no mandar ninguno → el endpoint deja
+    // expires_at=null.
+    const payload: {
+      duration_minutes?: number;
+      custom_expires_at?: string;
+    } = {};
+    if (opts?.durationMinutes != null) {
+      payload.duration_minutes = opts.durationMinutes;
+    }
+    if (opts?.customExpiresAt) {
+      payload.custom_expires_at = opts.customExpiresAt;
+    }
+
     const res = await fetch(`/api/admin/requests/${r.id}/approve`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(payload),
     });
     if (res.ok) {
-      showToast({
-        title: "APROBADO",
-        msg: `${r.users?.name ?? "user"} recibió +${r.credits_requested ?? 0} créditos de ${r.tools?.name ?? r.tool_id}.`,
-        color: "var(--ok)",
-      });
+      const who = r.users?.name ?? "user";
+      const tool = r.tools?.name ?? r.tool_id;
+      const reqType = (r.request_type ?? "credits") as RequestType;
+      let msg: string;
+      if (reqType === "credits") {
+        msg = `${who} recibió +${r.credits_requested ?? 0} créditos de ${tool}.`;
+      } else if (opts) {
+        // 8.4: "Aprobado por 2 horas" / "1 semana" / "permanente" / etc.
+        msg = `Aprobado · ${tool} para ${who} · ${opts.label}.`;
+      } else {
+        msg = `Aprobado · ${tool} para ${who}.`;
+      }
+      showToast({ title: "APROBADO", msg, color: "var(--ok)" });
       await refresh();
     } else {
       const body = (await res.json().catch(() => ({}))) as {
@@ -234,7 +257,7 @@ export function RequestsBoard({ initialRequests }: RequestsBoardProps) {
           <RequestCard
             key={r.id}
             req={r}
-            onApprove={() => approve(r)}
+            onApprove={(opts) => approve(r, opts)}
             onReject={(note) => reject(r, note)}
           />
         ))}
@@ -245,7 +268,7 @@ export function RequestsBoard({ initialRequests }: RequestsBoardProps) {
 
 type RequestCardProps = Readonly<{
   req: RequestRow;
-  onApprove: () => void;
+  onApprove: (opts?: ApproveOpts) => void;
   onReject: (note: string) => void;
 }>;
 
@@ -256,6 +279,9 @@ function RequestCard({ req, onApprove, onReject }: RequestCardProps) {
   const reqType = (req.request_type ?? "credits") as RequestType;
   const isExceptional = reqType === "exceptional_access";
   const isAccess = reqType === "access";
+  // FEEDBACK NQS v2.0 (8.1): créditos mantiene el botón simple; acceso y
+  // excepcional usan los quick access buttons.
+  const isCredits = !isExceptional && !isAccess;
 
   // Color + label del badge según el tipo de solicitud.
   const typeBadge =
@@ -399,32 +425,37 @@ function RequestCard({ req, onApprove, onReject }: RequestCardProps) {
         </div>
       )}
 
-      {status === "pending" && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={() => setRejectOpen((v) => !v)}
-            style={{ color: "var(--danger)" }}
+      {status === "pending" &&
+        (isCredits ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 8,
+              marginTop: 4,
+            }}
           >
-            rechazar
-          </button>
-          <button type="button" className="btn" onClick={onApprove}>
-            {isAccess
-              ? "aprobar y habilitar →"
-              : isExceptional
-                ? "aprobar acceso →"
-                : `aprobar +${req.credits_requested ?? 0} →`}
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => setRejectOpen((v) => !v)}
+              style={{ color: "var(--danger)" }}
+            >
+              rechazar
+            </button>
+            <button type="button" className="btn" onClick={() => onApprove()}>
+              {`aprobar +${req.credits_requested ?? 0} →`}
+            </button>
+          </div>
+        ) : (
+          // FEEDBACK NQS v2.0 (8.1): quick access para acceso/excepcional.
+          <QuickAccessButtons
+            requestId={req.id}
+            requestType={isExceptional ? "exceptional_access" : "access"}
+            onApprove={(opts) => onApprove(opts)}
+            onReject={() => setRejectOpen((v) => !v)}
+          />
+        ))}
 
       {rejectOpen && (
         <div
