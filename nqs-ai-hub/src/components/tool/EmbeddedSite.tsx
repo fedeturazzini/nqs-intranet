@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Iframe del sitio externo con preloader animado.
+ * Iframe del sitio externo con loader mínimo.
  *
  * Adaptado de design/screens.jsx EmbeddedSite (líneas 567-669). Cambios
  * vs. el original:
@@ -12,18 +12,20 @@
  *     botón "abrir en nueva pestaña".
  *   - El iframe se monta UNA vez y nunca se desmonta para no recargar.
  *
+ * FEEDBACK NQS v2.0 (bug re-autorización 3DSky): antes el overlay tenía
+ * una animación artificial de 3 pasos ("verificando permiso → cargando
+ * catálogo → listo") forzada con setTimeout(1400ms). Eso hacía que CADA
+ * vez que el user entraba al módulo pareciera que "re-autorizaba", aunque
+ * la sesión ya estuviera activa. Ahora el overlay solo se muestra mientras
+ * el iframe carga DE VERDAD (`onLoad`) y desaparece al instante → el user
+ * entra directo al iframe sin pasos extra.
+ *
  * Sandbox: 3DSky necesita cookies + scripts + forms para login propio
  * del user. `allow-same-origin + allow-scripts` desactiva el sandbox
  * de seguridad — aceptable porque el iframe es de un sitio que el user
  * ya tiene credentials/acceso por separado.
  */
 import { useEffect, useState } from "react";
-
-const STEP_LABELS = [
-  "verificando permiso",
-  "cargando catálogo",
-  "listo",
-] as const;
 
 const HARD_TIMEOUT_MS = 9_000;
 
@@ -40,20 +42,11 @@ export function EmbeddedSite({
   brandColor = "#4FD1C5",
   brandGlyph = "◈",
 }: EmbeddedSiteProps) {
-  const [step, setStep] = useState(0);
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [error, setError] = useState(false);
 
-  // Animación del preloader: 3 pasos.
-  useEffect(() => {
-    const timers = [
-      window.setTimeout(() => setStep(1), 700),
-      window.setTimeout(() => setStep(2), 1400),
-    ];
-    return () => timers.forEach(window.clearTimeout);
-  }, []);
-
-  // Hard timeout: si el iframe no carga en 9s → fallback.
+  // Hard timeout: si el iframe no carga en 9s → fallback (probable
+  // X-Frame-Options del sitio externo).
   useEffect(() => {
     if (iframeLoaded) return;
     const t = window.setTimeout(() => {
@@ -62,7 +55,8 @@ export function EmbeddedSite({
     return () => window.clearTimeout(t);
   }, [iframeLoaded]);
 
-  const showPreloader = !error && (step < 2 || !iframeLoaded);
+  // Loader real: solo mientras el iframe no terminó de cargar.
+  const showLoader = !error && !iframeLoaded;
 
   return (
     <div
@@ -90,7 +84,7 @@ export function EmbeddedSite({
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
       />
 
-      {showPreloader && (
+      {showLoader && (
         <div
           className="embed-overlay"
           style={{
@@ -108,7 +102,7 @@ export function EmbeddedSite({
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: 16,
+              gap: 14,
               maxWidth: 360,
               textAlign: "center",
             }}
@@ -134,38 +128,17 @@ export function EmbeddedSite({
             >
               {title}
             </div>
-            <div className="embed-auth-steps" style={{ marginTop: 8 }}>
-              {STEP_LABELS.map((s, i) => {
-                const state =
-                  step > i ? "done" : step === i ? "active" : "pending";
-                return (
-                  <div
-                    key={s}
-                    className={`embed-auth-step ${state}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "4px 0",
-                      color:
-                        state === "done"
-                          ? "var(--fg)"
-                          : state === "active"
-                            ? "var(--accent)"
-                            : "var(--fg-mute)",
-                      fontFamily: "var(--mono)",
-                      fontSize: 11,
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    <span style={{ width: 16, textAlign: "center" }}>
-                      {state === "done" ? "✓" : state === "active" ? "●" : "·"}
-                    </span>
-                    <span>{s}</span>
-                  </div>
-                );
-              })}
+            <div
+              className="t-meta"
+              style={{
+                color: "var(--accent)",
+                fontFamily: "var(--mono)",
+                fontSize: 11,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+              }}
+            >
+              ● cargando…
             </div>
           </div>
         </div>
