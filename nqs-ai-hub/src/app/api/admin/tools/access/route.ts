@@ -45,6 +45,13 @@ export async function PATCH(request: Request): Promise<NextResponse> {
         tool_id: toolId,
         status,
         granted_by: guard.userId,
+        // El toggle del panel otorga/revoca acceso PERMANENTE. Limpiamos
+        // `expires_at` para no arrastrar un vencimiento viejo de una
+        // aprobación temporal (quick access / excepcional): si no, el user
+        // queda `active` pero con expires_at vencido → canUseTool lo trata
+        // como `expired` y no puede entrar. Los accesos con vencimiento
+        // sólo se setean desde el flujo de aprobación de solicitudes.
+        expires_at: null,
       },
       { onConflict: "user_id,tool_id" },
     );
