@@ -12,7 +12,8 @@
  *     server diga (/hub o /admin).
  */
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { NqsLogo } from "@/components/ui/NqsLogo";
 import { LoginTicker, type LoginTickerVariant } from "./LoginTicker";
 
@@ -38,7 +39,6 @@ export function LoginScreen({
   tickerVariant = "cube",
   displayDate,
 }: LoginScreenProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next");
 
@@ -233,14 +233,11 @@ export function LoginScreen({
         <div className="login-foot">
           <div>NQS CREATIVE © 2026</div>
           <div className="row" style={{ gap: 18 }}>
-            <span
-              className="btn-link"
-              role="button"
-              tabIndex={0}
-              onClick={() => router.refresh()}
-            >
+            {/* FEEDBACK NQS v2.0: bug — antes hacía router.refresh() (no-op).
+                Ahora navega al flujo real de recuperación. */}
+            <Link className="btn-link" href="/forgot-password">
               ¿olvidaste tu pass?
-            </span>
+            </Link>
             <span>SUPPORT · #ai-hub</span>
           </div>
         </div>
