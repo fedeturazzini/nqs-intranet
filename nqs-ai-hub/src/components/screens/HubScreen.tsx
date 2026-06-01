@@ -258,13 +258,12 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
         </div>
       </div>
 
-      {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
-          Chule pidió dejar solo el saludo + el grid de cards. Se comenta
-          la toolbar completa (tabs Todas/Activas/Pendientes/Bloqueadas,
-          buscador, y toggle Grid/Lista). La lógica de filter/query/layout
-          queda intacta abajo para re-habilitar sin reescribir. */}
-      {/*
+      {/* FEEDBACK NQS v2.0: el BUSCADOR se re-habilitó a pedido de Chule.
+          Las pestañas (Todas/Activas/Pendientes/Bloqueadas) y el toggle
+          Grid/Lista siguen ocultos (hidden by request, may re-enable). La
+          lógica de filter/layout queda intacta abajo para re-habilitar. */}
       <div className="hub-toolbar">
+        {/*
         <div className="hub-filters">
           <FilterButton
             active={filter === "all"}
@@ -291,6 +290,7 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
             count={counts.locked}
           />
         </div>
+        */}
 
         <div className="hub-search">
           <span className="t-meta">⌕</span>
@@ -303,6 +303,7 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
           <span className="kbd">⌘K</span>
         </div>
 
+        {/*
         <div className="hub-filters">
           <FilterButton
             active={layout === "grid"}
@@ -315,8 +316,8 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
             label="Lista"
           />
         </div>
+        */}
       </div>
-      */}
 
       {layout === "grid" ? (
         <div className="hub-grid">
