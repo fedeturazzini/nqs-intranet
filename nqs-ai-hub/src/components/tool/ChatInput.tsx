@@ -284,8 +284,9 @@ export function ChatInput({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          title="adjuntar imagen"
-          aria-label="adjuntar imagen"
+          // FEEDBACK NQS v2.0 (3.2): tooltip con las limitaciones.
+          title="Adjuntar imagen · Hasta 10MB por imagen. Mismas limitaciones que Claude online."
+          aria-label="Adjuntar imagen. Hasta 10MB por imagen, mismas limitaciones que Claude online."
           style={{
             background: "transparent",
             border: 0,

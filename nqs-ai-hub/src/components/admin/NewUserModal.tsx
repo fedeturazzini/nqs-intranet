@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { showToast } from "@/lib/store/toast";
+import { DEPARTMENTS } from "@/lib/constants/departments";
 
 type NewUserModalProps = Readonly<{
   open: boolean;
@@ -129,7 +130,7 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
           </button>
         </div>
         <h2 id="new-user-title" style={titleStyle}>
-          Crear empleado o admin
+          Crear usuario o admin
         </h2>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -174,14 +175,21 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
           <div style={{ display: "flex", gap: 12 }}>
             <div style={{ flex: 1 }}>
               <Field label="DEPARTAMENTO">
-                <input
-                  type="text"
+                {/* FEEDBACK NQS v2.0 (4.2): dropdown predefinido en vez de
+                    texto libre. Se permite dejarlo vacío. */}
+                <select
                   value={dept}
                   onChange={(e) => setDept(e.target.value)}
                   disabled={submitting}
-                  placeholder="Diseño"
                   style={inputStyle}
-                />
+                >
+                  <option value="">— sin asignar —</option>
+                  {DEPARTMENTS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </div>
             {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
@@ -207,10 +215,12 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
             <div style={{ flex: 1 }}>
               <Field label="ROL">
                 <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  {/* FEEDBACK NQS v2.0 (3.1): el texto visible es "user",
+                      pero el valor interno/DB sigue siendo 'employee'. */}
                   <RoleButton
                     active={role === "employee"}
                     onClick={() => setRole("employee")}
-                    label="employee"
+                    label="user"
                   />
                   <RoleButton
                     active={role === "admin"}

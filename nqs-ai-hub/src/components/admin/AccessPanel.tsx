@@ -73,6 +73,29 @@ export function AccessPanel({
     [users, selectedId],
   );
 
+  // FEEDBACK NQS v2.0 (4.1): usuarios agrupados por departamento y
+  // ordenados alfabéticamente por nombre dentro de cada grupo. Los grupos
+  // van alfabéticos; "SIN DEPARTAMENTO" queda al final.
+  const groupedUsers = useMemo<Array<[string, UserRow[]]>>(() => {
+    const groups = new Map<string, UserRow[]>();
+    for (const u of users) {
+      const key = (u.dept ?? "").trim() || "SIN DEPARTAMENTO";
+      const arr = groups.get(key) ?? [];
+      arr.push(u);
+      groups.set(key, arr);
+    }
+    const entries = [...groups.entries()];
+    for (const [, arr] of entries) {
+      arr.sort((x, y) => x.name.localeCompare(y.name, "es"));
+    }
+    entries.sort((a, b) => {
+      if (a[0] === "SIN DEPARTAMENTO") return 1;
+      if (b[0] === "SIN DEPARTAMENTO") return -1;
+      return a[0].localeCompare(b[0], "es");
+    });
+    return entries;
+  }, [users]);
+
   const refreshAccesses = useCallback(async () => {
     // Reload completo desde un endpoint genérico — no creamos endpoint
     // dedicado: hacemos query directa al cliente vía el endpoint que ya
@@ -172,53 +195,73 @@ export function AccessPanel({
         <div className="t-eyebrow" style={{ padding: "0 8px 8px" }}>
           ↳ USUARIOS ({users.length})
         </div>
-        {users.map((u) => {
-          const active = u.id === selectedId;
-          return (
-            <button
-              key={u.id}
-              type="button"
-              onClick={() => setSelectedId(u.id)}
+        {/* FEEDBACK NQS v2.0 (4.1): agrupados por departamento + alfabético. */}
+        {groupedUsers.map(([deptLabel, deptUsers]) => (
+          <div key={deptLabel} style={{ marginBottom: 6 }}>
+            <div
+              className="t-eyebrow"
               style={{
-                width: "100%",
-                textAlign: "left",
-                padding: "8px 10px",
-                border: 0,
-                borderLeft: active
-                  ? "2px solid var(--accent)"
-                  : "2px solid transparent",
-                background: active ? "var(--bg-elev)" : "transparent",
-                cursor: "pointer",
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
-                color: active ? "var(--fg)" : "var(--fg-mute)",
+                padding: "10px 8px 4px",
+                fontSize: 9,
+                color: "var(--fg-mute)",
+                opacity: 0.7,
+                letterSpacing: "0.12em",
               }}
             >
-              <div className="av" style={{ width: 24, height: 24, fontSize: 10 }}>
-                {u.initials}
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
+              ───── {deptLabel} ─────
+            </div>
+            {deptUsers.map((u) => {
+              const active = u.id === selectedId;
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => setSelectedId(u.id)}
                   style={{
-                    fontSize: 13,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    border: 0,
+                    borderLeft: active
+                      ? "2px solid var(--accent)"
+                      : "2px solid transparent",
+                    background: active ? "var(--bg-elev)" : "transparent",
+                    cursor: "pointer",
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    color: active ? "var(--fg)" : "var(--fg-mute)",
                   }}
                 >
-                  {u.name}
-                </div>
-                <div
-                  className="t-meta dim"
-                  style={{ fontSize: 10, marginTop: 1 }}
-                >
-                  {u.dept ?? u.role}
-                </div>
-              </div>
-            </button>
-          );
-        })}
+                  <div
+                    className="av"
+                    style={{ width: 24, height: 24, fontSize: 10 }}
+                  >
+                    {u.initials}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {u.name}
+                    </div>
+                    <div
+                      className="t-meta dim"
+                      style={{ fontSize: 10, marginTop: 1 }}
+                    >
+                      {u.role === "admin" ? "admin" : u.dept ?? "—"}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </aside>
 
       <main style={{ flex: 1, padding: 28, overflowY: "auto" }}>

@@ -35,6 +35,8 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
       match: (p) => p.startsWith("/admin/users"),
     },
     {
+      // TODO prompt 17: rename to SYSTEM BRAIN (+ password protection).
+      // FEEDBACK NQS v2.0 (3.3): "Prompt padre" se queda POR AHORA.
       label: "Prompt padre",
       href: "/admin/prompt",
       match: (p) => p.startsWith("/admin/prompt"),
