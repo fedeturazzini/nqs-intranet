@@ -9,7 +9,7 @@
 import { NqsLogo } from "./NqsLogo";
 import { ThemeToggle } from "./ThemeToggle";
 import { TopbarNav } from "./TopbarNav";
-import { UserChip } from "./UserChip";
+import { UserMenu } from "./UserMenu";
 import type { UserRole } from "@/types/db-aliases";
 
 type TopbarProps = Readonly<{
@@ -41,7 +41,7 @@ export function Topbar({ user, pendingCount = 0 }: TopbarProps) {
           ↳ {isAdmin ? "ADMIN" : "EQUIPO CREATIVO"}
         </span>
         <ThemeToggle initial={user.theme} />
-        <UserChip user={{ name: user.name, initials: user.initials }} />
+        <UserMenu user={{ name: user.name, initials: user.initials }} />
       </div>
     </header>
   );

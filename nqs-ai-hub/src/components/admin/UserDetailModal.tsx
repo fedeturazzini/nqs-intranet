@@ -34,6 +34,39 @@ export function UserDetailModal({
   const [role, setRole] = useState(user.role);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Reset de password (admin): guardamos la nueva para mostrarla 1 vez.
+  const [resetResult, setResetResult] = useState<string | null>(null);
+
+  async function resetPassword() {
+    if (
+      !confirm(
+        `¿Resetear la password de ${user.name}? Se genera una nueva y la actual deja de funcionar.`,
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/reset-password`, {
+        method: "POST",
+      });
+      const data = (await res.json()) as
+        | { newPassword: string }
+        | { error: string; message?: string };
+      if (!res.ok || "error" in data) {
+        setError(
+          "message" in data && data.message ? data.message : "no se pudo resetear",
+        );
+        setBusy(false);
+        return;
+      }
+      setResetResult(data.newPassword);
+      setBusy(false);
+    } catch {
+      setError("network_error");
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -254,6 +287,31 @@ export function UserDetailModal({
               </Field>
             </div>
 
+            {/* Reset de password (admin) */}
+            <div
+              style={{
+                marginTop: 16,
+                paddingTop: 14,
+                borderTop: "1px solid var(--line)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <span className="t-meta dim" style={{ fontSize: 11 }}>
+                ↳ Resetea la contraseña y te muestra la nueva para pasársela.
+              </span>
+              <button
+                type="button"
+                className="btn sm secondary"
+                onClick={resetPassword}
+                disabled={busy}
+              >
+                🔑 resetear password
+              </button>
+            </div>
+
             {error && (
               <div
                 className="t-meta"
@@ -326,6 +384,129 @@ export function UserDetailModal({
             </Link>
           </div>
         )}
+
+        {resetResult && (
+          <ResetResultModal
+            password={resetResult}
+            onClose={() => setResetResult(null)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ResetResultModal({
+  password,
+  onClose,
+}: Readonly<{ password: string; onClose: () => void }>) {
+  const [copied, setCopied] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(60);
+
+  // Auto-cierre a los 60s + countdown.
+  useEffect(() => {
+    const t = setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          clearInterval(t);
+          onClose();
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [onClose]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showToast({
+        title: "ERROR",
+        msg: "no pude copiar; copiala a mano",
+        color: "var(--danger)",
+      });
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.7)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 1300,
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          background: "var(--bg-elev)",
+          border: "1px solid var(--line-strong)",
+          borderRadius: 12,
+          padding: 24,
+          width: "100%",
+          maxWidth: 420,
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 34 }}>✅</div>
+        <h3
+          style={{
+            fontFamily: "var(--serif)",
+            fontStyle: "italic",
+            fontSize: 22,
+            margin: "8px 0 4px",
+          }}
+        >
+          Password reseteada
+        </h3>
+        <div className="t-eyebrow" style={{ marginTop: 14, marginBottom: 6 }}>
+          ↳ NUEVA CONTRASEÑA
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+          <code
+            style={{
+              flex: 1,
+              maxWidth: 240,
+              background: "var(--bg)",
+              border: "1px solid var(--line-strong)",
+              borderRadius: 6,
+              padding: "10px 12px",
+              fontFamily: "var(--mono)",
+              fontSize: 16,
+              letterSpacing: "0.04em",
+            }}
+          >
+            {password}
+          </code>
+          <button type="button" className="btn sm" onClick={copy}>
+            {copied ? "✓ copiado" : "📋 copiar"}
+          </button>
+        </div>
+        <p
+          className="t-meta dim"
+          style={{ lineHeight: 1.5, marginTop: 14, fontSize: 11 }}
+        >
+          Pasale esta contraseña al usuario por un canal seguro. Por
+          seguridad, este modal se cierra en <strong>{secondsLeft}s</strong>.
+        </p>
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={onClose}
+          style={{ marginTop: 12 }}
+        >
+          cerrar
+        </button>
       </div>
     </div>
   );
