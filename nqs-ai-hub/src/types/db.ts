@@ -117,6 +117,7 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          project_id: string | null
           title: string | null
           updated_at: string | null
           user_id: string
@@ -124,6 +125,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          project_id?: string | null
           title?: string | null
           updated_at?: string | null
           user_id: string
@@ -131,11 +133,19 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          project_id?: string | null
           title?: string | null
           updated_at?: string | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "claude_conversations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "claude_conversations_user_id_fkey"
             columns: ["user_id"]
