@@ -3,48 +3,85 @@
 /**
  * Vista del wrapper de Claude.
  *
- * Estructura:
- *   ┌────────────────────────────────────────────────────────────┐
- *   │ Header (back · título · status)                            │
- *   ├──────────────┬─────────────────────────────────────────────┤
- *   │ Conversa-    │ Mensajes (scroll independiente)             │
- *   │ ciones       │                                             │
- *   │ (sidebar)    ├─────────────────────────────────────────────┤
- *   │              │ Input (sticky bottom de la columna)         │
- *   └──────────────┴─────────────────────────────────────────────┘
+ * FIX 17.5: la selección de proyecto vive ACÁ (no al login). Si el user no
+ * tiene proyecto activo, se muestra un picker intermedio; si tiene, entra
+ * al chat con un selector de proyecto siempre visible en el header. El
+ * historial del sidebar está filtrado por el proyecto activo.
  *
  * El system prompt nunca llega acá — vive en el backend.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { showToast } from "@/lib/store/toast";
 import { useClaudeChat } from "@/lib/hooks/useClaudeChat";
 import { ChatInput } from "@/components/tool/ChatInput";
-// (ImagePayload ya no se usa — las imágenes viajan como paths de Storage)
 import { ChatMessages } from "@/components/tool/ChatMessages";
 import { ConversationsSidebar } from "@/components/tool/ConversationsSidebar";
 
+type ProjectLite = { id: string; name: string; icon: string | null };
+
 type ClaudeViewProps = Readonly<{
-  user: {
-    name: string;
-    initials: string;
-  };
+  user: { name: string; initials: string };
+  projects: ProjectLite[];
+  activeProject: ProjectLite | null;
 }>;
 
-export function ClaudeView({ user }: ClaudeViewProps) {
+export function ClaudeView({
+  user,
+  projects,
+  activeProject: initialProject,
+}: ClaudeViewProps) {
   const chat = useClaudeChat();
-  // Bumpeamos este número cuando creamos una conv nueva, para que el
-  // sidebar haga refetch y muestre la nueva entrada arriba.
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
+  const [activeProject, setActiveProject] = useState<ProjectLite | null>(
+    initialProject,
+  );
+  const [switching, setSwitching] = useState(false);
 
   const firstName = user.name.split(" ")[0] ?? user.name;
 
+  const switchProject = useCallback(
+    async (project: ProjectLite) => {
+      if (switching) return;
+      const isChange = activeProject !== null && activeProject.id !== project.id;
+      if (activeProject?.id === project.id) return; // ya activo
+      setSwitching(true);
+      try {
+        const res = await fetch("/api/me/active-project", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ project_id: project.id }),
+        });
+        if (!res.ok) {
+          showToast({
+            title: "ERROR",
+            msg: "no pude cambiar de proyecto",
+            color: "var(--danger)",
+          });
+          return;
+        }
+        setActiveProject(project);
+        // Reset del chat abierto: si era de otro proyecto, lo limpiamos
+        // (la conv pertenece al proyecto viejo). El sidebar refetcha el
+        // historial del proyecto nuevo.
+        chat.newConversation();
+        setSidebarRefresh((n) => n + 1);
+        if (isChange) {
+          showToast({
+            title: "PROYECTO CAMBIADO",
+            msg: `Ahora estás en ${project.name}.`,
+            color: "var(--ok)",
+          });
+        }
+      } finally {
+        setSwitching(false);
+      }
+    },
+    [activeProject, chat, switching],
+  );
+
   const onSend = useCallback(
-    async (
-      prompt: string,
-      imagePaths: string[],
-      previews: string[],
-    ) => {
+    async (prompt: string, imagePaths: string[], previews: string[]) => {
       const wasNew = chat.conversationId === null;
       const result = await chat.sendMessage(prompt, imagePaths, previews);
       if (!result.ok) {
@@ -55,31 +92,34 @@ export function ClaudeView({ user }: ClaudeViewProps) {
         });
         return;
       }
-      if (wasNew) {
-        // Trigger refetch del sidebar.
-        setSidebarRefresh((n) => n + 1);
-      }
+      if (wasNew) setSidebarRefresh((n) => n + 1);
     },
     [chat],
   );
 
   const onSelectConversation = useCallback(
-    (id: string) => {
-      void chat.loadConversation(id);
-    },
+    (id: string) => void chat.loadConversation(id),
     [chat],
   );
+  const onNew = useCallback(() => chat.newConversation(), [chat]);
 
-  const onNew = useCallback(() => {
-    chat.newConversation();
-  }, [chat]);
+  // Sin proyecto activo → pantalla intermedia de selección.
+  if (!activeProject) {
+    return (
+      <ClaudeProjectPicker
+        projects={projects}
+        busy={switching}
+        onPick={switchProject}
+      />
+    );
+  }
 
   return (
     <div
       className="page"
       style={{
         padding: 0,
-        height: "calc(100vh - 60px - 38px)", // topbar + marquee aprox
+        height: "calc(100vh - 60px - 38px)",
         display: "flex",
         flexDirection: "column",
       }}
@@ -92,9 +132,10 @@ export function ClaudeView({ user }: ClaudeViewProps) {
           justifyContent: "space-between",
           padding: "16px 32px",
           borderBottom: "1px solid var(--line)",
+          gap: 16,
         }}
       >
-        <div className="row" style={{ gap: 18 }}>
+        <div className="row" style={{ gap: 16, alignItems: "center" }}>
           <Link
             href="/hub"
             prefetch={false}
@@ -109,13 +150,7 @@ export function ClaudeView({ user }: ClaudeViewProps) {
           >
             ← VOLVER AL HUB
           </Link>
-          <div
-            style={{
-              width: 1,
-              height: 16,
-              background: "var(--line)",
-            }}
-          />
+          <div style={{ width: 1, height: 16, background: "var(--line)" }} />
           <div className="brand" style={{ gap: 10 }}>
             <span
               className="brand-mark"
@@ -125,8 +160,14 @@ export function ClaudeView({ user }: ClaudeViewProps) {
               C
             </span>
             <span>CLAUDE</span>
-            <span className="brand-pip" title="conectado" />
           </div>
+          {/* Selector de proyecto SIEMPRE visible */}
+          <ProjectSelector
+            projects={projects}
+            active={activeProject}
+            busy={switching}
+            onSelect={switchProject}
+          />
         </div>
         <div className="t-meta dim" style={{ fontSize: 10 }}>
           ↳ {chat.conversationId ? "CONVERSACIÓN ACTIVA" : "CONVERSACIÓN NUEVA"}
@@ -138,6 +179,7 @@ export function ClaudeView({ user }: ClaudeViewProps) {
         <ConversationsSidebar
           activeId={chat.conversationId}
           refreshSignal={sidebarRefresh}
+          projectName={activeProject.name}
           onSelect={onSelectConversation}
           onNew={onNew}
         />
@@ -151,13 +193,7 @@ export function ClaudeView({ user }: ClaudeViewProps) {
             padding: "20px 32px 24px",
           }}
         >
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              paddingRight: 8,
-            }}
-          >
+          <div style={{ flex: 1, overflowY: "auto", paddingRight: 8 }}>
             {chat.loadError && (
               <div className="chat-block" style={{ marginBottom: 12 }}>
                 <strong>ERROR</strong>
@@ -177,6 +213,215 @@ export function ClaudeView({ user }: ClaudeViewProps) {
             onSend={onSend}
           />
         </main>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Selector de proyecto (dropdown del header)
+// ============================================================
+
+type ProjectSelectorProps = Readonly<{
+  projects: ProjectLite[];
+  active: ProjectLite;
+  busy: boolean;
+  onSelect: (p: ProjectLite) => void;
+}>;
+
+function ProjectSelector({
+  projects,
+  active,
+  busy,
+  onSelect,
+}: ProjectSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={busy}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          background: "var(--bg-elev)",
+          border: "1px solid var(--line-strong)",
+          borderRadius: 8,
+          padding: "6px 10px",
+          cursor: busy ? "wait" : "pointer",
+          color: "var(--fg)",
+          fontFamily: "var(--mono)",
+          fontSize: 12,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+        }}
+      >
+        <span>{active.icon ?? "◇"}</span>
+        <span>{active.name}</span>
+        <span className="dim" style={{ fontSize: 9 }}>
+          ▾
+        </span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            minWidth: 220,
+            background: "var(--bg-elev)",
+            border: "1px solid var(--line-strong)",
+            borderRadius: 8,
+            boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+            padding: 6,
+            zIndex: 1100,
+          }}
+        >
+          {projects.map((p) => {
+            const isActive = p.id === active.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onSelect(p);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  width: "100%",
+                  textAlign: "left",
+                  background: isActive ? "var(--bg)" : "transparent",
+                  border: 0,
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                  cursor: "pointer",
+                  color: isActive ? "var(--fg)" : "var(--fg-mute)",
+                  fontSize: 13,
+                }}
+              >
+                <span style={{ fontSize: 16 }}>{p.icon ?? "◇"}</span>
+                <span style={{ flex: 1 }}>{p.name}</span>
+                {isActive && (
+                  <span className="tag accent" style={{ padding: "1px 6px", fontSize: 9 }}>
+                    activo
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// Picker intermedio (sin proyecto activo)
+// ============================================================
+
+type ClaudeProjectPickerProps = Readonly<{
+  projects: ProjectLite[];
+  busy: boolean;
+  onPick: (p: ProjectLite) => void;
+}>;
+
+function ClaudeProjectPicker({
+  projects,
+  busy,
+  onPick,
+}: ClaudeProjectPickerProps) {
+  return (
+    <div
+      style={{
+        height: "calc(100vh - 60px - 38px)",
+        display: "grid",
+        placeItems: "center",
+        padding: 32,
+        overflowY: "auto",
+      }}
+    >
+      <div style={{ maxWidth: 720, width: "100%", textAlign: "center" }}>
+        <div className="t-eyebrow" style={{ marginBottom: 12 }}>
+          ↳ CLAUDE
+        </div>
+        <h1
+          className="page-title"
+          style={{ fontSize: 30, margin: "0 0 8px" }}
+        >
+          Elegí un proyecto para <em>arrancar.</em>
+        </h1>
+        <p className="t-meta dim" style={{ marginBottom: 28 }}>
+          El proyecto define el contexto y la memoria de Claude.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+            gap: 12,
+            textAlign: "left",
+          }}
+        >
+          {projects.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              disabled={busy}
+              onClick={() => onPick(p)}
+              style={{
+                border: "1px solid var(--line)",
+                borderRadius: 12,
+                padding: 18,
+                background: "var(--bg-elev)",
+                cursor: busy ? "wait" : "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                minHeight: 130,
+                color: "inherit",
+              }}
+            >
+              <span style={{ fontSize: 30, lineHeight: 1 }}>
+                {p.icon ?? "◇"}
+              </span>
+              <span
+                style={{
+                  marginTop: "auto",
+                  fontFamily: "var(--serif)",
+                  fontStyle: "italic",
+                  fontSize: 20,
+                }}
+              >
+                {p.name}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {projects.length === 0 && (
+          <p className="t-meta dim" style={{ marginTop: 24 }}>
+            No hay proyectos activos. Pedile al admin que cree uno.
+          </p>
+        )}
       </div>
     </div>
   );

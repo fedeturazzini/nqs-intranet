@@ -22,6 +22,8 @@ type ConversationsSidebarProps = Readonly<{
   activeId: string | null;
   /** Vuelve a llamar al endpoint — útil después de crear una nueva conv. */
   refreshSignal?: number;
+  /** Nombre del proyecto activo (FIX 17.5) — para el título del sidebar. */
+  projectName?: string;
   onSelect: (id: string) => void;
   onNew: () => void;
 }>;
@@ -29,6 +31,7 @@ type ConversationsSidebarProps = Readonly<{
 export function ConversationsSidebar({
   activeId,
   refreshSignal,
+  projectName,
   onSelect,
   onNew,
 }: ConversationsSidebarProps) {
@@ -76,12 +79,15 @@ export function ConversationsSidebar({
         className="row"
         style={{ justifyContent: "space-between", alignItems: "center" }}
       >
-        <div className="t-eyebrow">↳ HISTORIAL</div>
+        <div className="t-eyebrow" style={{ minWidth: 0 }}>
+          ↳ {projectName ? `CONVERSACIONES · ${projectName}` : "HISTORIAL"}
+        </div>
         <button
           type="button"
           className="btn sm"
           onClick={onNew}
           title="nueva conversación"
+          style={{ flexShrink: 0 }}
         >
           + nueva
         </button>

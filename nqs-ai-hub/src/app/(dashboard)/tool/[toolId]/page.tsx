@@ -16,6 +16,10 @@ import { redirect } from "next/navigation";
 import { ClaudeView } from "@/components/screens/ClaudeView";
 import { requireAuth } from "@/lib/auth/server";
 import { canUseTool } from "@/lib/middleware/permissions";
+import {
+  getActiveProjectForUser,
+  listActiveProjects,
+} from "@/lib/db/queries/projects";
 
 export const dynamic = "force-dynamic";
 
@@ -36,9 +40,31 @@ export default async function ToolPage({ params }: ToolPageProps) {
     redirect("/hub");
   }
 
+  // FIX 17.5: la selección de proyecto se hace acá (no al login). Si el
+  // user no tiene proyecto activo, ClaudeView muestra el picker; si tiene,
+  // entra directo al chat con el selector siempre visible.
+  const [projects, activeProject] = await Promise.all([
+    listActiveProjects(),
+    getActiveProjectForUser(session.userId),
+  ]);
+
   return (
     <ClaudeView
       user={{ name: session.name, initials: session.initials }}
+      projects={projects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        icon: p.icon,
+      }))}
+      activeProject={
+        activeProject
+          ? {
+              id: activeProject.id,
+              name: activeProject.name,
+              icon: activeProject.icon,
+            }
+          : null
+      }
     />
   );
 }
