@@ -24,6 +24,9 @@ const ALLOWED_MODELS = [
 const NewPromptSchema = z.object({
   toolId: z.string().min(1),
   type: z.enum(["system", "memory"]).optional().default("system"),
+  // Migration 0008: cada versión pertenece a un proyecto. La versión y la
+  // activación se escopean por (toolId, type, projectId).
+  projectId: z.string().uuid().optional(),
   name: z.string().min(2).max(120),
   // memory puede ser vacía (ej. "no hay contexto activo"); system no
   content: z.string().min(0).max(50_000),
@@ -38,6 +41,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const url = new URL(request.url);
   const toolId = url.searchParams.get("toolId");
   const typeFilter = url.searchParams.get("type");
+  const projectId = url.searchParams.get("projectId");
   if (!toolId) {
     return NextResponse.json(
       { error: "bad_request", message: "missing toolId" },
@@ -61,6 +65,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     .order("version", { ascending: false })
     .limit(50);
   if (typeFilter) q = q.eq("type", typeFilter);
+  if (projectId) q = q.eq("project_id", projectId);
   const { data, error } = await q;
   if (error) {
     return NextResponse.json(
@@ -88,17 +93,20 @@ export async function POST(request: Request): Promise<NextResponse> {
       { status: 400 },
     );
   }
-  const { toolId, type, name, content, model, activate } = parsed.data;
+  const { toolId, type, projectId, name, content, model, activate } =
+    parsed.data;
 
   const db = createServerClient();
 
   // Próxima version = max(version) + 1, SOLO entre prompts del mismo type
-  // (cada type lleva su propia secuencia de versiones).
-  const { data: last } = await db
+  // y proyecto (cada (type, project) lleva su propia secuencia).
+  let lastQ = db
     .from("system_prompts")
     .select("version")
     .eq("tool_id", toolId)
-    .eq("type", type)
+    .eq("type", type);
+  if (projectId) lastQ = lastQ.eq("project_id", projectId);
+  const { data: last } = await lastQ
     .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -109,6 +117,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     .insert({
       tool_id: toolId,
       type,
+      project_id: projectId ?? null,
       name,
       content_encrypted: encrypt(content),
       model,
@@ -126,15 +135,17 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   if (activate) {
-    // Desactivar las demás versiones del mismo (toolId, type) y activar
-    // esta. Importante: NO desactivar el otro type — memoria y system
-    // tienen activos independientes.
-    await db
+    // Desactivar las demás versiones del mismo (toolId, type, project) y
+    // activar esta. Importante: NO desactivar el otro type ni otros
+    // proyectos — cada (type, project) tiene su activo independiente.
+    let deacQ = db
       .from("system_prompts")
       .update({ is_active: false })
       .eq("tool_id", toolId)
       .eq("type", type)
       .neq("id", inserted.id);
+    if (projectId) deacQ = deacQ.eq("project_id", projectId);
+    await deacQ;
     const { error: actErr } = await db
       .from("system_prompts")
       .update({ is_active: true })

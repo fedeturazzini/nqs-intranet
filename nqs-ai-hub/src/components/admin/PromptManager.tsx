@@ -49,6 +49,8 @@ type PromptManagerProps = Readonly<{
   activeModel: string;
   /** Si es "memory", oculta el ModelSelector y permite content vacío. */
   type?: PromptKind;
+  /** Proyecto al que pertenecen estas versiones (migration 0008). */
+  projectId: string;
 }>;
 
 const DT = new Intl.DateTimeFormat("es-AR", {
@@ -68,6 +70,7 @@ export function PromptManager({
   activeContent,
   activeModel,
   type = "system",
+  projectId,
 }: PromptManagerProps) {
   const isMemory = type === "memory";
   const minContentLen = isMemory ? 0 : 20;
@@ -123,13 +126,13 @@ export function PromptManager({
 
   const refreshVersions = useCallback(async () => {
     const res = await fetch(
-      `/api/admin/system-prompts?toolId=claude&type=${type}`,
+      `/api/admin/system-prompts?toolId=claude&type=${type}&projectId=${projectId}`,
       { cache: "no-store" },
     );
     if (!res.ok) return;
     const data = (await res.json()) as { prompts: VersionRow[] };
     setVersions(data.prompts);
-  }, [type]);
+  }, [type, projectId]);
 
   async function saveAsNewVersion() {
     if (content.length < minContentLen) {
@@ -156,6 +159,7 @@ export function PromptManager({
         body: JSON.stringify({
           toolId: "claude",
           type,
+          projectId,
           name: `${namePrefix} v${(versions[0]?.version ?? 0) + 1}`,
           content,
           model,

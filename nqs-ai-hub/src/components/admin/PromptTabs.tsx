@@ -32,11 +32,17 @@ type TabState = {
 type PromptTabsProps = Readonly<{
   systemState: TabState;
   memoryState: TabState;
+  /** Proyecto cuyos prompts se están editando (migration 0008). */
+  projectId: string;
 }>;
 
 type Tab = "system" | "memory";
 
-export function PromptTabs({ systemState, memoryState }: PromptTabsProps) {
+export function PromptTabs({
+  systemState,
+  memoryState,
+  projectId,
+}: PromptTabsProps) {
   const [tab, setTab] = useState<Tab>("system");
 
   return (
@@ -69,6 +75,7 @@ export function PromptTabs({ systemState, memoryState }: PromptTabsProps) {
       <div style={{ display: tab === "system" ? "block" : "none" }}>
         <PromptManager
           type="system"
+          projectId={projectId}
           versions={systemState.versions}
           activeId={systemState.activeId}
           activeContent={systemState.activeContent}
@@ -78,6 +85,7 @@ export function PromptTabs({ systemState, memoryState }: PromptTabsProps) {
       <div style={{ display: tab === "memory" ? "block" : "none" }}>
         <PromptManager
           type="memory"
+          projectId={projectId}
           versions={memoryState.versions}
           activeId={memoryState.activeId}
           activeContent={memoryState.activeContent}
