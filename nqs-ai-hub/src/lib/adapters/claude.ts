@@ -275,6 +275,9 @@ export const claudeAdapter: ToolAdapter = {
           imagesCount: imagePaths.length,
           promptLength: params.prompt.length,
           model: systemPrompt.model,
+          // Split de tokens para el cálculo de gasto USD (Logs USD, prompt 17).
+          tokensInput: response.tokensInput,
+          tokensOutput: response.tokensOutput,
           promptVersion: systemPrompt.version,
           memoryVersion: memoryPrompt?.version ?? null,
           memoryLength: memoryText.length,

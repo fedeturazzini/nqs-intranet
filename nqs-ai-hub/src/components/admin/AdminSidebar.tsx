@@ -64,15 +64,12 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
     //   href: "/admin/credits",
     //   match: (p) => p.startsWith("/admin/credits"),
     // },
-    // TODO Prompt 17: rediseñar /admin/logs para mostrar gasto USD por usuario
-    // en vez de tokens. Mantener funcionalidad pero cambiar UI/UX.
-    // FEEDBACK NQS v2.0: hidden by request, may re-enable.
-    // "Logs" se oculta del sidebar. El código de /admin/logs queda intacto.
-    // {
-    //   label: "Logs",
-    //   href: "/admin/logs",
-    //   match: (p) => p.startsWith("/admin/logs"),
-    // },
+    {
+      // Prompt 17: rediseñado a gasto USD por usuario.
+      label: "Gasto",
+      href: "/admin/logs",
+      match: (p) => p.startsWith("/admin/logs"),
+    },
   ];
 
   // Items que vendrán post-MVP (sección "PRÓXIMAMENTE": SHIELD V2 / SNAPS V2).
