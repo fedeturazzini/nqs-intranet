@@ -35,6 +35,8 @@ type HubScreenProps = Readonly<{
   tools: ToolWithAccess[];
   /** Nombre del user para el saludo. */
   userFirstName: string;
+  /** Proyecto activo del user (migration 0008). */
+  activeProject: { name: string; icon: string | null };
 }>;
 
 function greeting(now: Date): string {
@@ -50,7 +52,11 @@ const DATE_FMT = new Intl.DateTimeFormat("es-AR", {
   year: "numeric",
 });
 
-export function HubScreen({ tools, userFirstName }: HubScreenProps) {
+export function HubScreen({
+  tools,
+  userFirstName,
+  activeProject,
+}: HubScreenProps) {
   const router = useRouter();
 
   const [filter, setFilter] = useState<Filter>("all");
@@ -251,10 +257,37 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
           </div>
         </div>
         <div className="page-meta">
+          <div>PROYECTO ACTIVO</div>
+          <strong
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              justifyContent: "flex-end",
+            }}
+          >
+            <span>{activeProject.icon ?? "◇"}</span>
+            <span>{activeProject.name}</span>
+            <button
+              type="button"
+              onClick={() => router.push("/projects")}
+              className="t-meta"
+              style={{
+                background: "transparent",
+                border: 0,
+                color: "var(--accent)",
+                cursor: "pointer",
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                padding: 0,
+              }}
+            >
+              cambiar
+            </button>
+          </strong>
           <div>HOY</div>
           <strong>{header.dateStr || "—"}</strong>
-          <div>EQUIPO ONLINE</div>
-          <strong>{counts.active + 1} personas</strong>
         </div>
       </div>
 

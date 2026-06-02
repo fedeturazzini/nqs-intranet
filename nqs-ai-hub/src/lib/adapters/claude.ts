@@ -31,7 +31,8 @@ import {
 } from "@/lib/anthropic/client";
 import { createServerClient } from "@/lib/db/supabase";
 import { getToolAccess } from "@/lib/db/queries/tools";
-import { getActiveSystemAndMemory } from "@/lib/db/queries/system-prompts";
+import { getActiveSystemAndMemoryForProject } from "@/lib/db/queries/system-prompts";
+import { getActiveProjectId } from "@/lib/db/queries/projects";
 import {
   pathBelongsToUser,
   signDownloadUrls,
@@ -98,17 +99,31 @@ export const claudeAdapter: ToolAdapter = {
     try {
       const db = createServerClient();
 
-      // 1. System prompt + memoria (plaintext, ya desencriptados).
+      // 0. Proyecto activo del user (migration 0008). Cada proyecto tiene
+      //    su propio cerebro + memoria. Sin proyecto activo, no se puede
+      //    usar Claude.
+      const projectId = await getActiveProjectId(userId);
+      if (!projectId) {
+        return {
+          ok: false,
+          error: new Error("Seleccioná un proyecto antes de usar Claude"),
+        };
+      }
+
+      // 1. System prompt + memoria DEL PROYECTO (plaintext, desencriptados).
       //    Concatenamos con tags <system_prompt> / <workspace_memory>.
       //    Si la memoria está vacía, no incluimos el bloque.
-      const prompts = await getActiveSystemAndMemory(TOOL_ID);
+      const prompts = await getActiveSystemAndMemoryForProject(
+        TOOL_ID,
+        projectId,
+      );
       const systemPrompt = prompts.system;
       const memoryPrompt = prompts.memory;
       if (!systemPrompt) {
         return {
           ok: false,
           error: new Error(
-            "no hay system prompt activo para Claude. Cargalo desde el panel admin.",
+            "Este proyecto todavía no tiene un cerebro configurado. Pedile al admin que lo cargue en el System Brain.",
           ),
         };
       }
@@ -254,6 +269,7 @@ export const claudeAdapter: ToolAdapter = {
         toolId: TOOL_ID,
         action: "claude.execute",
         metadata: {
+          projectId,
           conversationId,
           messageId,
           imagesCount: imagePaths.length,

@@ -111,6 +111,54 @@ export async function getActiveSystemAndMemory(
 }
 
 /**
+ * Igual que `getActiveSystemAndMemory` pero filtrando por `project_id`
+ * (migration 0008). Cada proyecto tiene su propio system + memoria.
+ *
+ * Si un proyecto todavía no tiene system/memory (los seed Kling/Film/
+ * Seedance arrancan vacíos), devuelve null en el campo correspondiente —
+ * el adapter de Claude decide qué hacer (hoy: error claro si no hay system).
+ */
+export async function getActiveSystemAndMemoryForProject(
+  toolId: ToolId,
+  projectId: string,
+): Promise<{
+  system: ActiveSystemPrompt | null;
+  memory: ActiveSystemPrompt | null;
+}> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("system_prompts")
+    .select("*")
+    .eq("tool_id", toolId)
+    .eq("project_id", projectId)
+    .eq("is_active", true)
+    .in("type", ["system", "memory"])
+    .order("version", { ascending: false });
+
+  if (error) throw error;
+
+  let system: ActiveSystemPrompt | null = null;
+  let memory: ActiveSystemPrompt | null = null;
+  for (const row of data ?? []) {
+    const t = row.type === "memory" ? "memory" : "system";
+    const raw = row.content_encrypted ?? "";
+    const content = raw === "" ? "" : decrypt(raw);
+    const parsed: ActiveSystemPrompt = {
+      id: row.id,
+      toolId: row.tool_id as ToolId,
+      type: t,
+      name: row.name,
+      version: row.version ?? 1,
+      model: row.model,
+      content,
+    };
+    if (t === "system" && !system) system = parsed;
+    if (t === "memory" && !memory) memory = parsed;
+  }
+  return { system, memory };
+}
+
+/**
  * Actualiza el contenido (plaintext) de un prompt. Se encripta antes de
  * persistir. No toca `is_active`, `tool_id`, `type` ni `version` — para
  * versionar usar el flow del endpoint admin que crea row nuevo.

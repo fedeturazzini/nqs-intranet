@@ -66,6 +66,10 @@ export type CreditAllocationRow = Tables<"credit_allocations">;
 export type CreditTransactionRow = Tables<"credit_transactions">;
 export type UsageLogRow = Tables<"usage_logs">;
 export type ModuleSessionRow = Tables<"module_sessions">;
+// Migration 0008 — sistema de proyectos + brain config.
+export type ProjectRow = Tables<"projects">;
+export type BrainConfigRow = Tables<"brain_config">;
+export type UserActiveProjectRow = Tables<"user_active_project">;
 
 // ============================================================
 // SCHEDULE — schema del JSONB en tool_access.schedule
