@@ -43,6 +43,8 @@ export function ProjectsScreen({
 }: ProjectsScreenProps) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
+  // FIX 17.5: volvió el toggle grid/lista.
+  const [layout, setLayout] = useState<"grid" | "list">("grid");
 
   async function openProject(p: ProjectCardData) {
     setBusyId(p.id);
@@ -91,8 +93,100 @@ export function ProjectsScreen({
             Seleccioná uno para empezar a trabajar.
           </div>
         </div>
+
+        {/* FIX 17.5: toggle grid / lista */}
+        <div className="hub-filters" style={{ alignSelf: "center" }}>
+          <button
+            type="button"
+            className={layout === "grid" ? "active" : ""}
+            onClick={() => setLayout("grid")}
+          >
+            Grid
+          </button>
+          <button
+            type="button"
+            className={layout === "list" ? "active" : ""}
+            onClick={() => setLayout("list")}
+          >
+            Lista
+          </button>
+        </div>
       </div>
 
+      {layout === "list" && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            marginTop: 8,
+          }}
+        >
+          {projects.map((p) => {
+            const isActive = p.id === activeProjectId;
+            const busy = busyId === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => openProject(p)}
+                disabled={busy}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  textAlign: "left",
+                  border: isActive
+                    ? "1px solid var(--accent)"
+                    : "1px solid var(--line)",
+                  borderRadius: 10,
+                  padding: "12px 16px",
+                  background: "var(--bg-elev)",
+                  cursor: busy ? "wait" : "pointer",
+                  color: "inherit",
+                }}
+              >
+                <span style={{ fontSize: 26 }}>{p.icon ?? "◇"}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontFamily: "var(--serif)",
+                      fontStyle: "italic",
+                      fontSize: 18,
+                    }}
+                  >
+                    {p.name}{" "}
+                    {isActive && (
+                      <span
+                        className="tag accent"
+                        style={{ padding: "1px 6px", fontSize: 9, marginLeft: 6 }}
+                      >
+                        activo
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="t-meta dim"
+                    style={{
+                      fontSize: 11,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {p.description ?? "Sin descripción."}
+                  </div>
+                </div>
+                <span className="btn sm" style={{ flexShrink: 0 }}>
+                  {busy ? "abriendo…" : "abrir →"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {layout === "grid" && (
       <div
         style={{
           display: "grid",
@@ -223,6 +317,7 @@ export function ProjectsScreen({
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

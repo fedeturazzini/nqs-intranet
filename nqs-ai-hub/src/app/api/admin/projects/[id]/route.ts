@@ -91,9 +91,24 @@ export async function DELETE(
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
 
-  // SOFT delete: archivamos (is_active=false), no borramos la fila ni sus
-  // prompts/conversaciones asociadas.
   const db = createServerClient();
+
+  // FIX 17.5: antes de archivar, las conversaciones de este proyecto pasan
+  // a project_id = NULL ("Sin proyecto"). No se borran — quedan huérfanas y
+  // recuperables (vista "Sin proyecto" queda como TODO post-MVP).
+  const { error: convErr } = await db
+    .from("claude_conversations")
+    .update({ project_id: null })
+    .eq("project_id", id);
+  if (convErr) {
+    return NextResponse.json(
+      { error: "db_error", message: convErr.message },
+      { status: 500 },
+    );
+  }
+
+  // SOFT delete del proyecto: archivamos (is_active=false), no borramos la
+  // fila ni sus prompts.
   const { error } = await db
     .from("projects")
     .update({ is_active: false, updated_at: new Date().toISOString() })
