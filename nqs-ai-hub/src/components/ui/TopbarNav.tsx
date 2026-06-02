@@ -33,6 +33,12 @@ const BASE_ITEMS: NavItem[] = [
     match: (p) => p === "/hub" || p.startsWith("/tool/"),
   },
   {
+    kind: "link",
+    label: "Proyectos",
+    href: "/projects",
+    match: (p) => p.startsWith("/projects"),
+  },
+  {
     kind: "soon",
     label: "Tutoriales",
     key: "tutoriales",
