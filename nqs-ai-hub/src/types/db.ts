@@ -84,6 +84,35 @@ export type Database = {
           },
         ]
       }
+      brain_config: {
+        Row: {
+          id: string
+          password_hash: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          password_hash: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          password_hash?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brain_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       claude_conversations: {
         Row: {
           created_at: string | null
@@ -353,6 +382,50 @@ export type Database = {
           },
         ]
       }
+      projects: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          icon: string | null
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       screenshots: {
         Row: {
           created_at: string | null
@@ -468,6 +541,7 @@ export type Database = {
           is_active: boolean | null
           model: string
           name: string
+          project_id: string | null
           tool_id: string
           type: string
           updated_at: string | null
@@ -481,6 +555,7 @@ export type Database = {
           is_active?: boolean | null
           model?: string
           name: string
+          project_id?: string | null
           tool_id: string
           type?: string
           updated_at?: string | null
@@ -494,6 +569,7 @@ export type Database = {
           is_active?: boolean | null
           model?: string
           name?: string
+          project_id?: string | null
           tool_id?: string
           type?: string
           updated_at?: string | null
@@ -505,6 +581,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_prompts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
@@ -713,6 +796,39 @@ export type Database = {
             foreignKeyName: "usage_logs_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_active_project: {
+        Row: {
+          project_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          project_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          project_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_active_project_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_active_project_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
