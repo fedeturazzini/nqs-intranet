@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
 import { signDownloadUrls } from "@/lib/storage/claude-uploads";
+import { getActiveProjectId } from "@/lib/db/queries/projects";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -30,7 +31,7 @@ export async function GET(
   // Ownership check + título de la conv en una sola query.
   const { data: conv, error: convErr } = await db
     .from("claude_conversations")
-    .select("id, user_id, title, created_at, updated_at")
+    .select("id, user_id, project_id, title, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -46,6 +47,14 @@ export async function GET(
   if (conv.user_id !== session.userId) {
     // 404 a propósito — no leakear existencia de conversaciones ajenas.
     return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
+  // FIX 17.5: además del ownership, la conversación debe pertenecer al
+  // proyecto activo del user. Evita abrir una conv de otro proyecto por
+  // URL. 404 (no leakear).
+  const activeProjectId = await getActiveProjectId(session.userId);
+  if (conv.project_id !== activeProjectId) {
+    return NextResponse.json({ error: "wrong_project" }, { status: 404 });
   }
 
   const { data: messages, error: msgErr } = await db

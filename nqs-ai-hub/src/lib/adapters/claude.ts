@@ -202,7 +202,8 @@ export const claudeAdapter: ToolAdapter = {
           const title = params.prompt.slice(0, 80);
           const { data: newConv, error: newConvErr } = await db
             .from("claude_conversations")
-            .insert({ user_id: userId, title })
+            // FIX 17.5: la conversación nace asociada al proyecto activo.
+            .insert({ user_id: userId, title, project_id: projectId })
             .select("id")
             .single();
           if (newConvErr) throw newConvErr;
