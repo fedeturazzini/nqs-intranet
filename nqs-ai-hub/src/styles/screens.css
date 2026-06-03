@@ -1553,3 +1553,29 @@
 .org-card-name { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
 .org-card-role { font-size: 10.5px; color: var(--fg-mute); margin-top: 1px; }
 .org-card-dept { font-size: 9px; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; }
+
+/* ── Tutoriales (S18) — cards del diseño del cliente ── */
+.tut-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+.tut-card {
+  display: flex; flex-direction: column; background: var(--bg-elev);
+  border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  text-decoration: none; color: inherit; cursor: pointer;
+  transition: transform .12s, border-color .12s, box-shadow .12s;
+}
+.tut-card:hover { transform: translateY(-2px); border-color: var(--tut-color, var(--accent)); box-shadow: 0 8px 28px rgba(0,0,0,0.06); }
+.tut-card-thumb {
+  position: relative; aspect-ratio: 16 / 9; display: grid; place-items: center;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, var(--tut-color, var(--accent)) 22%, transparent 70%), var(--bg-elev);
+}
+.tut-card-glyph { font-size: 56px; line-height: 1; filter: drop-shadow(0 2px 12px rgba(0,0,0,0.12)); }
+.tut-card-dur {
+  position: absolute; bottom: 12px; right: 12px; font-family: var(--mono);
+  font-size: 10px; letter-spacing: 0.16em; color: var(--fg-mute);
+  background: var(--bg-elev); padding: 2px 7px; border-radius: 5px; border: 1px solid var(--line);
+}
+.tut-card-body { padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.tut-card-title { font-family: var(--serif); font-style: italic; font-size: 24px; letter-spacing: -0.02em; line-height: 1.05; }
+.tut-card-lead { font-size: 13.5px; line-height: 1.5; color: var(--fg-mute); }
+.tut-card-foot { margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--line); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tut-tool-tag { font-size: 10px; letter-spacing: 0.1em; }
