@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
 import { createServerClient } from "@/lib/db/supabase";
+import { sendWelcomeEmail } from "@/lib/notifications/email";
 import type { ToolSchedule } from "@/types/db-aliases";
 
 /**
@@ -186,6 +187,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       }),
     );
   }
+
+  // S18: email de bienvenida con las credenciales (best-effort). Si
+  // RESEND_API_KEY no está configurada, el helper hace log y no rompe.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  await sendWelcomeEmail({
+    to: email.trim().toLowerCase(),
+    userName: name,
+    temporaryPassword: password,
+    hubUrl: appUrl,
+  });
 
   return NextResponse.json({ user: profile });
 }

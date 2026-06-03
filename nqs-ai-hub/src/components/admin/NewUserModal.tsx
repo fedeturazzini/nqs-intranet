@@ -260,6 +260,10 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
           ↳ Por default, el usuario tendrá acceso solo a <strong>3DSky</strong>{" "}
           en horario laboral (Lun-Vie 9-18hs). Podés habilitar más
           herramientas desde <em>Accesos &amp; Horarios</em>.
+          <br />
+          ↳ Se le enviará un email con sus credenciales (si Resend está
+          configurado). Si todavía no se configuró el envío, pasale las
+          credenciales manualmente.
         </div>
 
         {error && (
