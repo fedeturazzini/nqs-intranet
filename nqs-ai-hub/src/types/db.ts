@@ -853,8 +853,12 @@ export type Database = {
           id: string
           initials: string
           is_active: boolean | null
+          is_in_org: boolean
           job_title: string | null
           name: string
+          org_position: number | null
+          org_role: string | null
+          reports_to_id: string | null
           role: Database["public"]["Enums"]["user_role"]
           theme_preference: string
           updated_at: string | null
@@ -867,8 +871,12 @@ export type Database = {
           id?: string
           initials: string
           is_active?: boolean | null
+          is_in_org?: boolean
           job_title?: string | null
           name: string
+          org_position?: number | null
+          org_role?: string | null
+          reports_to_id?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           theme_preference?: string
           updated_at?: string | null
@@ -881,13 +889,25 @@ export type Database = {
           id?: string
           initials?: string
           is_active?: boolean | null
+          is_in_org?: boolean
           job_title?: string | null
           name?: string
+          org_position?: number | null
+          org_role?: string | null
+          reports_to_id?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           theme_preference?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "users_reports_to_id_fkey"
+            columns: ["reports_to_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
