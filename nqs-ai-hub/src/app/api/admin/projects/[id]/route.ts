@@ -80,7 +80,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<NextResponse> {
   const guard = await requireAdminApi();
@@ -92,10 +92,39 @@ export async function DELETE(
   }
 
   const db = createServerClient();
+  const hard = new URL(request.url).searchParams.get("hard") === "true";
 
-  // FIX 17.5: antes de archivar, las conversaciones de este proyecto pasan
-  // a project_id = NULL ("Sin proyecto"). No se borran — quedan huérfanas y
-  // recuperables (vista "Sin proyecto" queda como TODO post-MVP).
+  if (hard) {
+    // S18: HARD delete — borra el proyecto y TODO lo asociado de la DB.
+    //   1. claude_conversations del proyecto → cascade a claude_messages
+    //      (FK ON DELETE CASCADE). Las borramos explícito porque su FK a
+    //      projects es ON DELETE SET NULL (si no, sobrevivirían huérfanas).
+    //   2. el proyecto → cascade a system_prompts (FK ON DELETE CASCADE).
+    const { error: convDelErr } = await db
+      .from("claude_conversations")
+      .delete()
+      .eq("project_id", id);
+    if (convDelErr) {
+      return NextResponse.json(
+        { error: "db_error", message: convDelErr.message },
+        { status: 500 },
+      );
+    }
+    const { error: projDelErr } = await db
+      .from("projects")
+      .delete()
+      .eq("id", id);
+    if (projDelErr) {
+      return NextResponse.json(
+        { error: "db_error", message: projDelErr.message },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json({ ok: true, hard: true });
+  }
+
+  // SOFT delete (archivar). Las conversaciones del proyecto pasan a
+  // project_id = NULL ("Sin proyecto"); no se borran.
   const { error: convErr } = await db
     .from("claude_conversations")
     .update({ project_id: null })
@@ -107,13 +136,10 @@ export async function DELETE(
     );
   }
 
-  // SOFT delete del proyecto: archivamos (is_active=false), no borramos la
-  // fila ni sus prompts.
   const { error } = await db
     .from("projects")
     .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq("id", id);
-
   if (error) {
     return NextResponse.json(
       { error: "db_error", message: error.message },

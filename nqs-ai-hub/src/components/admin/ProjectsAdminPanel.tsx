@@ -39,6 +39,29 @@ export function ProjectsAdminPanel({
   const [projects, setProjects] = useState(initialProjects);
   const [editing, setEditing] = useState<ProjectItem | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  // S18: hard delete — proyecto target del modal de confirmación por nombre.
+  const [hardTarget, setHardTarget] = useState<ProjectItem | null>(null);
+
+  async function hardDelete(p: ProjectItem) {
+    const res = await fetch(`/api/admin/projects/${p.id}?hard=true`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      setProjects((prev) => prev.filter((x) => x.id !== p.id));
+      setHardTarget(null);
+      showToast({
+        title: "ELIMINADO",
+        msg: `"${p.name}" y sus conversaciones se borraron definitivamente.`,
+        color: "var(--danger)",
+      });
+    } else {
+      showToast({
+        title: "ERROR",
+        msg: "no se pudo eliminar",
+        color: "var(--danger)",
+      });
+    }
+  }
 
   function openCreate() {
     setEditing(null);
@@ -177,6 +200,16 @@ export function ProjectsAdminPanel({
                 restaurar
               </button>
             )}
+            {/* S18: hard delete definitivo */}
+            <button
+              type="button"
+              className="btn sm secondary"
+              onClick={() => setHardTarget(p)}
+              style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+              title="eliminar definitivamente"
+            >
+              eliminar
+            </button>
           </div>
         ))}
         {projects.length === 0 && (
@@ -193,6 +226,108 @@ export function ProjectsAdminPanel({
           onSaved={onSaved}
         />
       )}
+
+      {hardTarget && (
+        <HardDeleteModal
+          project={hardTarget}
+          onClose={() => setHardTarget(null)}
+          onConfirm={() => hardDelete(hardTarget)}
+        />
+      )}
+    </div>
+  );
+}
+
+type HardDeleteModalProps = Readonly<{
+  project: ProjectItem;
+  onClose: () => void;
+  onConfirm: () => void;
+}>;
+
+function HardDeleteModal({ project, onClose, onConfirm }: HardDeleteModalProps) {
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const matches = typed.trim() === project.name;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.7)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 1100,
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--bg-elev)",
+          border: "1px solid var(--danger)",
+          borderRadius: 12,
+          padding: 24,
+          width: "100%",
+          maxWidth: 460,
+        }}
+      >
+        <div className="t-eyebrow" style={{ color: "var(--danger)", marginBottom: 10 }}>
+          ↳ ELIMINAR DEFINITIVAMENTE
+        </div>
+        <p style={{ lineHeight: 1.55, margin: "0 0 14px", fontSize: 14 }}>
+          Esto va a eliminar <strong>PERMANENTEMENTE</strong> el proyecto{" "}
+          <strong>{project.name}</strong> y{" "}
+          <strong>todas sus conversaciones asociadas</strong>. No se puede
+          deshacer.
+        </p>
+        <label style={{ display: "block" }}>
+          <span className="t-meta dim" style={{ display: "block", marginBottom: 6 }}>
+            Escribí <code>{project.name}</code> para confirmar:
+          </span>
+          <input
+            type="text"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoFocus
+            placeholder={project.name}
+            style={{
+              width: "100%",
+              background: "var(--bg)",
+              border: "1px solid var(--line-strong)",
+              borderRadius: 6,
+              color: "var(--fg)",
+              fontFamily: "var(--sans)",
+              fontSize: 13,
+              padding: "8px 10px",
+              outline: "none",
+            }}
+          />
+        </label>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+          <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>
+            cancelar
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={!matches || busy}
+            onClick={() => {
+              setBusy(true);
+              onConfirm();
+            }}
+            style={{
+              background: matches ? "var(--danger)" : undefined,
+              color: matches ? "#fff" : undefined,
+            }}
+          >
+            {busy ? "eliminando…" : "eliminar definitivamente"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
