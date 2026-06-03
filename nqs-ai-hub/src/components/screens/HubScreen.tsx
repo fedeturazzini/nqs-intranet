@@ -27,6 +27,7 @@ import type { ToolWithAccess } from "@/lib/db/queries/access";
 import type { ToolId } from "@/types/db-aliases";
 
 const ORDER_KEY = "nqs-tool-order";
+const VIEW_KEY = "nqs-hub-view";
 
 type Filter = "all" | "active" | "pending" | "locked";
 type Layout = "grid" | "list";
@@ -98,6 +99,25 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
       // Sin localStorage (modo privado en algunos browsers) — no es crítico.
     }
   }, [order]);
+
+  // S18: persistir la vista grid/lista del hub. Hidratamos en mount para
+  // evitar mismatch de SSR.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(VIEW_KEY);
+      if (saved === "grid" || saved === "list") setLayout(saved);
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_KEY, layout);
+    } catch {
+      /* ignore */
+    }
+  }, [layout]);
 
   // Mapa para lookup rápido por id.
   const byId = useMemo(
@@ -255,15 +275,15 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
         <div className="page-meta">
           <div>HOY</div>
           <strong>{header.dateStr || "—"}</strong>
+          {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.
           <div>EQUIPO ONLINE</div>
           <strong>{counts.active + 1} personas</strong>
+          */}
         </div>
       </div>
 
-      {/* FEEDBACK NQS v2.0: el BUSCADOR se re-habilitó a pedido de Chule.
-          Las pestañas (Todas/Activas/Pendientes/Bloqueadas) y el toggle
-          Grid/Lista siguen ocultos (hidden by request, may re-enable). La
-          lógica de filter/layout queda intacta abajo para re-habilitar. */}
+      {/* FEEDBACK NQS v2.0: buscador + toggle Grid/Lista habilitados (S18).
+          Las pestañas (Todas/Activas/Pendientes/Bloqueadas) siguen ocultas. */}
       <div className="hub-toolbar">
         {/*
         <div className="hub-filters">
@@ -305,20 +325,19 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
           <span className="kbd">⌘K</span>
         </div>
 
-        {/*
+        {/* Toggle Grid / Lista (S18 — vuelve a pedido de Chule). */}
         <div className="hub-filters">
           <FilterButton
             active={layout === "grid"}
             onClick={() => setLayout("grid")}
-            label="Grid"
+            label="◧ Grid"
           />
           <FilterButton
             active={layout === "list"}
             onClick={() => setLayout("list")}
-            label="Lista"
+            label="☰ Lista"
           />
         </div>
-        */}
       </div>
 
       {layout === "grid" ? (
