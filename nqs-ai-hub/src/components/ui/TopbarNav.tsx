@@ -39,26 +39,18 @@ const BASE_ITEMS: NavItem[] = [
     match: (p) => p.startsWith("/projects"),
   },
   {
-    kind: "soon",
+    kind: "link",
     label: "Tutoriales",
-    key: "tutoriales",
-    toastTitle: "TUTORIALES",
-    toastMsg: "Módulo en preparación. Disponible en una próxima sesión del roadmap.",
+    href: "/tutoriales",
+    match: (p) => p.startsWith("/tutoriales"),
   },
   {
-    kind: "soon",
-    label: "Playbook",
-    key: "playbook",
-    toastTitle: "PLAYBOOK",
-    toastMsg: "Módulo en preparación. Disponible en una próxima sesión del roadmap.",
-  },
-  {
-    kind: "soon",
+    kind: "link",
     label: "Organigrama",
-    key: "organigrama",
-    toastTitle: "ORGANIGRAMA",
-    toastMsg: "Módulo en preparación. Disponible en una próxima sesión del roadmap.",
+    href: "/organigrama",
+    match: (p) => p.startsWith("/organigrama"),
   },
+  // S18: "Playbook" no va — lo absorbió Tutoriales (conversación con Chule).
 ];
 
 type TopbarNavProps = Readonly<{
