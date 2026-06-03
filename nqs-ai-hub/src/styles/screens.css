@@ -1518,3 +1518,38 @@
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
+
+/* ── Organigrama dinámico (S18) — árbol centrado con conectores ── */
+.org-tree-scroll { overflow-x: auto; padding: 16px 8px 8px; }
+.org-tree, .org-tree ul { display: flex; justify-content: center; }
+.org-tree { flex-direction: column; align-items: center; min-width: max-content; }
+.org-tree ul { padding-top: 22px; position: relative; }
+.org-tree li {
+  list-style: none; position: relative; padding: 22px 10px 0 10px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.org-tree li::before, .org-tree li::after {
+  content: ''; position: absolute; top: 0; right: 50%;
+  border-top: 1px solid var(--line-strong); width: 50%; height: 22px;
+}
+.org-tree li::after { right: auto; left: 50%; border-left: 1px solid var(--line-strong); }
+.org-tree li:only-child::after, .org-tree li:only-child::before { display: none; }
+.org-tree li:only-child { padding-top: 0; }
+.org-tree li:first-child::before, .org-tree li:last-child::after { border: 0 none; }
+.org-tree li:last-child::before { border-right: 1px solid var(--line-strong); }
+.org-tree li:first-child::after { border-left: 1px solid var(--line-strong); }
+.org-tree ul ul::before {
+  content: ''; position: absolute; top: 0; left: 50%;
+  border-left: 1px solid var(--line-strong); width: 0; height: 22px;
+}
+.org-card {
+  display: flex; align-items: stretch; min-width: 150px; max-width: 220px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg-elev);
+  cursor: pointer; overflow: hidden; transition: border-color .12s, transform .12s;
+}
+.org-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.org-card-bar { width: 4px; flex-shrink: 0; }
+.org-card-body { padding: 8px 12px; text-align: left; min-width: 0; }
+.org-card-name { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.org-card-role { font-size: 10.5px; color: var(--fg-mute); margin-top: 1px; }
+.org-card-dept { font-size: 9px; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; }

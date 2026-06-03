@@ -46,6 +46,11 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
       match: (p) => p.startsWith("/admin/projects"),
     },
     {
+      label: "Organigrama",
+      href: "/admin/organigrama",
+      match: (p) => p.startsWith("/admin/organigrama"),
+    },
+    {
       label: "Accesos & horarios",
       href: "/admin/access",
       match: (p) => p.startsWith("/admin/access"),
