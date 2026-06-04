@@ -42,7 +42,10 @@ export function createPlaceholderAdapter(
 // Registry
 // ============================================================
 
-export const adapters: Record<ToolId, ToolAdapter> = {
+// Partial: no toda ToolId tiene adapter. `tutoriales` es contenido
+// gestionado por acceso (no tiene execute/checkAccess propio). `getAdapter`
+// tira error si se pide uno que no existe.
+export const adapters: Partial<Record<ToolId, ToolAdapter>> = {
   claude: claudeAdapter,
   "3dsky": threeDSkyAdapter,
   weavy: createPlaceholderAdapter("weavy", "visual"),

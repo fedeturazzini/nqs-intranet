@@ -56,14 +56,25 @@ const BASE_ITEMS: NavItem[] = [
 type TopbarNavProps = Readonly<{
   isAdmin: boolean;
   pendingCount: number;
+  /** Si el user tiene acceso a Tutoriales; si no, se oculta el item. */
+  hasTutoriales?: boolean;
 }>;
 
-export function TopbarNav({ isAdmin, pendingCount }: TopbarNavProps) {
+export function TopbarNav({
+  isAdmin,
+  pendingCount,
+  hasTutoriales = false,
+}: TopbarNavProps) {
   const pathname = usePathname();
+
+  // El item "Tutoriales" solo aparece si el user tiene acceso (sesión aux).
+  const items = BASE_ITEMS.filter(
+    (it) => hasTutoriales || !("href" in it && it.href === "/tutoriales"),
+  );
 
   return (
     <nav className="nav">
-      {BASE_ITEMS.map((item) => {
+      {items.map((item) => {
         if (item.kind === "link") {
           const active = item.match(pathname);
           return (

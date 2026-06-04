@@ -50,7 +50,9 @@ export async function listToolsWithAccess(
 
   // 3 queries en paralelo — son independientes.
   const [toolsRes, accessRes, allocRes] = await Promise.all([
-    db.from("tools").select("*"),
+    // `tutoriales` se gestiona vía tool_access pero NO es una card del hub
+    // (es una sección del navbar). Lo excluimos del catálogo del hub.
+    db.from("tools").select("*").neq("id", "tutoriales"),
     db.from("tool_access").select("*").eq("user_id", userId),
     db.from("credit_allocations").select("*").eq("user_id", userId),
   ]);

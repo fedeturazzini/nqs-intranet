@@ -3,8 +3,9 @@
  * estático del cliente servido desde /public/tutorials/.
  */
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireAuth } from "@/lib/auth/server";
+import { canUseTool } from "@/lib/middleware/permissions";
 import { getTutorial } from "@/lib/constants/tutorials";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,12 @@ export const dynamic = "force-dynamic";
 type PageProps = { params: Promise<{ id: string }> };
 
 export default async function TutorialPage({ params }: PageProps) {
-  await requireAuth();
+  const session = await requireAuth();
+
+  // Sin acceso a Tutoriales → al gate de /tutoriales.
+  const perm = await canUseTool(session.userId, "tutoriales");
+  if (!perm.allowed) redirect("/tutoriales");
+
   const { id } = await params;
   const tu = getTutorial(id);
   if (!tu) notFound();

@@ -6,12 +6,18 @@
  */
 import Link from "next/link";
 import { requireAuth } from "@/lib/auth/server";
+import { canUseTool } from "@/lib/middleware/permissions";
+import { TutorialesGate } from "@/components/screens/TutorialesGate";
 import { TUTORIALS } from "@/lib/constants/tutorials";
 
 export const dynamic = "force-dynamic";
 
 export default async function TutorialesPage() {
-  await requireAuth();
+  const session = await requireAuth();
+
+  // Acceso gestionado vía tool_access (sesión auxiliar). Sin acceso → gate.
+  const perm = await canUseTool(session.userId, "tutoriales");
+  if (!perm.allowed) return <TutorialesGate />;
 
   return (
     <div className="page" style={{ padding: 32 }}>

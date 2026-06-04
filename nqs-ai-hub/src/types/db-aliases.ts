@@ -48,7 +48,8 @@ export type ToolId =
   | "runway"
   | "elevenlabs"
   | "highsfield"
-  | "3dsky";
+  | "3dsky"
+  | "tutoriales";
 
 // ============================================================
 // ROW ALIASES

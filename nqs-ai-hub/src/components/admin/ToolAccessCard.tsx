@@ -109,7 +109,21 @@ export function ToolAccessCard({
         </div>
       )}
 
-      {isActive && tool.is_active && (
+      {/* Tutoriales: contenido educativo 24/7, sin sección de horarios. */}
+      {isActive && tool.is_active && tool.id === "tutoriales" && (
+        <div
+          className="t-meta dim"
+          style={{
+            borderTop: "1px solid var(--line)",
+            paddingTop: 12,
+            fontSize: 11,
+          }}
+        >
+          ↳ acceso 24/7 · sin horarios (contenido educativo)
+        </div>
+      )}
+
+      {isActive && tool.is_active && tool.id !== "tutoriales" && (
         <div style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}>
           <div
             style={{
