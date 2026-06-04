@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { requireAuth } from "@/lib/auth/server";
 import { canUseTool } from "@/lib/middleware/permissions";
+import { createServerClient } from "@/lib/db/supabase";
 import { TutorialesGate } from "@/components/screens/TutorialesGate";
 import { TUTORIALS } from "@/lib/constants/tutorials";
 
@@ -15,9 +16,22 @@ export const dynamic = "force-dynamic";
 export default async function TutorialesPage() {
   const session = await requireAuth();
 
-  // Acceso gestionado vía tool_access (sesión auxiliar). Sin acceso → gate.
+  // Acceso gestionado vía tool_access (sesión auxiliar). Sin acceso → gate
+  // con el mismo flow de solicitud que las demás tools.
   const perm = await canUseTool(session.userId, "tutoriales");
-  if (!perm.allowed) return <TutorialesGate />;
+  if (!perm.allowed) {
+    // ¿El user ya tiene una solicitud de acceso pendiente para tutoriales?
+    const db = createServerClient();
+    const { data: pending } = await db
+      .from("access_requests")
+      .select("id")
+      .eq("user_id", session.userId)
+      .eq("tool_id", "tutoriales")
+      .eq("request_type", "access")
+      .eq("status", "pending")
+      .maybeSingle();
+    return <TutorialesGate alreadyPending={Boolean(pending)} />;
+  }
 
   return (
     <div className="page" style={{ padding: 32 }}>
