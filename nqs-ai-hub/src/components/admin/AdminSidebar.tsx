@@ -24,11 +24,13 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
   const pathname = usePathname();
 
   const items: NavItem[] = [
-    {
-      label: "Overview",
-      href: "/admin",
-      match: (p) => p === "/admin",
-    },
+    // FEEDBACK NQS v2.0: Overview hidden by request, may re-enable.
+    // La ruta /admin/overview sigue funcional por URL.
+    // {
+    //   label: "Overview",
+    //   href: "/admin/overview",
+    //   match: (p) => p === "/admin" || p.startsWith("/admin/overview"),
+    // },
     {
       label: "Usuarios",
       href: "/admin/users",
