@@ -21,15 +21,9 @@ type TopbarProps = Readonly<{
   };
   /** Cantidad de solicitudes pendientes para badge en Admin (post-MVP). */
   pendingCount?: number;
-  /** Si el user tiene acceso a Tutoriales (muestra/oculta el item del nav). */
-  hasTutoriales?: boolean;
 }>;
 
-export function Topbar({
-  user,
-  pendingCount = 0,
-  hasTutoriales = false,
-}: TopbarProps) {
+export function Topbar({ user, pendingCount = 0 }: TopbarProps) {
   const isAdmin = user.role === "admin";
 
   return (
@@ -40,11 +34,7 @@ export function Topbar({
           <span>WORKSPACE</span>
           <span className="brand-pip" title="conectado" />
         </div>
-        <TopbarNav
-          isAdmin={isAdmin}
-          pendingCount={pendingCount}
-          hasTutoriales={hasTutoriales}
-        />
+        <TopbarNav isAdmin={isAdmin} pendingCount={pendingCount} />
       </div>
       <div className="topbar-r">
         <span className="t-meta">

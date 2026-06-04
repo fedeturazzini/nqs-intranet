@@ -17,7 +17,6 @@ import { Marquee } from "@/components/ui/Marquee";
 import { Toast } from "@/components/ui/Toast";
 import { Topbar } from "@/components/ui/Topbar";
 import { requireAuth } from "@/lib/auth/server";
-import { canUseTool } from "@/lib/middleware/permissions";
 
 const MARQUEE_ITEMS = [
   "ONE KEY · EVERY TOOL",
@@ -41,10 +40,6 @@ export default async function DashboardLayout({
 }: DashboardLayoutProps) {
   const session = await requireAuth();
 
-  // El item "Tutoriales" del navbar solo se muestra si el user tiene acceso
-  // (los admins lo bypassean en canUseTool → siempre lo ven).
-  const tutorialesPerm = await canUseTool(session.userId, "tutoriales");
-
   return (
     <div className="app">
       <Topbar
@@ -55,7 +50,6 @@ export default async function DashboardLayout({
           theme: session.theme,
         }}
         pendingCount={PENDING_COUNT_PLACEHOLDER}
-        hasTutoriales={tutorialesPerm.allowed}
       />
       <Marquee items={MARQUEE_ITEMS} />
       {children}
