@@ -8,12 +8,15 @@
 -- Aplicar en Supabase SQL Editor (Run). Idempotente.
 -- ============================================================
 
+-- Nota: `category` es el enum `tool_category` (text/visual/video/audio/
+-- assets). NO tiene 'internal'. Como tutoriales está EXCLUIDO del hub, la
+-- categoría es solo un label cosmético en /admin/access → usamos 'assets'.
 INSERT INTO tools (id, name, vendor, category, description, color, glyph, is_active, uses_credits)
 VALUES (
   'tutoriales',
   'Tutoriales',
   'NQS',
-  'internal',
+  'assets',
   'Material de aprendizaje del estudio — recorridos de cada herramienta.',
   '#ffcb5c',
   '📚',
