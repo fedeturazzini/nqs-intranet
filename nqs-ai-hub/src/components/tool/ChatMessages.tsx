@@ -113,9 +113,7 @@ function MessageBubble({
         </div>
 
         {msg.isPending ? (
-          <span className="pulse" style={{ opacity: 0.7 }}>
-            Claude está pensando…
-          </span>
+          <ThinkingIndicator />
         ) : msg.errorMsg ? (
           <div className="chat-block">
             <strong>ERROR</strong>
@@ -163,6 +161,27 @@ function MessageBubble({
         onClose={() => setLightbox({ open: false, index: 0 })}
       />
     </div>
+  );
+}
+
+/**
+ * Indicador "Claude está pensando…" con un contador de segundos que sube,
+ * como el Claude original. Cuenta desde que se monta (mientras el mensaje
+ * está pending) hasta que llega el primer fragmento de texto (se desmonta).
+ */
+function ThinkingIndicator() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const t = setInterval(() => {
+      setSeconds(Math.floor((Date.now() - start) / 1000));
+    }, 250);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <span className="pulse" style={{ opacity: 0.7 }}>
+      Claude está pensando…{seconds > 0 ? ` ${seconds}s` : ""}
+    </span>
   );
 }
 
