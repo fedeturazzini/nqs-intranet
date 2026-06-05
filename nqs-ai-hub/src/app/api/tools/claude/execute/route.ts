@@ -18,6 +18,10 @@ import { getSession } from "@/lib/auth/server";
 import { getAdapter } from "@/lib/adapters";
 import { requireToolAccess } from "@/lib/middleware/permissions";
 
+// La respuesta se STREAMEA (puede tardar varios segundos con prompts
+// grandes). En Vercel hay que subir el techo de duración de la función.
+export const maxDuration = 60;
+
 const MAX_PROMPT_CHARS = 10_000;
 const MAX_IMAGES = 5;
 
@@ -31,7 +35,7 @@ const ExecuteSchema = z.object({
   conversationId: z.string().uuid().optional(),
 });
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
   // 1) sesión
   const session = await getSession();
   if (!session) {
@@ -67,22 +71,54 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // 4) ejecutar
+  // 4) ejecutar con STREAMING.
   const adapter = getAdapter("claude");
   if (!adapter.execute) {
-    return NextResponse.json(
-      { error: "not_implemented" },
-      { status: 501 },
-    );
+    return NextResponse.json({ error: "not_implemented" }, { status: 501 });
   }
+  const execute = adapter.execute.bind(adapter);
 
-  const result = await adapter.execute(session.userId, parsed.data);
-  if (!result.ok) {
-    return NextResponse.json(
-      { error: "execute_failed", message: result.error.message },
-      { status: 502 },
-    );
-  }
+  // Respuesta NDJSON (una línea JSON por evento):
+  //   {"type":"delta","text":"…"}                        ← por cada fragmento
+  //   {"type":"done","conversationId","messageId",…}     ← al terminar OK
+  //   {"type":"error","message":"…"}                     ← si falló el modelo
+  const encoder = new TextEncoder();
+  const userId = session.userId;
+  const params = parsed.data;
 
-  return NextResponse.json(result.value);
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown) =>
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      try {
+        const result = await execute(userId, params, (delta) =>
+          send({ type: "delta", text: delta }),
+        );
+        if (!result.ok) {
+          send({ type: "error", message: result.error.message });
+        } else {
+          send({
+            type: "done",
+            text: result.value.text,
+            conversationId: result.value.conversationId,
+            messageId: result.value.messageId,
+            tokensInput: result.value.tokensInput,
+            tokensOutput: result.value.tokensOutput,
+          });
+        }
+      } catch {
+        send({ type: "error", message: "error inesperado" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
 }

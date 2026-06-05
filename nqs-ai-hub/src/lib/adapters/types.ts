@@ -97,10 +97,16 @@ export type ToolAdapter = {
 
   // ─── opcionales ───
 
-  /** Tools con API directa (Claude). Ejecuta la operación principal. */
+  /**
+   * Tools con API directa (Claude). Ejecuta la operación principal.
+   * Si se pasa `onText`, la respuesta se streamea: se invoca por cada
+   * fragmento de texto a medida que el modelo lo genera. Igual resuelve
+   * con el resultado completo al terminar.
+   */
   execute?(
     userId: string,
     params: ExecuteParams,
+    onText?: (delta: string) => void,
   ): Promise<Result<ExecuteResult>>;
 
   /** Tools con créditos. Cuántos le quedan al user. */

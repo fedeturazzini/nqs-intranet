@@ -26,7 +26,7 @@
  */
 import {
   buildUserContent,
-  callClaude,
+  streamClaude,
   type ClaudeMessage,
 } from "@/lib/anthropic/client";
 import { createServerClient } from "@/lib/db/supabase";
@@ -95,7 +95,7 @@ export const claudeAdapter: ToolAdapter = {
     });
   },
 
-  async execute(userId, params): Promise<Result<ExecuteResult>> {
+  async execute(userId, params, onText): Promise<Result<ExecuteResult>> {
     try {
       const db = createServerClient();
 
@@ -190,9 +190,15 @@ export const claudeAdapter: ToolAdapter = {
       // El modelo viene de DB (system_prompts.model del type='system').
       // El admin lo configura desde /admin/prompt; el SDK lo recibe en
       // cada call.
-      const response = await callClaude(fullSystem, messages, {
-        model: systemPrompt.model,
-      });
+      // Streaming: si el caller pasó `onText`, los deltas se emiten a
+      // medida que se generan (la respuesta no se corta por timeout aunque
+      // el prompt sea grande). Igual acumulamos el texto completo.
+      const response = await streamClaude(
+        fullSystem,
+        messages,
+        { model: systemPrompt.model },
+        onText,
+      );
 
       // 4. Persistencia. Best-effort: si falla algo acá, igual devolvemos
       // la respuesta al user porque ya pagamos los tokens.

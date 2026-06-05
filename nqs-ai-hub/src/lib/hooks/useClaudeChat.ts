@@ -146,6 +146,15 @@ export function useClaudeChat() {
       ]);
       setIsSending(true);
 
+      const setErrorOnPending = (errMsg: string) =>
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === pendingMsgId
+              ? { ...m, isPending: false, errorMsg: errMsg, content: "" }
+              : m,
+          ),
+        );
+
       try {
         const res = await fetch("/api/tools/claude/execute", {
           method: "POST",
@@ -156,38 +165,90 @@ export function useClaudeChat() {
             conversationId: conversationId ?? undefined,
           }),
         });
-        const data = (await res.json()) as ExecuteResponse;
 
-        if (!res.ok || "error" in data) {
+        // Errores tempranos (auth / permiso / validación) → JSON con status
+        // distinto de 2xx, NO stream.
+        if (!res.ok || !res.body) {
+          const data = (await res.json().catch(() => ({}))) as {
+            error?: string;
+            message?: string;
+          };
           const errMsg =
-            ("error" in data && (data.message || data.error)) ||
-            "no pudimos procesar tu pedido";
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === pendingMsgId
-                ? { ...m, isPending: false, errorMsg: errMsg, content: "" }
-                : m,
-            ),
-          );
+            data.message || data.error || "no pudimos procesar tu pedido";
+          setErrorOnPending(errMsg);
           return { ok: false, error: errMsg };
         }
 
-        // Éxito: reemplazamos el placeholder con la respuesta real.
-        setConversationId(data.conversationId);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === pendingMsgId
-              ? {
-                  id: data.messageId,
-                  role: "assistant",
-                  content: data.text,
-                  tokensInput: data.tokensInput,
-                  tokensOutput: data.tokensOutput,
-                }
-              : m,
-          ),
-        );
-        return { ok: true, conversationId: data.conversationId };
+        // Stream NDJSON: parseamos línea por línea y vamos pintando el texto.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let acc = "";
+        let started = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = buffer.indexOf("\n")) >= 0) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line) continue;
+            let ev: {
+              type: string;
+              text?: string;
+              conversationId?: string;
+              messageId?: string;
+              tokensInput?: number;
+              tokensOutput?: number;
+              message?: string;
+            };
+            try {
+              ev = JSON.parse(line);
+            } catch {
+              continue;
+            }
+
+            if (ev.type === "delta" && ev.text) {
+              started = true;
+              acc += ev.text;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === pendingMsgId
+                    ? { ...m, isPending: false, content: acc }
+                    : m,
+                ),
+              );
+            } else if (ev.type === "error") {
+              setErrorOnPending(ev.message || "no pudimos procesar tu pedido");
+              return { ok: false, error: ev.message || "error" };
+            } else if (ev.type === "done") {
+              const convId = ev.conversationId ?? "";
+              setConversationId(convId);
+              const finalText = acc || ev.text || "";
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === pendingMsgId
+                    ? {
+                        id: ev.messageId ?? pendingMsgId,
+                        role: "assistant",
+                        content: finalText,
+                        tokensInput: ev.tokensInput,
+                        tokensOutput: ev.tokensOutput,
+                      }
+                    : m,
+                ),
+              );
+              return { ok: true, conversationId: convId };
+            }
+          }
+        }
+
+        // Stream terminó sin 'done' explícito.
+        if (started) return { ok: true, conversationId: conversationId ?? "" };
+        setErrorOnPending("respuesta incompleta, probá de nuevo");
+        return { ok: false, error: "respuesta incompleta" };
       } catch (err) {
         const msg = err instanceof Error ? err.message : "error de red";
         setMessages((prev) =>

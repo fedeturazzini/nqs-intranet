@@ -22,7 +22,9 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
 export const DEFAULT_MAX_TOKENS = 4096;
-const DEFAULT_TIMEOUT_MS = 60_000;
+// Con streaming el timeout se "renueva" por chunk, así que generaciones
+// largas no se cortan. Igual dejamos un techo generoso por las dudas.
+const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_RETRIES = 3;
 
 let cached: Anthropic | null = null;
@@ -97,6 +99,53 @@ export async function callClaude(
     tokensInput: response.usage.input_tokens,
     tokensOutput: response.usage.output_tokens,
     stopReason: response.stop_reason,
+  };
+}
+
+// ============================================================
+// streamClaude — versión con streaming
+// ============================================================
+// Usa `messages.stream()` en vez de `.create()`. Ventajas:
+//   - El timeout se renueva por chunk → generaciones largas (prompts
+//     grandes + respuestas largas) NO se cortan con "Request timed out".
+//   - `onText(delta)` se llama por cada fragmento de texto → la UI puede
+//     mostrar la respuesta a medida que se genera (como Claude original).
+// Devuelve igual el resultado final acumulado (texto + tokens).
+
+/**
+ * Como `callClaude` pero con streaming. Si se pasa `onText`, se invoca por
+ * cada delta de texto. Resuelve con la respuesta completa al terminar.
+ */
+export async function streamClaude(
+  systemPrompt: string,
+  messages: ClaudeMessage[],
+  options: CallClaudeOptions = {},
+  onText?: (delta: string) => void,
+): Promise<ClaudeResponse> {
+  const client = getClient();
+
+  const stream = client.messages.stream({
+    model: options.model ?? DEFAULT_MODEL,
+    max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
+    system: systemPrompt,
+    messages,
+  });
+
+  if (onText) {
+    stream.on("text", (delta) => onText(delta));
+  }
+
+  const final = await stream.finalMessage();
+  const textBlocks = final.content.filter(
+    (b): b is Anthropic.Messages.TextBlock => b.type === "text",
+  );
+  const text = textBlocks.map((b) => b.text).join("\n");
+
+  return {
+    text,
+    tokensInput: final.usage.input_tokens,
+    tokensOutput: final.usage.output_tokens,
+    stopReason: final.stop_reason,
   };
 }
 
