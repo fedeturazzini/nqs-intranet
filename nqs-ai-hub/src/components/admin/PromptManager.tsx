@@ -58,6 +58,8 @@ const DT = new Intl.DateTimeFormat("es-AR", {
   month: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
+  // Forzamos hora Argentina (si no, SSR en Vercel = UTC = +3hs).
+  timeZone: "America/Argentina/Buenos_Aires",
 });
 
 function isClaudeModel(s: string): s is ClaudeModel {

@@ -17,6 +17,9 @@ const DT = new Intl.DateTimeFormat("es-AR", {
   month: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
+  // Server Component: sin timeZone usaría la del runtime (UTC en Vercel) y
+  // mostraría +3hs. Forzamos hora Argentina.
+  timeZone: "America/Argentina/Buenos_Aires",
 });
 
 async function loadStats() {

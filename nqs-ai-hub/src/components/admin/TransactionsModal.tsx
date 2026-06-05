@@ -35,6 +35,8 @@ const DT = new Intl.DateTimeFormat("es-AR", {
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
+  // Forzamos hora Argentina (si no, SSR en Vercel = UTC = +3hs).
+  timeZone: "America/Argentina/Buenos_Aires",
 });
 function dt(iso: string | null): string {
   if (!iso) return "—";

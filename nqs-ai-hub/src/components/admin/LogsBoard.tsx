@@ -63,6 +63,9 @@ const DT = new Intl.DateTimeFormat("es-AR", {
   month: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
+  // Forzamos hora Argentina: en SSR (Vercel) el runtime es UTC y mostraría
+  // +3hs hasta la hidratación.
+  timeZone: "America/Argentina/Buenos_Aires",
 });
 function dt(iso: string | null): string {
   if (!iso) return "—";

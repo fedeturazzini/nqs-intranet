@@ -49,6 +49,9 @@ const DATE_FMT = new Intl.DateTimeFormat("es-AR", {
   day: "numeric",
   month: "long",
   year: "numeric",
+  // Hora Argentina para que el saludo coincida en SSR y cliente (evita
+  // mismatch de hidratación cerca de medianoche).
+  timeZone: "America/Argentina/Buenos_Aires",
 });
 
 export function HubScreen({ tools, userFirstName }: HubScreenProps) {

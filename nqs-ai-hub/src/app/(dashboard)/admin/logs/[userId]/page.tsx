@@ -22,6 +22,9 @@ const DT = new Intl.DateTimeFormat("es-AR", {
   month: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
+  // Server-rendered: forzamos hora Argentina (si no, usa la del runtime =
+  // UTC en Vercel y se ven 3hs adelantadas).
+  timeZone: "America/Argentina/Buenos_Aires",
 });
 
 const PRESET_PERIODS: PeriodKey[] = ["this-month", "last-month", "7days"];

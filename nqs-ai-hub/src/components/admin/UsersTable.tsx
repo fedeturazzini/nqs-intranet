@@ -30,6 +30,9 @@ const DATE_FMT = new Intl.DateTimeFormat("es-AR", {
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
+  // Forzamos hora Argentina para que la fecha sea la del día local (sin esto,
+  // cerca de medianoche SSR en UTC podría mostrar el día siguiente).
+  timeZone: "America/Argentina/Buenos_Aires",
 });
 
 export function UsersTable({ initialUsers }: UsersTableProps) {
