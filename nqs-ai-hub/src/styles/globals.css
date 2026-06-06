@@ -1,9 +1,11 @@
 /* NQS AI Hub — entry stylesheet
- * Order: fonts → Tailwind → client design system → screen-specific.
+ * Order: Tailwind → client design system → screen-specific.
+ * Inter + JetBrains Mono se cargan con next/font (self-hosted, ver
+ * layout.tsx); Times New Roman es del sistema. Por eso ya no hay
+ * @import de Google Fonts acá.
  * Any new rule debe vivir en `components.css` o `screens.css`
  * para mantener el design system del cliente como fuente única.
  */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap");
 @import "tailwindcss";
 @import "./components.css";
 @import "./screens.css";

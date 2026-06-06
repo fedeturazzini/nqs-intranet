@@ -16,9 +16,16 @@
   --danger: #ff5c5c;
   --ok: #6dd58c;
 
-  --serif: "Times New Roman", "Times", serif;
-  --sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+  /* Inter / JetBrains Mono / Instrument Serif los inyecta next/font en el
+     <html> (ver layout.tsx). El resto del stack queda como fallback.
+     Instrument Serif (editorial, italic) es el override de serif del HTML
+     del cliente — antes el base usaba Times New Roman. */
+  --serif: var(--font-serif), "Instrument Serif", "Times New Roman", "Times",
+    serif;
+  --sans: var(--font-sans), "Inter", "Helvetica Neue", Helvetica, Arial,
+    sans-serif;
+  --mono: var(--font-mono), "JetBrains Mono", "SF Mono", "Menlo", "Consolas",
+    monospace;
 }
 
 [data-theme="light"] {
