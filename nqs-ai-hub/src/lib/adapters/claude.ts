@@ -48,6 +48,18 @@ import type {
 
 const TOOL_ID = "claude" as const;
 
+/**
+ * Instrucciones de formato que se appendean AL FINAL del system prompt de cada
+ * proyecto (FEEDBACK Chule: a veces aparecían <function_calls> u otra sintaxis
+ * de artifacts/tool-calling de Claude.ai, que no se renderiza en esta app).
+ * Van al final para que Claude las priorice sobre el prompt del proyecto.
+ */
+const FORMAT_INSTRUCTIONS = `=== INSTRUCCIONES DE FORMATO (NQS AI Hub) ===
+Respondé siempre en texto plano con markdown estándar: headers (#, ##), listas, **negrita**, *itálica*, código inline con \`backticks\` o bloques con triple backtick.
+NO uses bloques de artifact ni la sintaxis de tool/function calling (<function_calls>, <invoke>, <parameter>, <artifact>, etc.). Esos bloques son de la interfaz Claude.ai y NO se renderizan en esta aplicación.
+Si necesitás compartir código o un documento largo, usá un bloque de código markdown con triple backtick.
+Si te piden un "artifact", interpretalo como "respuesta detallada en markdown".`;
+
 export const claudeAdapter: ToolAdapter = {
   id: TOOL_ID,
   category: "text",
@@ -128,9 +140,12 @@ export const claudeAdapter: ToolAdapter = {
         };
       }
       const memoryText = memoryPrompt?.content.trim() ?? "";
-      const fullSystem = memoryText
+      const projectSystem = memoryText
         ? `<system_prompt>${systemPrompt.content}</system_prompt>\n<workspace_memory>${memoryText}</workspace_memory>`
         : systemPrompt.content;
+      // Las instrucciones de formato (no-artifacts) van al final, después del
+      // cerebro del proyecto, para que tengan prioridad.
+      const fullSystem = `${projectSystem}\n\n${FORMAT_INSTRUCTIONS}`;
 
       // 2. Construir history si vino conversationId.
       const messages: ClaudeMessage[] = [];
