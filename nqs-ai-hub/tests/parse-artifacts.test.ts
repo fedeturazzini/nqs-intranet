@@ -70,6 +70,36 @@ describe("parseMessageWithArtifacts", () => {
     });
   });
 
+  test("limpia tags residuales después de la card (issue 1)", () => {
+    const msg =
+      artifactBlock(
+        `<parameter name="type">text/plain</parameter>\n` +
+          `<parameter name="title">t</parameter>\n` +
+          `<parameter name="content">contenido</parameter>`,
+      ) + "\n</invoke>\n</function_calls>\nlisto.";
+    const { segments } = parseMessageWithArtifacts(msg);
+    const texts = segments.filter((s) => s.kind === "text");
+    expect(texts).toHaveLength(1);
+    const textContent = texts[0].kind === "text" ? texts[0].content : "";
+    expect(textContent).not.toMatch(/function_calls|invoke|parameter/);
+    expect(textContent).toContain("listo.");
+  });
+
+  test("acepta whitespace y mayúsculas en los tags (regex tolerante)", () => {
+    const msg =
+      `<function_calls>\n<invoke  name="artifacts" >\n` +
+      `<parameter name="type">text/plain</parameter>\n` +
+      `<parameter name="title">x</parameter>\n` +
+      `<parameter name="content">ok</parameter>\n` +
+      `</invoke>\n</function_calls>`;
+    const { segments } = parseMessageWithArtifacts(msg);
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({
+      kind: "artifact",
+      artifact: { content: "ok", title: "x" },
+    });
+  });
+
   test("artifact sin content → se ignora (no rompe)", () => {
     const msg = artifactBlock(
       `<parameter name="type">text/plain</parameter>\n` +

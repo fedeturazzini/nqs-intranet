@@ -28,9 +28,10 @@ export type MessageSegment =
 export type ParsedMessage = { segments: MessageSegment[] };
 
 // `g` para iterar todos los artifacts. Usamos matchAll (no exec) para no
-// arrastrar `lastIndex` entre llamadas.
+// arrastrar `lastIndex` entre llamadas. Tolerante a whitespace y a may/min
+// (`\s+`, `\s*`, flag `i`) porque el modelo no siempre formatea igual.
 const ARTIFACT_RE =
-  /<function_calls>\s*<invoke name="artifacts">([\s\S]*?)<\/invoke>\s*<\/function_calls>/g;
+  /<function_calls>\s*<invoke\s+name="artifacts"\s*>([\s\S]*?)<\/invoke>\s*<\/function_calls>/gi;
 
 /**
  * Separa el mensaje en segmentos de texto y artifacts, en orden. Si no hay
@@ -43,7 +44,7 @@ export function parseMessageWithArtifacts(content: string): ParsedMessage {
   for (const match of content.matchAll(ARTIFACT_RE)) {
     const idx = match.index ?? 0;
     if (idx > lastIndex) {
-      const before = content.slice(lastIndex, idx).trim();
+      const before = cleanResidualTags(content.slice(lastIndex, idx));
       if (before) segments.push({ kind: "text", content: before });
     }
     const artifact = parseArtifactBody(match[1]);
@@ -52,11 +53,13 @@ export function parseMessageWithArtifacts(content: string): ParsedMessage {
   }
 
   if (lastIndex < content.length) {
-    const after = content.slice(lastIndex).trim();
+    const after = cleanResidualTags(content.slice(lastIndex));
     if (after) segments.push({ kind: "text", content: after });
   }
 
-  if (segments.length === 0) segments.push({ kind: "text", content });
+  if (segments.length === 0) {
+    segments.push({ kind: "text", content: cleanResidualTags(content) });
+  }
   return { segments };
 }
 
@@ -69,6 +72,20 @@ export function hasIncompleteArtifact(content: string): boolean {
   const open = (content.match(/<function_calls>/g) ?? []).length;
   const close = (content.match(/<\/function_calls>/g) ?? []).length;
   return open > close;
+}
+
+/**
+ * Limpia tags de artifacts que hayan quedado sueltos en un segmento de texto
+ * (ej. un `</invoke></function_calls>` duplicado que el modelo dejó después de
+ * la card). Evita que se vean tags crudos en el chat.
+ */
+function cleanResidualTags(text: string): string {
+  return text
+    .replace(/<\/?function_calls\s*>/gi, "")
+    .replace(/<\/?invoke[^>]*>/gi, "")
+    .replace(/<\/?parameter[^>]*>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function parseArtifactBody(body: string): ParsedArtifact | null {
