@@ -18,7 +18,7 @@
  * componentes (ej. notif global de "Claude está pensando"), se mueve
  * al store.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 // ============================================================
 // Tipos del chat (UI-side)
@@ -78,6 +78,8 @@ export function useClaudeChat() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // AbortController de la request en curso (para el botón "Detener").
+  const abortRef = useRef<AbortController | null>(null);
 
   const newConversation = useCallback(() => {
     setMessages([]);
@@ -155,10 +157,18 @@ export function useClaudeChat() {
           ),
         );
 
+      // Declarados afuera del try para que el handler de AbortError (botón
+      // "Detener") conserve el texto que llegó hasta ese momento.
+      let acc = "";
+      let started = false;
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       try {
         const res = await fetch("/api/tools/claude/execute", {
           method: "POST",
           headers: { "content-type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             prompt,
             imagePaths: imagePaths.length > 0 ? imagePaths : undefined,
@@ -183,8 +193,6 @@ export function useClaudeChat() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let acc = "";
-        let started = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -250,6 +258,21 @@ export function useClaudeChat() {
         setErrorOnPending("respuesta incompleta, probá de nuevo");
         return { ok: false, error: "respuesta incompleta" };
       } catch (err) {
+        // "Detener generación": no es un error — conservamos lo que llegó.
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === pendingMsgId
+                ? {
+                    ...m,
+                    isPending: false,
+                    content: acc || "_(generación detenida)_",
+                  }
+                : m,
+            ),
+          );
+          return { ok: true, conversationId: conversationId ?? "" };
+        }
         const msg = err instanceof Error ? err.message : "error de red";
         setMessages((prev) =>
           prev.map((m) =>
@@ -260,17 +283,24 @@ export function useClaudeChat() {
         );
         return { ok: false, error: msg };
       } finally {
+        abortRef.current = null;
         setIsSending(false);
       }
     },
     [conversationId],
   );
 
+  /** Aborta la generación en curso (botón "Detener"). */
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   return {
     messages,
     conversationId,
     isSending,
     loadError,
+    stop,
     sendMessage,
     loadConversation,
     newConversation,

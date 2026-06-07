@@ -55,12 +55,15 @@ type ChatInputProps = Readonly<{
     imagePaths: string[],
     previews: string[],
   ) => void;
+  /** Aborta la respuesta en curso (botón "Detener" mientras streamea). */
+  onStop: () => void;
 }>;
 
 export function ChatInput({
   isSending,
   conversationId,
   onSend,
+  onStop,
 }: ChatInputProps) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -360,23 +363,36 @@ export function ChatInput({
             padding: "4px 0",
           }}
         />
-        <button
-          type="button"
-          onClick={() => void handleSend()}
-          disabled={isSending || uploading || compressing || !text.trim()}
-          aria-label="enviar"
-          className="btn sm"
-          style={{
-            opacity:
-              isSending || uploading || compressing || !text.trim() ? 0.5 : 1,
-            cursor:
-              isSending || uploading || compressing || !text.trim()
-                ? "not-allowed"
-                : "pointer",
-          }}
-        >
-          {compressing ? "⏳" : uploading ? "↑" : isSending ? "…" : "→"}
-        </button>
+        {isSending ? (
+          // Mientras Claude responde, el botón pasa a "Detener" (aborta el
+          // stream y conserva el texto que llegó).
+          <button
+            type="button"
+            onClick={onStop}
+            aria-label="detener generación"
+            title="Detener la respuesta de Claude"
+            className="btn sm danger"
+          >
+            ■ detener
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void handleSend()}
+            disabled={uploading || compressing || !text.trim()}
+            aria-label="enviar"
+            className="btn sm"
+            style={{
+              opacity: uploading || compressing || !text.trim() ? 0.5 : 1,
+              cursor:
+                uploading || compressing || !text.trim()
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+          >
+            {compressing ? "⏳" : uploading ? "↑" : "→"}
+          </button>
+        )}
       </div>
     </div>
   );

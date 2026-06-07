@@ -211,6 +211,7 @@ export function ClaudeView({
             isSending={chat.isSending}
             conversationId={chat.conversationId}
             onSend={onSend}
+            onStop={chat.stop}
           />
         </main>
       </div>
