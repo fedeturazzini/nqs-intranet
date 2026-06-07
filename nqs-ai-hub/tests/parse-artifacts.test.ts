@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import {
   parseMessageWithArtifacts,
   hasIncompleteArtifact,
+  hasIncompleteThinking,
 } from "@/lib/utils/parse-artifacts";
 
 const artifactBlock = (
@@ -124,5 +125,23 @@ describe("hasIncompleteArtifact", () => {
         `Listo:\n<function_calls>\n<invoke name="artifacts">\n<parameter name="content">a med`,
       ),
     ).toBe(true);
+  });
+});
+
+describe("filtrado de <thinking> (el razonamiento no se muestra)", () => {
+  test("parseMessageWithArtifacts borra el bloque <thinking>", () => {
+    const { segments } = parseMessageWithArtifacts(
+      "<thinking>el user pidió X, voy a…</thinking>Acá está tu respuesta.",
+    );
+    expect(segments).toHaveLength(1);
+    const text = segments[0].kind === "text" ? segments[0].content : "";
+    expect(text).toBe("Acá está tu respuesta.");
+    expect(text).not.toMatch(/thinking|el user pidió/i);
+  });
+
+  test("hasIncompleteThinking detecta el <thinking> abierto (streaming)", () => {
+    expect(hasIncompleteThinking("hola")).toBe(false);
+    expect(hasIncompleteThinking("<thinking>razono</thinking>ok")).toBe(false);
+    expect(hasIncompleteThinking("<thinking>razonando a med")).toBe(true);
   });
 });

@@ -21,6 +21,7 @@ import {
 import {
   parseMessageWithArtifacts,
   hasIncompleteArtifact,
+  hasIncompleteThinking,
 } from "@/lib/utils/parse-artifacts";
 import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
 
@@ -249,12 +250,19 @@ function ThinkingIndicator() {
  * XML parcial y muestra un placeholder "generando…".
  */
 function AssistantContent({ content }: { content: string }) {
-  const incomplete = hasIncompleteArtifact(content);
-  // Si un artifact está llegando, no mostramos su XML parcial: cortamos en el
-  // último <function_calls> sin cerrar.
-  const visible = incomplete
-    ? content.slice(0, content.lastIndexOf("<function_calls>"))
-    : content;
+  const incompleteThinking = hasIncompleteThinking(content);
+  const incompleteArtifact = hasIncompleteArtifact(content);
+
+  // Mientras un <thinking> o un <function_calls> está a medio llegar por
+  // streaming, ocultamos todo lo que sigue al tag abierto (no mostramos el
+  // XML/razonamiento parcial). El <thinking> ya completo lo borra el parser.
+  let visible = content;
+  if (incompleteThinking) {
+    visible = visible.slice(0, visible.toLowerCase().lastIndexOf("<thinking>"));
+  } else if (incompleteArtifact) {
+    visible = visible.slice(0, visible.lastIndexOf("<function_calls>"));
+  }
+
   const { segments } = parseMessageWithArtifacts(visible);
 
   return (
@@ -266,7 +274,10 @@ function AssistantContent({ content }: { content: string }) {
           <ArtifactCard key={i} artifact={seg.artifact} />
         ),
       )}
-      {incomplete && <ArtifactGeneratingPlaceholder />}
+      {incompleteThinking && <ThinkingIndicator />}
+      {!incompleteThinking && incompleteArtifact && (
+        <ArtifactGeneratingPlaceholder />
+      )}
     </>
   );
 }

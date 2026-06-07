@@ -75,12 +75,27 @@ export function hasIncompleteArtifact(content: string): boolean {
 }
 
 /**
+ * True si hay un `<thinking>` abierto sin cerrar — pasa durante el streaming
+ * mientras Claude escribe su razonamiento. La UI oculta lo que sigue al
+ * `<thinking>` abierto y muestra el indicador "pensando".
+ */
+export function hasIncompleteThinking(content: string): boolean {
+  const open = (content.match(/<thinking>/gi) ?? []).length;
+  const close = (content.match(/<\/thinking>/gi) ?? []).length;
+  return open > close;
+}
+
+/**
  * Limpia tags de artifacts que hayan quedado sueltos en un segmento de texto
  * (ej. un `</invoke></function_calls>` duplicado que el modelo dejó después de
  * la card). Evita que se vean tags crudos en el chat.
  */
 function cleanResidualTags(text: string): string {
   return text
+    // Bloques <thinking>…</thinking> completos (razonamiento interno que el
+    // user no debe ver). Va primero, antes de borrar tags sueltos.
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/<\/?thinking[^>]*>/gi, "")
     .replace(/<\/?function_calls\s*>/gi, "")
     .replace(/<\/?invoke[^>]*>/gi, "")
     .replace(/<\/?parameter[^>]*>/gi, "")
