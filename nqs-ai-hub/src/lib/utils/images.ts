@@ -4,7 +4,7 @@
  * Helpers de imágenes para el wrapper de Claude.
  *
  * Flujo de upload (cliente → Storage directo, sin pasar por Vercel):
- *   1. `validateImage(file)` — tipo + tamaño (≤10MB).
+ *   1. `validateImage(file)` — tipo + tamaño (≤30MB, se comprime al subir).
  *   2. `uploadImages(files, conversationId)`:
  *        a. pide signed upload URLs a /api/tools/claude/upload-url
  *        b. sube cada file directo a Supabase Storage con la signed URL
@@ -14,7 +14,10 @@
  */
 import { createBrowserClient } from "@/lib/db/supabase";
 
-export const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB (límite de Anthropic)
+// 30 MB = tope de ENTRADA que el user puede seleccionar (como Claude online).
+// Antes de subir, `compressImageIfNeeded` comprime las grandes a ~4MB
+// (Anthropic acepta hasta 5MB/imagen).
+export const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
 export const MAX_IMAGES_PER_MESSAGE = 5;
 export const ACCEPTED_MEDIA_TYPES = [
   "image/jpeg",
@@ -38,7 +41,7 @@ export function validateImage(file: File): ValidateResult {
     const mb = (file.size / (1024 * 1024)).toFixed(1);
     return {
       ok: false,
-      error: `${file.name}: ${mb} MB excede el límite de 10 MB`,
+      error: `${file.name}: ${mb} MB excede el límite de 30 MB`,
     };
   }
   return { ok: true };

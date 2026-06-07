@@ -31,6 +31,7 @@ import {
   uploadImages,
   validateImage,
 } from "@/lib/utils/images";
+import { compressImageIfNeeded } from "@/lib/utils/image-compression";
 
 const TEXTAREA_MIN_ROWS = 1;
 const TEXTAREA_MAX_ROWS = 8;
@@ -65,6 +66,7 @@ export function ChatInput({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [compressing, setCompressing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -99,34 +101,48 @@ export function ChatInput({
         });
         return;
       }
-      const newAtts: Attachment[] = [];
-      for (const file of arr) {
-        const validation = validateImage(file);
-        if (!validation.ok) {
-          showToast({
-            title: "IMAGEN INVÁLIDA",
-            msg: validation.error,
-            color: "var(--danger, #ff5c5c)",
-          });
-          continue;
+      // Compresión client-side (Web Worker): no bloquea la UI principal.
+      setCompressing(true);
+      try {
+        const newAtts: Attachment[] = [];
+        for (const file of arr) {
+          const validation = validateImage(file);
+          if (!validation.ok) {
+            showToast({
+              title: "IMAGEN INVÁLIDA",
+              msg: validation.error,
+              color: "var(--danger, #ff5c5c)",
+            });
+            continue;
+          }
+          try {
+            // Si pesa más del tope de salida, se comprime a ~4MB antes de subir.
+            const { file: processed, compressed, originalSizeMB, finalSizeMB } =
+              await compressImageIfNeeded(file);
+            if (compressed) {
+              console.log(
+                `[img] ${file.name}: ${originalSizeMB.toFixed(1)}MB → ${finalSizeMB.toFixed(1)}MB`,
+              );
+            }
+            const previewUrl = await fileToPreviewUrl(processed);
+            newAtts.push({
+              id: crypto.randomUUID(),
+              file: processed,
+              previewUrl,
+            });
+          } catch {
+            showToast({
+              title: "ERROR",
+              msg: `No pude procesar ${file.name}.`,
+              color: "var(--danger, #ff5c5c)",
+            });
+          }
         }
-        try {
-          const previewUrl = await fileToPreviewUrl(file);
-          newAtts.push({
-            id: crypto.randomUUID(),
-            file,
-            previewUrl,
-          });
-        } catch {
-          showToast({
-            title: "ERROR",
-            msg: `No pude leer ${file.name}.`,
-            color: "var(--danger, #ff5c5c)",
-          });
+        if (newAtts.length > 0) {
+          setAttachments((prev) => [...prev, ...newAtts]);
         }
-      }
-      if (newAtts.length > 0) {
-        setAttachments((prev) => [...prev, ...newAtts]);
+      } finally {
+        setCompressing(false);
       }
     },
     [attachments.length],
@@ -138,7 +154,7 @@ export function ChatInput({
 
   async function handleSend() {
     const trimmed = text.trim();
-    if (!trimmed || isSending || uploading) return;
+    if (!trimmed || isSending || uploading || compressing) return;
 
     // Subimos las imágenes a Storage ANTES de mandar el mensaje. El
     // execute recibe los paths, no los bytes (esquiva el límite de
@@ -280,13 +296,26 @@ export function ChatInput({
         </div>
       )}
 
+      {compressing && (
+        <div
+          className="t-meta dim"
+          style={{
+            padding: "6px 10px 0",
+            fontSize: 11,
+            fontFamily: "var(--mono)",
+          }}
+        >
+          ⏳ optimizando imagen…
+        </div>
+      )}
+
       <div className="chat-input" style={{ alignItems: "flex-end" }}>
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          // FEEDBACK NQS v2.0 (3.2): tooltip con las limitaciones.
-          title="Adjuntar imagen · Hasta 10MB por imagen. Mismas limitaciones que Claude online."
-          aria-label="Adjuntar imagen. Hasta 10MB por imagen, mismas limitaciones que Claude online."
+          // FEEDBACK Chule: hasta 30MB con compresión automática.
+          title="Adjuntar imagen · Hasta 30MB. Se comprimen automáticamente. Mismas limitaciones que Claude online."
+          aria-label="Adjuntar imagen. Hasta 30MB por imagen, se comprimen automáticamente, mismas limitaciones que Claude online."
           style={{
             background: "transparent",
             border: 0,
@@ -334,18 +363,19 @@ export function ChatInput({
         <button
           type="button"
           onClick={() => void handleSend()}
-          disabled={isSending || uploading || !text.trim()}
+          disabled={isSending || uploading || compressing || !text.trim()}
           aria-label="enviar"
           className="btn sm"
           style={{
-            opacity: isSending || uploading || !text.trim() ? 0.5 : 1,
+            opacity:
+              isSending || uploading || compressing || !text.trim() ? 0.5 : 1,
             cursor:
-              isSending || uploading || !text.trim()
+              isSending || uploading || compressing || !text.trim()
                 ? "not-allowed"
                 : "pointer",
           }}
         >
-          {uploading ? "↑" : isSending ? "…" : "→"}
+          {compressing ? "⏳" : uploading ? "↑" : isSending ? "…" : "→"}
         </button>
       </div>
     </div>
