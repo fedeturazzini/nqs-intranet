@@ -667,7 +667,9 @@
 .chat-msg.user { background: transparent; border-color: var(--line); }
 .chat-msg .av { width: 26px; height: 26px; border-radius: 6px; background: var(--bg-elev-2); display: grid; place-items: center; font-family: var(--mono); font-size: 11px; flex-shrink: 0; }
 .chat-msg .av.ai { background: #D97757; color: white; }
-.chat-msg .body { flex: 1; font-size: 13px; line-height: 1.55; }
+/* min-width:0 es CLAVE: sin esto el <pre> de código empuja el flex container
+   y el chat scrollea horizontal en vez de scrollear dentro del bloque. */
+.chat-msg .body { flex: 1; min-width: 0; max-width: 100%; font-size: 13px; line-height: 1.55; }
 .chat-msg .who { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-mute); margin-bottom: 4px; }
 
 .chat-block {
@@ -1585,7 +1587,10 @@
    matchean el design system (serif en headers, mono en código, accent en
    links). Los colores de tokens del código los da highlight.js (github-dark,
    importado en globals.css). */
-.md-body { font-size: 14px; line-height: 1.6; color: var(--fg); }
+.md-body {
+  font-size: 14px; line-height: 1.6; color: var(--fg);
+  min-width: 0; max-width: 100%; overflow-wrap: break-word;
+}
 .md-body > :first-child { margin-top: 0; }
 .md-body > :last-child { margin-bottom: 0; }
 .md-body h1, .md-body h2, .md-body h3, .md-body h4 {
@@ -1616,21 +1621,35 @@
 /* bloque de código (github-dark pinta los tokens vía clases .hljs-*) */
 .md-body pre {
   background: #0d1117; border: 1px solid var(--line);
-  padding: 14px; border-radius: 8px; overflow-x: auto; margin: 12px 0;
+  padding: 14px; border-radius: 8px;
+  overflow-x: auto; max-width: 100%; margin: 12px 0;
 }
 .md-body pre code {
   background: transparent; padding: 0; font-size: 12.5px;
   line-height: 1.5; color: #c9d1d9;
+  /* inline-block + min-width permiten el scroll horizontal interno y que el
+     fondo del bloque llegue hasta el final de las líneas largas. */
+  display: inline-block; min-width: 100%;
 }
-/* tablas (remark-gfm) */
+/* tablas (remark-gfm): scroll horizontal interno si son muy anchas. */
 .md-body table {
-  border-collapse: collapse; margin: 12px 0; width: 100%; font-size: 13px;
+  display: block; width: max-content; max-width: 100%; overflow-x: auto;
+  border-collapse: collapse; margin: 12px 0; font-size: 13px;
 }
 .md-body th, .md-body td {
   border: 1px solid var(--line); padding: 7px 11px; text-align: left;
 }
 .md-body th { background: var(--bg-elev-2); font-weight: 600; }
 .md-body input[type="checkbox"] { margin-right: 6px; }
+/* Light mode: el theme github-dark es para fondo oscuro. En light usamos fondo
+   claro y los tokens pasan a color de texto (highlight monocromo pero legible).
+   En dark se deja el github-dark con todos sus colores. */
+[data-theme="light"] .md-body pre { background: var(--bg-elev-2); }
+[data-theme="light"] .md-body pre code,
+[data-theme="light"] .md-body .hljs,
+[data-theme="light"] .md-body .hljs * {
+  color: var(--fg) !important; background: transparent !important;
+}
 
 /* ── Artifacts de Claude como cards (ArtifactCard.tsx) ── */
 .artifact-card {
