@@ -14,6 +14,14 @@ import { useEffect, useRef, useState } from "react";
 import { showToast } from "@/lib/store/toast";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import {
+  ArtifactCard,
+  ArtifactGeneratingPlaceholder,
+} from "@/components/chat/ArtifactCard";
+import {
+  parseMessageWithArtifacts,
+  hasIncompleteArtifact,
+} from "@/lib/utils/parse-artifacts";
 import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
 
 type ChatMessagesProps = Readonly<{
@@ -143,9 +151,6 @@ function MessageBubble({
           }}
         >
           <span>{whoLabel}</span>
-          {isAi && !msg.isPending && !msg.errorMsg && msg.content && (
-            <CopyButton text={msg.content} />
-          )}
           {isAi && msg.tokensInput != null && msg.tokensOutput != null && (
             <span
               className="t-meta dim"
@@ -164,9 +169,9 @@ function MessageBubble({
             {msg.errorMsg}
           </div>
         ) : isAi ? (
-          // Respuestas de Claude: markdown renderizado (headers, listas,
-          // bold, código con highlight, tablas).
-          <MarkdownRenderer content={msg.content} />
+          // Respuestas de Claude: separamos el texto (markdown) de los
+          // artifacts (cards descargables).
+          <AssistantContent content={msg.content} />
         ) : (
           // Mensajes del user: texto plano (no es markdown).
           <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
@@ -201,6 +206,10 @@ function MessageBubble({
             ))}
           </div>
         )}
+
+        {isAi && !msg.isPending && !msg.errorMsg && msg.content && (
+          <MessageActions content={msg.content} />
+        )}
       </div>
 
       <ImageLightbox
@@ -234,17 +243,55 @@ function ThinkingIndicator() {
   );
 }
 
-type CopyButtonProps = Readonly<{ text: string }>;
+/**
+ * Contenido de un mensaje del asistente: separa texto (markdown) de artifacts
+ * (cards). Durante el streaming, si hay un artifact a medio llegar, oculta su
+ * XML parcial y muestra un placeholder "generando…".
+ */
+function AssistantContent({ content }: { content: string }) {
+  const incomplete = hasIncompleteArtifact(content);
+  // Si un artifact está llegando, no mostramos su XML parcial: cortamos en el
+  // último <function_calls> sin cerrar.
+  const visible = incomplete
+    ? content.slice(0, content.lastIndexOf("<function_calls>"))
+    : content;
+  const { segments } = parseMessageWithArtifacts(visible);
 
-function CopyButton({ text }: CopyButtonProps) {
-  async function handleClick() {
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.kind === "text" ? (
+          <MarkdownRenderer key={i} content={seg.content} />
+        ) : (
+          <ArtifactCard key={i} artifact={seg.artifact} />
+        ),
+      )}
+      {incomplete && <ArtifactGeneratingPlaceholder />}
+    </>
+  );
+}
+
+/**
+ * Barra al pie de los mensajes de Claude (se revela al hover). "Copiar" copia
+ * el contenido limpio: texto + el contenido de cada artifact (sin el XML).
+ */
+function MessageActions({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    const { segments } = parseMessageWithArtifacts(content);
+    const clean = segments
+      .map((s) =>
+        s.kind === "text"
+          ? s.content
+          : `\n--- ${s.artifact.title} ---\n${s.artifact.content}\n`,
+      )
+      .join("\n")
+      .trim();
     try {
-      await navigator.clipboard.writeText(text);
-      showToast({
-        title: "COPIADO",
-        msg: "Respuesta copiada al portapapeles.",
-        color: "var(--ok, #6DD58C)",
-      });
+      await navigator.clipboard.writeText(clean);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       showToast({
         title: "ERROR",
@@ -255,25 +302,15 @@ function CopyButton({ text }: CopyButtonProps) {
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className="t-meta"
-      title="copiar respuesta"
-      style={{
-        background: "transparent",
-        border: "1px solid var(--line)",
-        borderRadius: 6,
-        padding: "2px 8px",
-        cursor: "pointer",
-        fontSize: 10,
-        letterSpacing: "0.12em",
-        color: "var(--fg-mute)",
-        textTransform: "uppercase",
-        fontFamily: "var(--mono)",
-      }}
-    >
-      ⧉ copiar
-    </button>
+    <div className="message-actions">
+      <button
+        type="button"
+        className="message-action-btn"
+        onClick={handleCopy}
+        title="Copiar respuesta"
+      >
+        {copied ? "✓ copiado" : "⧉ copiar"}
+      </button>
+    </div>
   );
 }

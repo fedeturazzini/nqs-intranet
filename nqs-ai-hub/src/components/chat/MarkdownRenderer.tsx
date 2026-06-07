@@ -21,17 +21,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 
-/**
- * Fallback por si el modelo igual emite sintaxis de artifacts / tool-calling
- * (no debería: el system prompt se lo pide). Envolvemos el bloque en un code
- * fence para que se vea como texto y no rompa el render.
- */
-function cleanupArtifactSyntax(content: string): string {
-  return content.replace(
-    /<(function_calls|invoke|antml:[\w-]+)[\s\S]*?<\/\1>/g,
-    (match) => `\n\`\`\`xml\n${match}\n\`\`\`\n`,
-  );
-}
+// Los artifacts (<function_calls>) se separan ANTES en ChatMessages
+// (parse-artifacts.ts) y se renderizan como cards; acá llega solo texto.
 
 type MarkdownRendererProps = Readonly<{ content: string }>;
 
@@ -51,7 +42,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           ),
         }}
       >
-        {cleanupArtifactSyntax(content)}
+        {content}
       </ReactMarkdown>
     </div>
   );
