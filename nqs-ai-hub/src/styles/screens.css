@@ -1686,3 +1686,23 @@
   transition: color .15s, background .15s;
 }
 .message-action-btn:hover { color: var(--fg); background: var(--bg-elev); }
+
+/* ── Modal de preview de un artifact (botón "Ver") ── */
+.artifact-preview-modal {
+  max-width: 900px; width: 90vw; max-height: 85vh; height: auto;
+}
+.artifact-preview-title {
+  font-family: var(--sans); font-size: 18px; font-weight: 500;
+  color: var(--fg); margin-top: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.artifact-preview-body {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 18px; margin: 16px; background: var(--bg-elev-2);
+  border: 1px solid var(--line); border-radius: 8px;
+}
+/* El contenido del preview wrappea (no scroll horizontal del modal). */
+.artifact-text-preview {
+  font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--fg);
+  white-space: pre-wrap; overflow-wrap: anywhere; margin: 0;
+}
