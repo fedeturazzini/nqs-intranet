@@ -1579,3 +1579,55 @@
 .tut-card-lead { font-size: 13.5px; line-height: 1.5; color: var(--fg-mute); }
 .tut-card-foot { margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--line); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tut-tool-tag { font-size: 10px; letter-spacing: 0.1em; }
+
+/* ── Markdown de las respuestas de Claude (MarkdownRenderer.tsx) ──
+   Antes el chat mostraba el markdown crudo (** , ## , etc.). Estos estilos
+   matchean el design system (serif en headers, mono en código, accent en
+   links). Los colores de tokens del código los da highlight.js (github-dark,
+   importado en globals.css). */
+.md-body { font-size: 14px; line-height: 1.6; color: var(--fg); }
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 {
+  font-family: var(--serif); font-weight: 400; line-height: 1.2;
+  letter-spacing: -0.01em; margin: 16px 0 8px;
+}
+.md-body h1 { font-size: 24px; }
+.md-body h2 { font-size: 20px; }
+.md-body h3 { font-size: 17px; }
+.md-body h4 { font-size: 15px; }
+.md-body p { margin: 8px 0; }
+.md-body ul, .md-body ol { padding-left: 22px; margin: 8px 0; }
+.md-body li { margin: 3px 0; }
+.md-body li::marker { color: var(--fg-mute); }
+.md-body strong { font-weight: 600; }
+.md-body em { font-style: italic; }
+.md-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.md-body blockquote {
+  margin: 10px 0; padding: 4px 14px;
+  border-left: 3px solid var(--line-strong); color: var(--fg-mute);
+}
+.md-body hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+/* código inline */
+.md-body code {
+  font-family: var(--mono); font-size: 0.86em;
+  background: var(--bg-elev-2); padding: 1.5px 5px; border-radius: 4px;
+}
+/* bloque de código (github-dark pinta los tokens vía clases .hljs-*) */
+.md-body pre {
+  background: #0d1117; border: 1px solid var(--line);
+  padding: 14px; border-radius: 8px; overflow-x: auto; margin: 12px 0;
+}
+.md-body pre code {
+  background: transparent; padding: 0; font-size: 12.5px;
+  line-height: 1.5; color: #c9d1d9;
+}
+/* tablas (remark-gfm) */
+.md-body table {
+  border-collapse: collapse; margin: 12px 0; width: 100%; font-size: 13px;
+}
+.md-body th, .md-body td {
+  border: 1px solid var(--line); padding: 7px 11px; text-align: left;
+}
+.md-body th { background: var(--bg-elev-2); font-weight: 600; }
+.md-body input[type="checkbox"] { margin-right: 6px; }

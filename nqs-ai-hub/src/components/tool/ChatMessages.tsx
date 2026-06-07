@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { showToast } from "@/lib/store/toast";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
+import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
 
 type ChatMessagesProps = Readonly<{
@@ -119,7 +120,12 @@ function MessageBubble({
             <strong>ERROR</strong>
             {msg.errorMsg}
           </div>
+        ) : isAi ? (
+          // Respuestas de Claude: markdown renderizado (headers, listas,
+          // bold, código con highlight, tablas).
+          <MarkdownRenderer content={msg.content} />
         ) : (
+          // Mensajes del user: texto plano (no es markdown).
           <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
         )}
 

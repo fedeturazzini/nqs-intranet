@@ -7,5 +7,9 @@
  * para mantener el design system del cliente como fuente única.
  */
 @import "tailwindcss";
+/* Tema de highlight.js para los bloques de código del chat de Claude
+   (lo aplica rehype-highlight en MarkdownRenderer). Va antes de screens.css
+   para que los overrides `.md-body` del design system ganen. */
+@import "highlight.js/styles/github-dark.css";
 @import "./components.css";
 @import "./screens.css";
