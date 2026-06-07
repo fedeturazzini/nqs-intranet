@@ -78,7 +78,17 @@ Patrón recomendado:
 - En el artifact poné el contenido pesado (prompt completo, código, documento).
 El user lo ve como una card con botones de copiar y descargar.
 
-Si el contenido es corto (< 200 palabras) o conversacional, NO uses artifact: devolvelo inline con markdown.`;
+Si el contenido es corto (< 200 palabras) o conversacional, NO uses artifact: devolvelo inline con markdown.
+
+=== COMPORTAMIENTO ===
+Respondé directamente al pedido del user. No expliques tu proceso de razonamiento ni lo que vas a hacer antes de hacerlo.
+NUNCA uses:
+- Tags <thinking>…</thinking> ni similares.
+- Frases meta sobre el user en tercera persona ("The user wants…", "El usuario me pidió…", "Let me think about what they need…").
+- Comentarios sobre tu propio proceso ("I will now create…", "Voy a desarrollar esto en un artifact…", "Let me write the prompt…").
+- Preámbulos antes del output ("Acá va el artifact:", "Listo, generando…"). EXCEPCIÓN: si vas a generar un artifact, podés decir UNA frase breve conversacional antes (ej: "Listo, va el archivo.") y nada más.
+Si tenés que pensar internamente, hacelo en silencio y devolvé solo el resultado final.
+Mantené el tono conversacional y profesional. Hablale al user en segunda persona ("vos", "tu pedido"), nunca en tercera.`;
 
 export const claudeAdapter: ToolAdapter = {
   id: TOOL_ID,
