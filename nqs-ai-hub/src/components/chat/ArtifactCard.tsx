@@ -13,9 +13,16 @@ import { showToast } from "@/lib/store/toast";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import type { ParsedArtifact } from "@/lib/utils/parse-artifacts";
 
-type ArtifactCardProps = Readonly<{ artifact: ParsedArtifact }>;
+type ArtifactCardProps = Readonly<{
+  artifact: ParsedArtifact;
+  /** Artifact cortado por max_tokens: muestra un badge "incompleto". */
+  incomplete?: boolean;
+}>;
 
-export function ArtifactCard({ artifact }: ArtifactCardProps) {
+export function ArtifactCard({
+  artifact,
+  incomplete = false,
+}: ArtifactCardProps) {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -40,7 +47,12 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
         </div>
         <div className="artifact-card-info">
           <div className="artifact-card-title">{artifact.title}</div>
-          <div className="artifact-card-type">{displayType}</div>
+          <div className="artifact-card-type">
+            {displayType}
+            {incomplete && (
+              <span className="artifact-incomplete-badge">⚠ incompleto</span>
+            )}
+          </div>
         </div>
         <div className="artifact-card-actions">
           <button

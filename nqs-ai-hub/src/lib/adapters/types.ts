@@ -64,6 +64,9 @@ export type ExecuteResult = {
   tokensOutput: number;
   conversationId: string;
   messageId: string;
+  /** Por qué terminó la respuesta: "end_turn" (normal), "max_tokens"
+   *  (cortada por el techo), etc. Lo usa la UI para avisar si se cortó. */
+  stopReason?: string | null;
 };
 
 // ============================================================

@@ -104,6 +104,7 @@ export async function POST(request: Request): Promise<Response> {
             messageId: result.value.messageId,
             tokensInput: result.value.tokensInput,
             tokensOutput: result.value.tokensOutput,
+            stopReason: result.value.stopReason,
           });
         }
       } catch {

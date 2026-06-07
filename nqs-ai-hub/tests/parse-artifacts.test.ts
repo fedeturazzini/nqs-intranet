@@ -6,6 +6,7 @@ import {
   parseMessageWithArtifacts,
   hasIncompleteArtifact,
   hasIncompleteThinking,
+  extractPartialArtifact,
 } from "@/lib/utils/parse-artifacts";
 
 const artifactBlock = (
@@ -143,5 +144,25 @@ describe("filtrado de <thinking> (el razonamiento no se muestra)", () => {
     expect(hasIncompleteThinking("hola")).toBe(false);
     expect(hasIncompleteThinking("<thinking>razono</thinking>ok")).toBe(false);
     expect(hasIncompleteThinking("<thinking>razonando a med")).toBe(true);
+  });
+});
+
+describe("extractPartialArtifact (artifact cortado por max_tokens)", () => {
+  test("extrae el contenido parcial de un artifact sin cerrar", () => {
+    const cut =
+      `Listo, va el archivo:\n<function_calls>\n<invoke name="artifacts">\n` +
+      `<parameter name="type">text/plain</parameter>\n` +
+      `<parameter name="title">prompts</parameter>\n` +
+      `<parameter name="content">prompt 1…\nprompt 2…`; // cortado sin cerrar
+    const partial = extractPartialArtifact(cut);
+    expect(partial).not.toBeNull();
+    expect(partial?.type).toBe("text/plain");
+    expect(partial?.title).toContain("(cortado)");
+    expect(partial?.content).toContain("prompt 1");
+    expect(partial?.content).toContain("prompt 2");
+  });
+
+  test("devuelve null si no hay artifact", () => {
+    expect(extractPartialArtifact("texto normal sin artifact")).toBeNull();
   });
 });

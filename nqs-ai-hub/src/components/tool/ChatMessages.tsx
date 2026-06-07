@@ -22,6 +22,7 @@ import {
   parseMessageWithArtifacts,
   hasIncompleteArtifact,
   hasIncompleteThinking,
+  extractPartialArtifact,
 } from "@/lib/utils/parse-artifacts";
 import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
 
@@ -172,10 +173,20 @@ function MessageBubble({
         ) : isAi ? (
           // Respuestas de Claude: separamos el texto (markdown) de los
           // artifacts (cards descargables).
-          <AssistantContent content={msg.content} />
+          <AssistantContent
+            content={msg.content}
+            streaming={msg.streaming ?? false}
+          />
         ) : (
           // Mensajes del user: texto plano (no es markdown).
           <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
+        )}
+
+        {isAi && msg.stopReason === "max_tokens" && (
+          <div className="message-truncated-warning">
+            ⚠ Respuesta cortada por el límite de longitud. Pedile a Claude que
+            continúe (escribí &quot;continuá&quot;).
+          </div>
         )}
 
         {images.length > 0 && (
@@ -249,7 +260,13 @@ function ThinkingIndicator() {
  * (cards). Durante el streaming, si hay un artifact a medio llegar, oculta su
  * XML parcial y muestra un placeholder "generando…".
  */
-function AssistantContent({ content }: { content: string }) {
+function AssistantContent({
+  content,
+  streaming,
+}: {
+  content: string;
+  streaming: boolean;
+}) {
   const incompleteThinking = hasIncompleteThinking(content);
   const incompleteArtifact = hasIncompleteArtifact(content);
 
@@ -265,6 +282,12 @@ function AssistantContent({ content }: { content: string }) {
 
   const { segments } = parseMessageWithArtifacts(visible);
 
+  // Artifact incompleto: si todavía streamea → placeholder "generando…"; si el
+  // stream ya terminó (cortado por max_tokens) → card parcial con badge, así no
+  // queda el placeholder colgado para siempre.
+  const partial =
+    incompleteArtifact && !streaming ? extractPartialArtifact(content) : null;
+
   return (
     <>
       {segments.map((seg, i) =>
@@ -274,10 +297,9 @@ function AssistantContent({ content }: { content: string }) {
           <ArtifactCard key={i} artifact={seg.artifact} />
         ),
       )}
-      {incompleteThinking && <ThinkingIndicator />}
-      {!incompleteThinking && incompleteArtifact && (
-        <ArtifactGeneratingPlaceholder />
-      )}
+      {incompleteThinking && streaming && <ThinkingIndicator />}
+      {incompleteArtifact && streaming && <ArtifactGeneratingPlaceholder />}
+      {partial && <ArtifactCard artifact={partial} incomplete />}
     </>
   );
 }

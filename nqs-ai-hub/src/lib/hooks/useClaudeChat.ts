@@ -36,6 +36,13 @@ export type ChatMessage = {
   tokensOutput?: number;
   /** Cuando true, en lugar de content se muestra el "Claude está pensando…". */
   isPending?: boolean;
+  /** True mientras la respuesta se está streameando (entre el 1er chunk y el
+   *  "done"). La UI lo usa para distinguir un artifact "generándose" de uno
+   *  que quedó cortado. */
+  streaming?: boolean;
+  /** Por qué terminó la respuesta ("end_turn", "max_tokens", …). Si es
+   *  "max_tokens" la UI muestra un aviso de respuesta cortada. */
+  stopReason?: string | null;
   /** Mensaje crudo de error (solo si la respuesta falló). */
   errorMsg?: string;
 };
@@ -152,7 +159,7 @@ export function useClaudeChat() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === pendingMsgId
-              ? { ...m, isPending: false, errorMsg: errMsg, content: "" }
+              ? { ...m, isPending: false, streaming: false, errorMsg: errMsg, content: "" }
               : m,
           ),
         );
@@ -210,6 +217,7 @@ export function useClaudeChat() {
               messageId?: string;
               tokensInput?: number;
               tokensOutput?: number;
+              stopReason?: string | null;
               message?: string;
             };
             try {
@@ -224,7 +232,7 @@ export function useClaudeChat() {
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === pendingMsgId
-                    ? { ...m, isPending: false, content: acc }
+                    ? { ...m, isPending: false, streaming: true, content: acc }
                     : m,
                 ),
               );
@@ -244,6 +252,8 @@ export function useClaudeChat() {
                         content: finalText,
                         tokensInput: ev.tokensInput,
                         tokensOutput: ev.tokensOutput,
+                        streaming: false,
+                        stopReason: ev.stopReason ?? null,
                       }
                     : m,
                 ),
@@ -266,6 +276,7 @@ export function useClaudeChat() {
                 ? {
                     ...m,
                     isPending: false,
+                    streaming: false,
                     content: acc || "_(generación detenida)_",
                   }
                 : m,
@@ -277,7 +288,7 @@ export function useClaudeChat() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === pendingMsgId
-              ? { ...m, isPending: false, errorMsg: msg, content: "" }
+              ? { ...m, isPending: false, streaming: false, errorMsg: msg, content: "" }
               : m,
           ),
         );

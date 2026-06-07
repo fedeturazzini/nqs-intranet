@@ -103,6 +103,34 @@ function cleanResidualTags(text: string): string {
     .trim();
 }
 
+/**
+ * Extrae lo que se alcanzó a generar de un artifact que quedó incompleto
+ * (cortado por max_tokens: nunca llegó el </function_calls>). Se muestra como
+ * card "incompleta" con el contenido parcial, en vez de un placeholder colgado.
+ */
+export function extractPartialArtifact(content: string): ParsedArtifact | null {
+  const match = content.match(/<function_calls>\s*<invoke[^>]*>([\s\S]*)/i);
+  if (!match) return null;
+  const body = match[1];
+  return {
+    command: (extractParam(body, "command") ||
+      "create") as ParsedArtifact["command"],
+    type: extractParam(body, "type") || "text/plain",
+    title: `${extractParam(body, "title") || "archivo-parcial"} (cortado)`,
+    content: extractParam(body, "content") || extractOpenContent(body),
+    language: extractParam(body, "language") || undefined,
+  };
+}
+
+/** Contenido de un `<parameter name="content">` que quedó sin cerrar. */
+function extractOpenContent(body: string): string {
+  const m = body.match(/<parameter name="content">([\s\S]*)$/i);
+  if (!m) return "";
+  return m[1]
+    .replace(/<\/?(parameter|invoke|function_calls)[^>]*>/gi, "")
+    .trim();
+}
+
 function parseArtifactBody(body: string): ParsedArtifact | null {
   const type = extractParam(body, "type");
   const content = extractParam(body, "content");

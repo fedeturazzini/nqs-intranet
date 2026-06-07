@@ -351,6 +351,7 @@ export const claudeAdapter: ToolAdapter = {
           tokensOutput: response.tokensOutput,
           conversationId: conversationId ?? "",
           messageId,
+          stopReason: response.stopReason,
         },
       };
     } catch (error) {
