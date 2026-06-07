@@ -50,15 +50,35 @@ const TOOL_ID = "claude" as const;
 
 /**
  * Instrucciones de formato que se appendean AL FINAL del system prompt de cada
- * proyecto (FEEDBACK Chule: a veces aparecían <function_calls> u otra sintaxis
- * de artifacts/tool-calling de Claude.ai, que no se renderiza en esta app).
- * Van al final para que Claude las priorice sobre el prompt del proyecto.
+ * proyecto. CAMBIO DE ESTRATEGIA: antes prohibíamos los artifacts, pero el
+ * modelo los genera igual (está entrenado fuerte para usarlos). Ahora los
+ * permitimos: la app los parsea (parse-artifacts.ts) y los muestra como cards
+ * descargables (ArtifactCard). Van al final para que Claude las priorice.
  */
-const FORMAT_INSTRUCTIONS = `=== INSTRUCCIONES DE FORMATO (NQS AI Hub) ===
-Respondé siempre en texto plano con markdown estándar: headers (#, ##), listas, **negrita**, *itálica*, código inline con \`backticks\` o bloques con triple backtick.
-NO uses bloques de artifact ni la sintaxis de tool/function calling (<function_calls>, <invoke>, <parameter>, <artifact>, etc.). Esos bloques son de la interfaz Claude.ai y NO se renderizan en esta aplicación.
-Si necesitás compartir código o un documento largo, usá un bloque de código markdown con triple backtick.
-Si te piden un "artifact", interpretalo como "respuesta detallada en markdown".`;
+const FORMAT_INSTRUCTIONS = `=== FORMATO DE RESPUESTAS (NQS AI Hub) ===
+Usá markdown estándar (headers, listas, **negrita**, *itálica*, código inline o bloques con triple backtick).
+
+Cuando necesites devolver contenido largo o autocontenido (documentos, prompts extensos, código, etc.), podés usar artifacts: esta app los renderiza como cards descargables. Usá la sintaxis estándar:
+<function_calls>
+<invoke name="artifacts">
+<parameter name="command">create</parameter>
+<parameter name="type">text/plain</parameter>
+<parameter name="title">nombre_del_archivo</parameter>
+<parameter name="content">contenido completo…</parameter>
+</invoke>
+</function_calls>
+
+Tipos soportados:
+- text/plain (.txt) — texto plano, prompts largos
+- text/markdown (.md) — documentos formateados
+- application/vnd.ant.code (con language="python|javascript|…") — código
+
+Patrón recomendado:
+- En el chat respondé breve y conversacional ("Listo, generé el prompt…").
+- En el artifact poné el contenido pesado (prompt completo, código, documento).
+El user lo ve como una card con botones de copiar y descargar.
+
+Si el contenido es corto (< 200 palabras) o conversacional, NO uses artifact: devolvelo inline con markdown.`;
 
 export const claudeAdapter: ToolAdapter = {
   id: TOOL_ID,
