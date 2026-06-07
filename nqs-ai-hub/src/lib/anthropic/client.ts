@@ -21,7 +21,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
-export const DEFAULT_MAX_TOKENS = 4096;
+// Sonnet/Opus soportan hasta 8192 tokens de salida; Haiku hasta 4096. Subido
+// de 4096 → 8192 para que las respuestas/artifacts largos no se corten (el
+// header mostraba "OUT 4096" exacto = respuesta cortada por el techo).
+export const DEFAULT_MAX_TOKENS = 8192;
+
+/** Techo de tokens de salida según el modelo (Haiku tope 4096). */
+export function maxTokensFor(model: string): number {
+  return /haiku/i.test(model) ? 4096 : DEFAULT_MAX_TOKENS;
+}
 // Con streaming el timeout se "renueva" por chunk, así que generaciones
 // largas no se cortan. Igual dejamos un techo generoso por las dudas.
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -58,7 +66,7 @@ export type ClaudeMessage = Anthropic.Messages.MessageParam;
 export type CallClaudeOptions = {
   /** Override del modelo. Default: `claude-sonnet-4-6`. */
   model?: string;
-  /** Default: 4096. */
+  /** Default: 8192 (Haiku: 4096). */
   maxTokens?: number;
 };
 
@@ -82,7 +90,7 @@ export async function callClaude(
 
   const response = await client.messages.create({
     model: options.model ?? DEFAULT_MODEL,
-    max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
+    max_tokens: options.maxTokens ?? maxTokensFor(options.model ?? DEFAULT_MODEL),
     system: systemPrompt,
     messages,
   });
@@ -126,7 +134,7 @@ export async function streamClaude(
 
   const stream = client.messages.stream({
     model: options.model ?? DEFAULT_MODEL,
-    max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
+    max_tokens: options.maxTokens ?? maxTokensFor(options.model ?? DEFAULT_MODEL),
     system: systemPrompt,
     messages,
   });
