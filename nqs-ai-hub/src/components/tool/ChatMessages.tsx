@@ -22,16 +22,58 @@ type ChatMessagesProps = Readonly<{
   userFirstName: string;
 }>;
 
+/** Busca el ancestro scrolleable (overflow-y auto/scroll) más cercano. */
+function getScrollParent(node: HTMLElement | null): HTMLElement | null {
+  let el = node?.parentElement ?? null;
+  while (el) {
+    const oy = getComputedStyle(el).overflowY;
+    if (oy === "auto" || oy === "scroll") return el;
+    el = el.parentElement;
+  }
+  return null;
+}
+
 export function ChatMessages({
   messages,
   userInitials,
   userFirstName,
 }: ChatMessagesProps) {
   const endRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  // ¿El user está pegado al fondo? Si scrolleó arriba para leer mensajes
+  // anteriores, NO autoscrolleamos (no lo interrumpimos mientras Claude
+  // sigue streameando).
+  const stickRef = useRef(true);
+  const prevLenRef = useRef(messages.length);
 
-  // Auto-scroll cada vez que entran o cambian mensajes.
+  // Detectar scroll manual sobre el contenedor scrolleable (vive en
+  // ClaudeView). Si el user se aleja del fondo, dejamos de pegarlo abajo.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const scroller = getScrollParent(listRef.current);
+    if (!scroller) return;
+    const onScroll = () => {
+      const dist =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      stickRef.current = dist < 80;
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Autoscroll: instantáneo en cada chunk de streaming, suave al entrar un
+  // mensaje nuevo. Si el user acaba de mandar un mensaje, forzamos ir al fondo.
+  useEffect(() => {
+    const grew = messages.length > prevLenRef.current;
+    prevLenRef.current = messages.length;
+    const last = messages[messages.length - 1];
+    if (grew && last?.role === "user") stickRef.current = true;
+    if (stickRef.current) {
+      endRef.current?.scrollIntoView({
+        behavior: grew ? "smooth" : "auto",
+        block: "end",
+      });
+    }
   }, [messages]);
 
   if (messages.length === 0) {
@@ -47,6 +89,7 @@ export function ChatMessages({
 
   return (
     <div
+      ref={listRef}
       className="claude-mock"
       style={{ maxWidth: "none", margin: 0, gap: 12 }}
     >

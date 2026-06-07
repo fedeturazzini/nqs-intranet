@@ -20,6 +20,7 @@
  * download URLs para el historial).
  */
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { showToast } from "@/lib/store/toast";
 
 type ImageLightboxProps = Readonly<{
@@ -65,7 +66,7 @@ export function ImageLightbox({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose, goPrev, goNext, count]);
 
-  if (!open || count === 0) return null;
+  if (!open || count === 0 || typeof document === "undefined") return null;
 
   const url = images[Math.min(current, count - 1)];
   const filename = `nqs-imagen-${current + 1}.png`;
@@ -129,7 +130,7 @@ export function ImageLightbox({
     }
   }
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -264,7 +265,8 @@ export function ImageLightbox({
           ›
         </button>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
