@@ -99,42 +99,19 @@ export async function canUseTool(
     }
   }
 
-  // ─── CHECK 4: créditos disponibles (si la tool los usa) ───
-  const { data: tool, error: toolErr } = await db
-    .from("tools")
-    .select("uses_credits")
-    .eq("id", toolId)
-    .maybeSingle();
-
-  if (toolErr || !tool) {
-    // La tool no existe en el catálogo. Tratar como no-access.
-    return { allowed: false, reason: "no_access" };
-  }
-
-  if (tool.uses_credits) {
-    const { data: alloc, error: allocErr } = await db
-      .from("credit_allocations")
-      .select("credits_assigned, credits_used")
-      .eq("user_id", userId)
-      .eq("tool_id", toolId)
-      .maybeSingle();
-
-    if (allocErr || !alloc) {
-      return {
-        allowed: false,
-        reason: "no_credits",
-        message: "No tenés créditos asignados",
-      };
-    }
-
-    if (alloc.credits_assigned - alloc.credits_used <= 0) {
-      return {
-        allowed: false,
-        reason: "no_credits",
-        message: "Te quedaste sin créditos",
-      };
-    }
-  }
+  // ─── CHECK 4: créditos ───
+  // DESACTIVADO (mini-fix "créditos no bloquean"): tener 0 créditos NO impide
+  // entrar. Los créditos son manuales (los asigna el admin); 0 créditos
+  // significa "el admin todavía no te asignó cupo", no "no podés usar la tool".
+  // El user entra igual, ve su saldo y pide más con "pedir créditos". La
+  // existencia de la tool ya la cubre el CHECK 2 (tool_access tiene FK a tools).
+  //
+  // TODO: re-habilitar cuando la deducción de créditos sea automática (post-MVP):
+  //   if (tool.uses_credits) {
+  //     const remaining = alloc ? alloc.credits_assigned - alloc.credits_used : 0;
+  //     if (remaining <= 0) return { allowed: false, reason: "no_credits", … };
+  //   }
+  // (El tipo PermissionReason mantiene "no_credits" para ese futuro.)
 
   return { allowed: true };
 }

@@ -24,7 +24,8 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreditRequestModal } from "@/components/tool/CreditRequestModal";
-import { CreditsBlockOverlay } from "@/components/tool/CreditsBlockOverlay";
+// CreditsBlockOverlay: desactivado (mini-fix "créditos no bloquean"). El
+// componente sigue existiendo; se re-habilita cuando la deducción sea automática.
 import { DeclareConsumptionPrompt } from "@/components/tool/DeclareConsumptionPrompt";
 import { EmbeddedSite } from "@/components/tool/EmbeddedSite";
 import { ScheduleIndicator } from "@/components/tool/ScheduleIndicator";
@@ -110,8 +111,6 @@ export function ThreeDSkyView({
     [],
   );
 
-  const noCredits = chat.credits.credits <= 0;
-
   return (
     <div
       className="threedsky-mock"
@@ -154,12 +153,13 @@ export function ThreeDSkyView({
           brandColor="#4FD1C5"
           brandGlyph="◈"
         />
-        {noCredits && (
-          <CreditsBlockOverlay
-            onRequestMore={onRequestMore}
-            onBackToHub={() => router.push("/hub")}
-          />
-        )}
+        {/* Mini-fix "créditos no bloquean": 0 créditos ya NO tapa el iframe.
+            El user entra igual y pide más con "pedir créditos" (en la barra).
+            TODO: re-habilitar el overlay cuando la deducción sea automática:
+              {chat.credits.credits <= 0 && (
+                <CreditsBlockOverlay onRequestMore={onRequestMore}
+                  onBackToHub={() => router.push("/hub")} />
+              )} */}
       </div>
 
       {/* FEEDBACK NQS v2.0: hidden by request, may re-enable.

@@ -76,16 +76,17 @@ describe("canUseTool", () => {
     if (!r.allowed) expect(r.reason).toBe("pending_approval");
   });
 
-  test("tool de créditos con 0 disponibles → no_credits", async () => {
+  test("tool de créditos con 0 disponibles → allowed (créditos no bloquean)", async () => {
     tableData = {
       users: { id: "u1", is_active: true, role: "employee" },
       tool_access: { status: "active", expires_at: null, schedule: null },
       tools: { uses_credits: true },
       credit_allocations: { credits_assigned: 10, credits_used: 10 },
     };
+    // Mini-fix "créditos no bloquean": con acceso activo y dentro de horario,
+    // 0 créditos disponibles NO impide entrar (los créditos son info + pedido).
     const r = await canUseTool("u1", "3dsky");
-    expect(r.allowed).toBe(false);
-    if (!r.allowed) expect(r.reason).toBe("no_credits");
+    expect(r.allowed).toBe(true);
   });
 
   test("tool de créditos con saldo → allowed", async () => {
