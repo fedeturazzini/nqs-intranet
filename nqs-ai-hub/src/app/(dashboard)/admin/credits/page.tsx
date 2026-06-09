@@ -1,32 +1,42 @@
 /**
- * /admin/credits — Pool de créditos 3DSky + asignación por usuario.
+ * /admin/credits — Pool de créditos + asignación por usuario, por tool.
  *
- * Server Component pre-carga: pool total, allocations actuales, users.
- * El client component (`AdminCreditsView`) maneja los botones +/- con
- * actualización optimista contra `/api/admin/credits/allocations`.
+ * Multi-tool: hay un selector con todas las tools que usan créditos
+ * (`uses_credits = true`), así que 3DSky, Kling y cualquier tool futura
+ * aparecen solas. El tool activo viene de `?tool=…` (default 3dsky).
+ *
+ * Server Component pre-carga: pool total, allocations actuales, users. El
+ * client (`AdminCreditsView`) maneja los +/- con update optimista.
  *
  * El layout `/admin` ya garantizó rol admin.
  */
+import Link from "next/link";
 import { AdminCreditsView } from "@/components/admin/AdminCreditsView";
 import { createServerClient } from "@/lib/db/supabase";
 
 export const dynamic = "force-dynamic";
 
-const TOOL_ID = "3dsky";
+type CreditTool = { id: string; name: string };
 
-async function loadCreditsState() {
+async function loadCreditTools(): Promise<CreditTool[]> {
+  const db = createServerClient();
+  const { data } = await db
+    .from("tools")
+    .select("id, name")
+    .eq("uses_credits", true)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+  return data ?? [];
+}
+
+async function loadCreditsState(toolId: string) {
   const db = createServerClient();
   const [poolsRes, allocsRes, usersRes] = await Promise.all([
-    db
-      .from("credit_pools")
-      .select("total_credits")
-      .eq("tool_id", TOOL_ID),
+    db.from("credit_pools").select("total_credits").eq("tool_id", toolId),
     db
       .from("credit_allocations")
-      .select(
-        "id, user_id, credits_assigned, credits_used, updated_at",
-      )
-      .eq("tool_id", TOOL_ID),
+      .select("id, user_id, credits_assigned, credits_used, updated_at")
+      .eq("tool_id", toolId),
     db
       .from("users")
       .select("id, name, initials, email, dept, role, is_active")
@@ -34,14 +44,15 @@ async function loadCreditsState() {
       .order("name", { ascending: true }),
   ]);
 
-  const poolTotal =
-    (poolsRes.data ?? []).reduce((s, p) => s + (p.total_credits ?? 0), 0);
+  const poolTotal = (poolsRes.data ?? []).reduce(
+    (s, p) => s + (p.total_credits ?? 0),
+    0,
+  );
 
   const allocByUser = new Map(
     (allocsRes.data ?? []).map((a) => [a.user_id, a]),
   );
 
-  // Por cada user (que no es admin), levantamos su allocation o 0.
   const rows = (usersRes.data ?? [])
     .filter((u) => u.role === "employee")
     .map((u) => {
@@ -61,12 +72,46 @@ async function loadCreditsState() {
   return { poolTotal, rows };
 }
 
-export default async function AdminCreditsPage() {
-  const state = await loadCreditsState();
+export default async function AdminCreditsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tool?: string }>;
+}) {
+  const [{ tool }, tools] = await Promise.all([
+    searchParams,
+    loadCreditTools(),
+  ]);
+
+  // Tool seleccionado: el de la query si es válido; si no, 3dsky o el primero.
+  const validIds = new Set(tools.map((t) => t.id));
+  const toolId =
+    tool && validIds.has(tool)
+      ? tool
+      : tools.find((t) => t.id === "3dsky")?.id ?? tools[0]?.id ?? "3dsky";
+
+  const state = await loadCreditsState(toolId);
+
   return (
     <div style={{ padding: 32, height: "100%", overflow: "auto" }}>
+      {tools.length > 1 && (
+        <div
+          className="row"
+          style={{ gap: 8, marginBottom: 18, flexWrap: "wrap" }}
+        >
+          {tools.map((t) => (
+            <Link
+              key={t.id}
+              href={`/admin/credits?tool=${t.id}`}
+              prefetch={false}
+              className={`btn sm ${t.id === toolId ? "" : "secondary"}`}
+            >
+              {t.name}
+            </Link>
+          ))}
+        </div>
+      )}
       <AdminCreditsView
-        toolId={TOOL_ID}
+        toolId={toolId}
         poolTotal={state.poolTotal}
         initialRows={state.rows}
       />
