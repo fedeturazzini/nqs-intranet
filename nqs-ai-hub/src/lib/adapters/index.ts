@@ -9,6 +9,7 @@
  */
 import { claudeAdapter } from "./claude";
 import { threeDSkyAdapter } from "./three-dsky";
+import { klingAdapter } from "./kling";
 import type {
   AccessState,
   ToolAdapter,
@@ -48,8 +49,8 @@ export function createPlaceholderAdapter(
 export const adapters: Partial<Record<ToolId, ToolAdapter>> = {
   claude: claudeAdapter,
   "3dsky": threeDSkyAdapter,
+  kling: klingAdapter,
   weavy: createPlaceholderAdapter("weavy", "visual"),
-  kling: createPlaceholderAdapter("kling", "video"),
   runway: createPlaceholderAdapter("runway", "video"),
   elevenlabs: createPlaceholderAdapter("elevenlabs", "audio"),
   highsfield: createPlaceholderAdapter("highsfield", "video"),
