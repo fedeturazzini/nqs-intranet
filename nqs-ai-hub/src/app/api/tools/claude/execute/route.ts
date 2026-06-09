@@ -18,9 +18,15 @@ import { getSession } from "@/lib/auth/server";
 import { getAdapter } from "@/lib/adapters";
 import { requireToolAccess } from "@/lib/middleware/permissions";
 
-// La respuesta se STREAMEA (puede tardar varios segundos con prompts
-// grandes). En Vercel hay que subir el techo de duración de la función.
-export const maxDuration = 60;
+// La respuesta se STREAMEA (puede tardar varios MINUTOS con prompts grandes).
+// Con el techo anterior (60s, el cap del plan Hobby) Vercel mataba la función
+// a mitad del stream ("Vercel Runtime Timeout Error: Task timed out after 60
+// seconds"): el artifact nunca recibía su cierre y el spinner "Generando
+// archivo…" quedaba eterno. 300s requiere plan Pro. Con Fluid Compute
+// (vercel.json "fluid": true) la espera de I/O a Anthropic no cuenta como
+// Active CPU → no encarece tener la función abierta mientras streamea.
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 const MAX_PROMPT_CHARS = 10_000;
 const MAX_IMAGES = 5;
