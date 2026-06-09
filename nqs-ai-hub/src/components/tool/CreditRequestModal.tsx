@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import type { ToolId } from "@/types/db-aliases";
 
 const FormSchema = z.object({
   amount: z.number().int().min(1).max(1000),
@@ -23,6 +24,10 @@ type CreditRequestModalProps = Readonly<{
   onClose: () => void;
   /** Llamado tras un POST exitoso, con el requestId. */
   onSubmitted: (requestId: string) => void;
+  /** Tool para la que se piden créditos (default "3dsky"). Kling pasa "kling". */
+  toolId?: ToolId;
+  /** Etiqueta visible de la tool en el header (default "3DSKY"). */
+  toolLabel?: string;
 }>;
 
 type ApiResponse =
@@ -34,6 +39,8 @@ export function CreditRequestModal({
   currentCredits,
   onClose,
   onSubmitted,
+  toolId = "3dsky",
+  toolLabel = "3DSKY",
 }: CreditRequestModalProps) {
   const [amount, setAmount] = useState(10);
   const [reason, setReason] = useState("");
@@ -72,7 +79,7 @@ export function CreditRequestModal({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch("/api/tools/3dsky/request-credits", {
+      const res = await fetch(`/api/tools/${toolId}/request-credits`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(parsed.data),
@@ -115,7 +122,7 @@ export function CreditRequestModal({
             gap: 12,
           }}
         >
-          <div className="t-eyebrow">↳ SOLICITUD DE CRÉDITOS · 3DSKY</div>
+          <div className="t-eyebrow">↳ SOLICITUD DE CRÉDITOS · {toolLabel}</div>
           <button
             type="button"
             onClick={onClose}

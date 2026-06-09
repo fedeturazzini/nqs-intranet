@@ -20,6 +20,7 @@
  * flash de "0/0" mientras el primer fetch corre).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ToolId } from "@/types/db-aliases";
 
 export type CreditsState = {
   credits: number;
@@ -46,8 +47,13 @@ export type UseThreeDSkySession = {
 type StartResponse = { sessionId: string } | { error: string; message?: string };
 type EndResponse = CreditsState | { error: string; message?: string };
 
+/**
+ * Parametrizado por `toolId` (default "3dsky" para no tocar el call site
+ * existente). Kling lo reusa pasando "kling" — pega a `/api/tools/{toolId}/…`.
+ */
 export function useThreeDSkySession(
   initialCredits: CreditsState,
+  toolId: ToolId = "3dsky",
 ): UseThreeDSkySession {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [credits, setCredits] = useState<CreditsState>(initialCredits);
@@ -64,7 +70,7 @@ export function useThreeDSkySession(
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/tools/3dsky/session/start", {
+        const res = await fetch(`/api/tools/${toolId}/session/start`, {
           method: "POST",
           headers: { "content-type": "application/json" },
         });
@@ -89,7 +95,7 @@ export function useThreeDSkySession(
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [toolId]);
 
   // Cleanup: si el componente se desmonta sin que el user haya declarado,
   // mandamos un beacon a /session/end con declared=0. El navegador
@@ -106,23 +112,23 @@ export function useThreeDSkySession(
           declaredConsumption: 0,
         });
         const blob = new Blob([payload], { type: "application/json" });
-        navigator.sendBeacon("/api/tools/3dsky/session/end", blob);
+        navigator.sendBeacon(`/api/tools/${toolId}/session/end`, blob);
       } catch {
         // Si sendBeacon no existe (entornos viejos), no hay mucho que hacer.
       }
     };
-  }, []);
+  }, [toolId]);
 
   const refreshCredits = useCallback(async () => {
     try {
-      const res = await fetch("/api/tools/3dsky/credits", { cache: "no-store" });
+      const res = await fetch(`/api/tools/${toolId}/credits`, { cache: "no-store" });
       if (!res.ok) return;
       const data = (await res.json()) as CreditsState;
       setCredits(data);
     } catch {
       // silent
     }
-  }, []);
+  }, [toolId]);
 
   const declareAndEnd = useCallback(
     async (
@@ -137,7 +143,7 @@ export function useThreeDSkySession(
       }
       setIsEnding(true);
       try {
-        const res = await fetch("/api/tools/3dsky/session/end", {
+        const res = await fetch(`/api/tools/${toolId}/session/end`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -162,7 +168,7 @@ export function useThreeDSkySession(
         setIsEnding(false);
       }
     },
-    [],
+    [toolId],
   );
 
   return {
