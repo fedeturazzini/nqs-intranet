@@ -39,11 +39,12 @@ export default async function KlingPage() {
   const perm = await canUseTool(session.userId, "kling");
   if (!perm.allowed) {
     if (perm.reason === "outside_hours") {
-      if (schedule) return <OutsideHoursScreen schedule={schedule} />;
-      return <NoAccessScreen reason="no_access" />;
+      if (schedule)
+        return <OutsideHoursScreen schedule={schedule} toolName="Kling" />;
+      return <NoAccessScreen reason="no_access" toolName="Kling" />;
     }
     if (perm.reason === "no_credits") {
-      return <NoCreditsScreen />;
+      return <NoCreditsScreen toolId="kling" toolName="Kling" />;
     }
     // El acceso expirado se maneja desde el hub (card + modal de renovación).
     if (perm.reason === "expired") {
@@ -51,11 +52,15 @@ export default async function KlingPage() {
     }
     if (perm.reason === "no_access" || perm.reason === "pending_approval") {
       return (
-        <NoAccessScreen reason={perm.reason} message={perm.message ?? null} />
+        <NoAccessScreen
+          reason={perm.reason}
+          message={perm.message ?? null}
+          toolName="Kling"
+        />
       );
     }
     // not_authenticated u otros — el proxy ya tendría que haber redirigido.
-    return <NoAccessScreen reason="no_access" />;
+    return <NoAccessScreen reason="no_access" toolName="Kling" />;
   }
 
   // OK — créditos iniciales para evitar flash 0/0 antes del fetch.

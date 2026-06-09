@@ -8,16 +8,21 @@ type NoAccessScreenProps = Readonly<{
   /** Razón devuelta por `canUseTool` (sin tocar mensajes técnicos). */
   reason?: "no_access" | "pending_approval" | "expired";
   message?: string | null;
+  /** Nombre visible de la tool (default "3DSky"). Kling pasa "Kling". */
+  toolName?: string;
 }>;
 
-export function NoAccessScreen({ reason, message }: NoAccessScreenProps) {
+export function NoAccessScreen({
+  reason,
+  message,
+  toolName = "3DSky",
+}: NoAccessScreenProps) {
   let title = "Acceso bloqueado";
   let body =
     "El admin cerró tu acceso a esta herramienta. Si pensás que es un error, contactalo.";
   if (reason === "pending_approval") {
     title = "Tu acceso está pendiente";
-    body =
-      "El admin todavía no aprobó tu solicitud para usar 3DSky. Te avisamos cuando responda.";
+    body = `El admin todavía no aprobó tu solicitud para usar ${toolName}. Te avisamos cuando responda.`;
   } else if (reason === "expired") {
     title = "Tu acceso expiró";
     body =

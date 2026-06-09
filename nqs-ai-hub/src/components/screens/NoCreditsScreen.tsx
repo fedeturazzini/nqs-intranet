@@ -9,8 +9,19 @@ import { useState } from "react";
 import Link from "next/link";
 import { CreditRequestModal } from "@/components/tool/CreditRequestModal";
 import { showToast } from "@/lib/store/toast";
+import type { ToolId } from "@/types/db-aliases";
 
-export function NoCreditsScreen() {
+type NoCreditsScreenProps = Readonly<{
+  /** Tool sin créditos (default "3dsky"). Kling pasa "kling". */
+  toolId?: ToolId;
+  /** Nombre visible (default "3DSky"). Kling pasa "Kling". */
+  toolName?: string;
+}>;
+
+export function NoCreditsScreen({
+  toolId = "3dsky",
+  toolName = "3DSky",
+}: NoCreditsScreenProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -26,11 +37,11 @@ export function NoCreditsScreen() {
         style={{ fontSize: 44, margin: 0, letterSpacing: "-0.01em" }}
       >
         No tenés créditos de{" "}
-        <em style={{ fontFamily: "var(--serif)" }}>3DSky</em>.
+        <em style={{ fontFamily: "var(--serif)" }}>{toolName}</em>.
       </h1>
       <p className="muted" style={{ marginTop: 16, lineHeight: 1.6 }}>
-        Pedile al admin que te asigne créditos para usar 3DSky. Al confirmar
-        el pedido, le llega una notificación a Slack.
+        Pedile al admin que te asigne créditos para usar {toolName}. Al
+        confirmar el pedido, le llega una notificación a Slack.
       </p>
 
       <div
@@ -56,6 +67,8 @@ export function NoCreditsScreen() {
       <CreditRequestModal
         open={open}
         currentCredits={0}
+        toolId={toolId}
+        toolLabel={toolName.toUpperCase()}
         onClose={() => setOpen(false)}
         onSubmitted={(requestId) => {
           setOpen(false);

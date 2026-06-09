@@ -107,6 +107,7 @@ export function KlingView({
           <CreditsBlockOverlay
             onRequestMore={onRequestMore}
             onBackToHub={() => router.push("/hub")}
+            toolName="Kling"
           />
         )}
       </div>

@@ -13,9 +13,14 @@ import type { ToolSchedule } from "@/types/db-aliases";
 
 type OutsideHoursScreenProps = Readonly<{
   schedule: ToolSchedule;
+  /** Nombre visible de la tool (default "3DSky"). Kling pasa "Kling". */
+  toolName?: string;
 }>;
 
-export function OutsideHoursScreen({ schedule }: OutsideHoursScreenProps) {
+export function OutsideHoursScreen({
+  schedule,
+  toolName = "3DSky",
+}: OutsideHoursScreenProps) {
   const summary = summarizeSchedule(schedule);
   const next = nextScheduleWindow(schedule);
 
@@ -31,7 +36,7 @@ export function OutsideHoursScreen({ schedule }: OutsideHoursScreenProps) {
         className="t-display"
         style={{ fontSize: 44, margin: 0, letterSpacing: "-0.01em" }}
       >
-        <em style={{ fontFamily: "var(--serif)" }}>3DSky</em> no está
+        <em style={{ fontFamily: "var(--serif)" }}>{toolName}</em> no está
         disponible ahora.
       </h1>
       <p className="muted" style={{ marginTop: 16, lineHeight: 1.6 }}>

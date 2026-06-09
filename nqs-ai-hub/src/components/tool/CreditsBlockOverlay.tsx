@@ -11,11 +11,14 @@
 type CreditsBlockOverlayProps = Readonly<{
   onRequestMore: () => void;
   onBackToHub: () => void;
+  /** Nombre visible de la tool (default "3DSky"). Kling pasa "Kling". */
+  toolName?: string;
 }>;
 
 export function CreditsBlockOverlay({
   onRequestMore,
   onBackToHub,
+  toolName = "3DSky",
 }: CreditsBlockOverlayProps) {
   return (
     <div
@@ -60,8 +63,8 @@ export function CreditsBlockOverlay({
           className="credits-block-desc t-meta dim"
           style={{ lineHeight: 1.6, margin: 0 }}
         >
-          Para seguir comprando modelos en 3DSky, pedile más créditos al
-          admin. El admin recibe una notificación inmediata por Slack.
+          Para seguir usando {toolName}, pedile más créditos al admin. El
+          admin recibe una notificación inmediata por Slack.
         </p>
         <div
           className="row"
