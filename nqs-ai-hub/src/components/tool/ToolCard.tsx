@@ -50,7 +50,8 @@ export function ToolCard({
   const isExpired = access.status === "expired";
   const isLocked = access.status === "locked";
   const isComingSoon = access.status === "coming_soon";
-  const hasCredits = access.credits != null && access.creditsTotal != null;
+  // const hasCredits = access.credits != null && access.creditsTotal != null;
+  // (barra de créditos oculta por ahora — ver tool-card-meter comentado abajo)
 
   const classes = [
     "tool-card",
@@ -101,6 +102,9 @@ export function ToolCard({
           expiredAt={access.expiredAt}
         />
 
+        {/* FEEDBACK: barra de créditos ("X disponibles") oculta POR AHORA —
+            las tools con créditos se ven como las demás (solo "ACTIVA"). Se
+            comenta para re-habilitar fácil.
         {isActive && hasCredits && (
           <div className="tool-card-meter">
             <div className="meter">
@@ -114,7 +118,7 @@ export function ToolCard({
             </div>
             <span className="t-meta">{access.credits} disponibles</span>
           </div>
-        )}
+        )} */}
 
         {isPending && (
           <span className="t-meta">esperando confirmación</span>

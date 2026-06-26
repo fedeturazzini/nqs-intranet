@@ -33,13 +33,17 @@ export function StatusPill({
   creditsTotal,
 }: StatusPillProps) {
   if (status === "active") {
-    if (credits != null && creditsTotal != null) {
-      return (
-        <span className="tag ok">
-          <span className="dot" /> {credits} / {creditsTotal} créditos
-        </span>
-      );
-    }
+    // FEEDBACK: ocultar el contador "X / Y créditos" en el hub POR AHORA — las
+    // tools con créditos (3DSky, Kling) muestran "activa" como las demás. Se
+    // comenta (no se borra) para re-habilitarlo fácil. credits/creditsTotal
+    // siguen llegando por props.
+    // if (credits != null && creditsTotal != null) {
+    //   return (
+    //     <span className="tag ok">
+    //       <span className="dot" /> {credits} / {creditsTotal} créditos
+    //     </span>
+    //   );
+    // }
     if (expiresInMin != null) {
       const h = Math.floor(expiresInMin / 60);
       const m = expiresInMin % 60;
