@@ -37,6 +37,12 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
       match: (p) => p.startsWith("/admin/users"),
     },
     {
+      // A pedido de Fede: "Accesos & horarios" va justo debajo de Usuarios.
+      label: "Accesos & horarios",
+      href: "/admin/access",
+      match: (p) => p.startsWith("/admin/access"),
+    },
+    {
       // Prompt 17: renombrado a "System Brain" + protección con password.
       label: "System Brain",
       href: "/admin/brain",
@@ -51,11 +57,6 @@ export function AdminSidebar({ pendingRequests }: AdminSidebarProps) {
       label: "Organigrama",
       href: "/admin/organigrama",
       match: (p) => p.startsWith("/admin/organigrama"),
-    },
-    {
-      label: "Accesos & horarios",
-      href: "/admin/access",
-      match: (p) => p.startsWith("/admin/access"),
     },
     {
       label: "Solicitudes",
