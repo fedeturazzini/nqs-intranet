@@ -32,12 +32,15 @@ const BASE_ITEMS: NavItem[] = [
     href: "/hub",
     match: (p) => p === "/hub" || p.startsWith("/tool/"),
   },
-  {
-    kind: "link",
-    label: "Proyectos",
-    href: "/projects",
-    match: (p) => p.startsWith("/projects"),
-  },
+  // Oculto a pedido de Fede: "Proyectos" sale del navbar. Se comenta (no se
+  // borra) por si hay que re-habilitarlo. La ruta /projects sigue existiendo
+  // y el picker de proyecto dentro de Claude sigue funcionando.
+  // {
+  //   kind: "link",
+  //   label: "Proyectos",
+  //   href: "/projects",
+  //   match: (p) => p.startsWith("/projects"),
+  // },
   {
     kind: "link",
     label: "Tutoriales",
