@@ -70,10 +70,16 @@ export function ExceptionalAccessForm({
   async function handleSubmit() {
     setBusy(true);
     setError(null);
+
+    // Timeout duro: si el server no responde en 30s, abortamos y el finally
+    // resetea el botón (nunca queda colgado en "enviando…").
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
       const res = await fetch("/api/me/exceptional-access", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           toolId,
           reason: reason.trim(),
@@ -89,7 +95,6 @@ export function ExceptionalAccessForm({
             ? data.message
             : "no_request_created",
         );
-        setBusy(false);
         return;
       }
       showToast({
@@ -99,7 +104,13 @@ export function ExceptionalAccessForm({
       });
       onSubmitted(data.requestId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "network_error");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("La solicitud tardó demasiado, probá de nuevo.");
+      } else {
+        setError(err instanceof Error ? err.message : "network_error");
+      }
+    } finally {
+      clearTimeout(timeout);
       setBusy(false);
     }
   }

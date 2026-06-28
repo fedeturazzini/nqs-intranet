@@ -94,10 +94,16 @@ export function RequestAccessModal({
     }
     setSubmitting(true);
     setError(null);
+
+    // Timeout duro: si el server no responde en 30s, abortamos y el finally
+    // resetea el botón (nunca queda colgado en "enviando…").
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
       const res = await fetch("/api/me/access-request", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ toolId, reason: parsed.data.reason }),
       });
       const data = (await res.json()) as ApiResponse;
@@ -108,7 +114,6 @@ export function RequestAccessModal({
           setAlreadyPending(true);
         }
         setError(msg);
-        setSubmitting(false);
         return;
       }
       showToast({
@@ -118,7 +123,13 @@ export function RequestAccessModal({
       });
       onSubmitted(data.requestId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "network_error");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("La solicitud tardó demasiado, probá de nuevo.");
+      } else {
+        setError(err instanceof Error ? err.message : "network_error");
+      }
+    } finally {
+      clearTimeout(timeout);
       setSubmitting(false);
     }
   }

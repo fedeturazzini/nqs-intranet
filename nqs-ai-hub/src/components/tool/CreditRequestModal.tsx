@@ -78,10 +78,16 @@ export function CreditRequestModal({
     }
     setSubmitting(true);
     setError(null);
+
+    // Timeout duro: si el server no responde en 30s, abortamos y el finally
+    // resetea el botón (nunca queda colgado en "enviando…").
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
       const res = await fetch(`/api/tools/${toolId}/request-credits`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify(parsed.data),
       });
       const data = (await res.json()) as ApiResponse;
@@ -89,12 +95,17 @@ export function CreditRequestModal({
         setError(
           "message" in data && data.message ? data.message : "no_request_created",
         );
-        setSubmitting(false);
         return;
       }
       onSubmitted(data.requestId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "network_error");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("La solicitud tardó demasiado, probá de nuevo.");
+      } else {
+        setError(err instanceof Error ? err.message : "network_error");
+      }
+    } finally {
+      clearTimeout(timeout);
       setSubmitting(false);
     }
   }

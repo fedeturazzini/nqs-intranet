@@ -133,14 +133,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   const adminUrl = appUrl
     ? `${appUrl.replace(/\/$/, "")}/admin/requests`
     : undefined;
-  await notifySlack({
+  // Fire-and-forget: la solicitud ya está guardada (insert arriba), el Slack NO
+  // debe bloquear la respuesta — viaja en paralelo. Si falla, se loguea.
+  void notifySlack({
     kind: "access_request",
     userName: session.name,
     toolName: tool.name,
     reason,
     requestId: created.id,
     adminUrl,
-  });
+  }).catch((e) => console.error("slack notify failed", e));
 
   return NextResponse.json({ ok: true, requestId: created.id });
 }

@@ -24,10 +24,15 @@ export function TutorialesGate({ alreadyPending = false }: TutorialesGateProps) 
   async function requestAccess() {
     if (busy || pending) return;
     setBusy(true);
+    // Timeout duro: si el server no responde en 30s, abortamos y el finally
+    // resetea el botón (nunca queda colgado en "enviando…").
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
       const res = await fetch("/api/me/access-request", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ toolId: "tutoriales", reason: REASON }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -58,9 +63,14 @@ export function TutorialesGate({ alreadyPending = false }: TutorialesGateProps) 
         msg: data.message ?? "no se pudo enviar la solicitud",
         color: "var(--danger)",
       });
-    } catch {
-      showToast({ title: "ERROR", msg: "error de red", color: "var(--danger)" });
+    } catch (err) {
+      const msg =
+        err instanceof DOMException && err.name === "AbortError"
+          ? "La solicitud tardó demasiado, probá de nuevo."
+          : "error de red";
+      showToast({ title: "ERROR", msg, color: "var(--danger)" });
     } finally {
+      clearTimeout(timeout);
       setBusy(false);
     }
   }

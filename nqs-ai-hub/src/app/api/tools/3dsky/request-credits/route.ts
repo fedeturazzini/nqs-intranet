@@ -69,7 +69,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   // Notif a Slack — no bloquea ni puede romper la request.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const adminUrl = appUrl ? `${appUrl.replace(/\/$/, "")}/admin#requests` : undefined;
-  await notifySlack({
+  // Fire-and-forget: la solicitud ya está guardada, el Slack no bloquea la
+  // respuesta. Si falla, se loguea.
+  void notifySlack({
     kind: "credits_request",
     userName: session.name,
     toolName: "3DSky",
@@ -77,7 +79,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     reason: parsed.data.reason,
     requestId: data.id,
     adminUrl,
-  });
+  }).catch((e) => console.error("slack notify failed", e));
 
   return NextResponse.json({ ok: true, requestId: data.id });
 }

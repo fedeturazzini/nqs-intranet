@@ -73,7 +73,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     ? `${appUrl.replace(/\/$/, "")}/admin/requests`
     : undefined;
 
-  await notifySlack({
+  // Fire-and-forget: la solicitud ya está guardada, el Slack no bloquea la
+  // respuesta. Si falla, se loguea.
+  void notifySlack({
     kind: "exceptional_request",
     userName: session.name,
     toolName: tool?.name ?? parsed.data.toolId,
@@ -81,7 +83,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     reason: parsed.data.reason,
     requestId: data.id,
     adminUrl,
-  });
+  }).catch((e) => console.error("slack notify failed", e));
 
   return NextResponse.json({ ok: true, requestId: data.id });
 }
