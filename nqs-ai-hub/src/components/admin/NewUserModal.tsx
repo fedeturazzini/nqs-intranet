@@ -26,6 +26,9 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Cuando true, se marcan en rojo los campos inválidos (se activa al intentar
+  // crear con algo incompleto).
+  const [showValidation, setShowValidation] = useState(false);
   const firstInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -38,6 +41,7 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
       setRole("employee");
       setPassword("");
       setError(null);
+      setShowValidation(false);
       setTimeout(() => firstInputRef.current?.focus(), 50);
     }
   }, [open]);
@@ -62,22 +66,62 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name]);
 
+  // Validez por campo (criterios del audit). Son derivados, no hooks.
+  const nameInvalid = name.trim().length < 2;
+  const emailInvalid = !email.includes("@");
+  const initialsInvalid = initials.trim().length < 1;
+  const passwordInvalid = password.length < 8;
+  const isValid =
+    !nameInvalid && !emailInvalid && !initialsInvalid && !passwordInvalid;
+
+  // Cuando el user corrige todo, sacamos la marca de validación + su mensaje.
+  // (Solo aplica al mensaje de validación: los errores de API tienen
+  // showValidation=false, así que no se borran acá.)
+  useEffect(() => {
+    if (showValidation && isValid) {
+      setShowValidation(false);
+      setError(null);
+    }
+  }, [showValidation, isValid]);
+
   if (!open) return null;
 
-  const canSubmit =
-    !submitting &&
-    name.trim().length >= 2 &&
-    email.includes("@") &&
-    initials.length >= 1 &&
-    password.length >= 8;
+  // canSubmit solo controla el estilo "muted" del botón; el botón sigue
+  // clickeable para disparar la validación visual si falta algo.
+  const canSubmit = !submitting && isValid;
+  const markIf = (bad: boolean): React.CSSProperties =>
+    showValidation && bad ? { borderColor: "var(--danger)" } : {};
 
   async function handleSubmit() {
+    if (submitting) return;
+
+    // Si falta algo, NO mandamos: prendemos la validación visual (bordes rojos)
+    // y mostramos en el bloque de error qué falta.
+    if (!isValid) {
+      setShowValidation(true);
+      const missing: string[] = [];
+      if (nameInvalid) missing.push("nombre (mín. 2 caracteres)");
+      if (emailInvalid) missing.push("email válido");
+      if (initialsInvalid) missing.push("iniciales");
+      if (passwordInvalid) missing.push("password (mín. 8 caracteres)");
+      setError(`Falta: ${missing.join(", ")}.`);
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
+    setShowValidation(false);
+
+    // Timeout duro: si el server no responde en 30s, abortamos y reseteamos
+    // (el finally se encarga del loading) — así el botón nunca queda colgado.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+
     try {
       const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           name: name.trim(),
           email: email.trim().toLowerCase(),
@@ -92,9 +136,9 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
         | { user: { name: string; email: string } }
         | { error: string; message?: string };
       if (!res.ok || "error" in data) {
-        const msg = "message" in data && data.message ? data.message : "no_user_created";
+        const msg =
+          "message" in data && data.message ? data.message : "no_user_created";
         setError(msg);
-        setSubmitting(false);
         return;
       }
       showToast({
@@ -104,7 +148,13 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
       });
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "network_error");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("La creación tardó demasiado, probá de nuevo.");
+      } else {
+        setError(err instanceof Error ? err.message : "network_error");
+      }
+    } finally {
+      clearTimeout(timeout);
       setSubmitting(false);
     }
   }
@@ -142,7 +192,7 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
               onChange={(e) => setName(e.target.value)}
               disabled={submitting}
               placeholder="Lucía Pérez"
-              style={inputStyle}
+              style={{ ...inputStyle, ...markIf(nameInvalid) }}
             />
           </Field>
           <div style={{ display: "flex", gap: 12 }}>
@@ -154,7 +204,7 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={submitting}
                   placeholder="lucia@nqs.com.ar"
-                  style={inputStyle}
+                  style={{ ...inputStyle, ...markIf(emailInvalid) }}
                 />
               </Field>
             </div>
@@ -167,7 +217,11 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
                   disabled={submitting}
                   maxLength={4}
                   placeholder="LP"
-                  style={{ ...inputStyle, textAlign: "center" }}
+                  style={{
+                    ...inputStyle,
+                    textAlign: "center",
+                    ...markIf(initialsInvalid),
+                  }}
                 />
               </Field>
             </div>
@@ -238,7 +292,7 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={submitting}
                   placeholder="mínimo 8 chars"
-                  style={inputStyle}
+                  style={{ ...inputStyle, ...markIf(passwordInvalid) }}
                 />
               </Field>
             </div>
@@ -295,7 +349,11 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
             type="button"
             className="btn"
             onClick={handleSubmit}
-            disabled={!canSubmit}
+            disabled={submitting}
+            style={{ opacity: canSubmit ? 1 : 0.6 }}
+            title={
+              canSubmit ? undefined : "Completá los campos obligatorios"
+            }
           >
             {submitting ? "creando…" : "crear usuario →"}
           </button>

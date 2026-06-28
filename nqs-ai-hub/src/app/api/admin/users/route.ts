@@ -188,15 +188,17 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // S18: email de bienvenida con las credenciales (best-effort). Si
-  // RESEND_API_KEY no está configurada, el helper hace log y no rompe.
+  // S18: email de bienvenida con las credenciales (best-effort). El usuario YA
+  // está creado (auth + profile + tool_access) antes de esta línea, así que el
+  // mail NO debe bloquear ni afectar la respuesta. Fire-and-forget: la
+  // respuesta sale al toque y el mail se manda en paralelo. Si falla, se loguea.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  await sendWelcomeEmail({
+  void sendWelcomeEmail({
     to: email.trim().toLowerCase(),
     userName: name,
     temporaryPassword: password,
     hubUrl: appUrl,
-  });
+  }).catch((e) => console.error("welcome email failed", e));
 
   return NextResponse.json({ user: profile });
 }

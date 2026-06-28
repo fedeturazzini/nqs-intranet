@@ -33,8 +33,16 @@ export async function sendEmail({
     );
     return;
   }
+  // Timeout explícito (8s): si la API de Resend cuelga, no queremos que el
+  // await quede bloqueado indefinidamente cuando la key esté configurada.
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await resend.emails.send({ from: FROM_EMAIL, to, subject, html });
+    await Promise.race([
+      resend.emails.send({ from: FROM_EMAIL, to, subject, html }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("resend_timeout")), 8_000);
+      }),
+    ]);
   } catch (error) {
     console.error(
       JSON.stringify({
@@ -44,6 +52,8 @@ export async function sendEmail({
       }),
     );
     // No rompe la operación principal.
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
