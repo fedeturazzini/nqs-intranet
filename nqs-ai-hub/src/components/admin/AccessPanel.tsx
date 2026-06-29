@@ -13,6 +13,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import { ToolAccessCard } from "./ToolAccessCard";
+import { deptOrder } from "@/lib/constants/departments";
 import type { ToolSchedule } from "@/types/db-aliases";
 
 type UserRow = {
@@ -74,8 +75,9 @@ export function AccessPanel({
   );
 
   // FEEDBACK NQS v2.0 (4.1): usuarios agrupados por departamento y
-  // ordenados alfabéticamente por nombre dentro de cada grupo. Los grupos
-  // van alfabéticos; "SIN DEPARTAMENTO" queda al final.
+  // ordenados alfabéticamente por nombre dentro de cada grupo. Los GRUPOS van
+  // por el orden del menú fijo (DEPARTMENTS.indexOf, mismo comparador que la
+  // tabla de usuarios); "SIN DEPARTAMENTO"/desconocidos quedan al final.
   const groupedUsers = useMemo<Array<[string, UserRow[]]>>(() => {
     const groups = new Map<string, UserRow[]>();
     for (const u of users) {
@@ -88,11 +90,9 @@ export function AccessPanel({
     for (const [, arr] of entries) {
       arr.sort((x, y) => x.name.localeCompare(y.name, "es"));
     }
-    entries.sort((a, b) => {
-      if (a[0] === "SIN DEPARTAMENTO") return 1;
-      if (b[0] === "SIN DEPARTAMENTO") return -1;
-      return a[0].localeCompare(b[0], "es");
-    });
+    entries.sort(
+      (a, b) => deptOrder(a[0]) - deptOrder(b[0]) || a[0].localeCompare(b[0], "es"),
+    );
     return entries;
   }, [users]);
 

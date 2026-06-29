@@ -23,3 +23,15 @@ export function isKnownDepartment(value: string | null | undefined): boolean {
   if (!value) return false;
   return (DEPARTMENTS as readonly string[]).includes(value);
 }
+
+/**
+ * Índice para ordenar por el ORDEN DEL MENÚ (no alfabético). Los conocidos
+ * van por su posición en `DEPARTMENTS`; los vacíos/desconocidos al final.
+ * Lo usan la tabla de usuarios y el panel de accesos para ordenar igual.
+ */
+export function deptOrder(value: string | null | undefined): number {
+  const v = value?.trim();
+  if (!v) return DEPARTMENTS.length + 1;
+  const i = (DEPARTMENTS as readonly string[]).indexOf(v);
+  return i === -1 ? DEPARTMENTS.length : i;
+}

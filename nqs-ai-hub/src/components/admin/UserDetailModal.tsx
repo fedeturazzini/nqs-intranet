@@ -36,6 +36,8 @@ export function UserDetailModal({
   const [error, setError] = useState<string | null>(null);
   // Reset de password (admin): guardamos la nueva para mostrarla 1 vez.
   const [resetResult, setResetResult] = useState<string | null>(null);
+  // Confirmación del borrado definitivo (solo para users en baja).
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function resetPassword() {
     if (
@@ -168,6 +170,37 @@ export function UserDetailModal({
         msg: `${user.name} puede volver a loguearse.`,
         color: "var(--ok)",
       });
+      onChanged();
+      onClose();
+    } catch {
+      setError("network_error");
+      setBusy(false);
+    }
+  }
+
+  // Borrado DEFINITIVO (hard delete). Solo se ofrece para users en baja.
+  async function hardDelete() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}?hard=true`, {
+        method: "DELETE",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        message?: string;
+      };
+      if (!res.ok || !data.ok) {
+        setError(data.message ?? "no se pudo eliminar el usuario");
+        setBusy(false);
+        return;
+      }
+      showToast({
+        title: "USUARIO ELIMINADO",
+        msg: `${user.name} y sus datos fueron borrados definitivamente.`,
+        color: "var(--danger)",
+      });
+      setConfirmDelete(false);
       onChanged();
       onClose();
     } catch {
@@ -341,14 +374,29 @@ export function UserDetailModal({
                   dar de baja
                 </button>
               ) : (
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={reactivate}
-                  disabled={busy}
-                >
-                  reactivar
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={reactivate}
+                    disabled={busy}
+                  >
+                    reactivar
+                  </button>
+                  {/* Borrado definitivo: solo se ofrece para users en baja. */}
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={() => setConfirmDelete(true)}
+                    disabled={busy}
+                    style={{
+                      color: "var(--danger)",
+                      borderColor: "var(--danger)",
+                    }}
+                  >
+                    eliminar definitivamente
+                  </button>
+                </div>
               )}
               <button
                 type="button"
@@ -391,6 +439,104 @@ export function UserDetailModal({
             onClose={() => setResetResult(null)}
           />
         )}
+
+        {confirmDelete && (
+          <ConfirmDeleteModal
+            userName={user.name}
+            busy={busy}
+            onCancel={() => setConfirmDelete(false)}
+            onConfirm={hardDelete}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Confirmación fuerte del borrado definitivo (irreversible). */
+function ConfirmDeleteModal({
+  userName,
+  busy,
+  onCancel,
+  onConfirm,
+}: Readonly<{
+  userName: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}>) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.7)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 1300,
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          background: "var(--bg-elev)",
+          border: "1px solid var(--danger)",
+          borderRadius: 12,
+          padding: 24,
+          width: "100%",
+          maxWidth: 420,
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 34 }}>⚠️</div>
+        <h3
+          style={{
+            fontFamily: "var(--serif)",
+            fontStyle: "italic",
+            fontSize: 22,
+            margin: "8px 0 4px",
+          }}
+        >
+          ¿Eliminar a {userName}?
+        </h3>
+        <p
+          className="t-meta dim"
+          style={{ lineHeight: 1.55, margin: "8px 0 0", fontSize: 12 }}
+        >
+          Esto es{" "}
+          <strong style={{ color: "var(--danger)" }}>irreversible</strong>. Se
+          borra el usuario y todos sus datos (logs, solicitudes, créditos,
+          conversaciones). No se puede deshacer.
+        </p>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            justifyContent: "center",
+            marginTop: 20,
+          }}
+        >
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            cancelar
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={onConfirm}
+            disabled={busy}
+            style={{ background: "var(--danger)", color: "#fff", border: 0 }}
+          >
+            {busy ? "eliminando…" : "sí, eliminar definitivamente"}
+          </button>
+        </div>
       </div>
     </div>
   );

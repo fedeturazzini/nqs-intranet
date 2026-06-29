@@ -2,8 +2,10 @@
  * /api/admin/users/[id]
  *
  * PATCH  → editar campos básicos (name, dept, job_title, role, initials, is_active).
- * DELETE → soft delete (is_active=false). NO borra de auth.users — el
- *          admin puede reactivar cambiando is_active de vuelta a true.
+ * DELETE → soft delete (is_active=false) por default; el admin puede reactivar.
+ *          DELETE ?hard=true → borrado DEFINITIVO (auth.users + public.users;
+ *          los datos caen por ON DELETE CASCADE de la migration 0012). Un admin
+ *          no puede eliminarse a sí mismo.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -83,7 +85,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   ctx: Ctx,
 ): Promise<NextResponse> {
   const guard = await requireAdminApi();
@@ -94,11 +96,50 @@ export async function DELETE(
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
 
-  // Soft delete: marcamos is_active=false. El auth.user sigue existiendo
-  // pero `requireAuth → getSession()` falla porque public.users.is_active
-  // está chequeado en el middleware de permisos. La sesión activa muere
-  // en el próximo render.
   const db = createServerClient();
+  const hard = new URL(request.url).searchParams.get("hard") === "true";
+
+  // ── Hard delete (irreversible): borra de auth.users + public.users. Los
+  //    datos propios del user caen por ON DELETE CASCADE (migration 0012) y
+  //    las columnas de auditoría *_by quedan en NULL.
+  if (hard) {
+    if (id === guard.userId) {
+      return NextResponse.json(
+        {
+          error: "cannot_delete_self",
+          message: "No podés eliminarte a vos mismo",
+        },
+        { status: 400 },
+      );
+    }
+    // 1) public.users primero (cascadea los hijos). Si falla, no tocamos auth.
+    const { error: pubErr } = await db.from("users").delete().eq("id", id);
+    if (pubErr) {
+      return NextResponse.json(
+        { error: "db_error", message: pubErr.message },
+        { status: 500 },
+      );
+    }
+    // 2) auth.users (no tiene FK con public.users → se borra aparte).
+    //    Best-effort: si falla, el profile ya no existe (el user no puede
+    //    entrar igual); logueamos el auth huérfano para limpieza manual.
+    const { error: authErr } = await db.auth.admin.deleteUser(id);
+    if (authErr) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          msg: "hard delete: auth.user no se borró (profile sí)",
+          userId: id,
+          error: authErr.message,
+        }),
+      );
+    }
+    return NextResponse.json({ ok: true, hard: true });
+  }
+
+  // ── Soft delete (default): is_active=false. El auth.user sigue existiendo
+  //    pero `getSession()` falla porque se chequea is_active. El user queda en
+  //    la lista con badge "baja" y se puede reactivar.
   const { error } = await db
     .from("users")
     .update({ is_active: false })

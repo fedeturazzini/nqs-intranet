@@ -4,9 +4,10 @@
  * Tabla de usuarios + botón "nuevo" + modal detalle al hacer click en
  * una fila.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { NewUserModal } from "./NewUserModal";
 import { UserDetailModal } from "./UserDetailModal";
+import { deptOrder } from "@/lib/constants/departments";
 
 export type AdminUserRow = {
   id: string;
@@ -26,6 +27,9 @@ type UsersTableProps = Readonly<{
   initialUsers: AdminUserRow[];
 }>;
 
+type SortKey = "name" | "role" | "dept";
+type SortDir = "asc" | "desc";
+
 const DATE_FMT = new Intl.DateTimeFormat("es-AR", {
   day: "2-digit",
   month: "2-digit",
@@ -40,6 +44,37 @@ export function UsersTable({ initialUsers }: UsersTableProps) {
   const [newOpen, setNewOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = users.find((u) => u.id === selectedId) ?? null;
+
+  // Orden client-side (todos los users ya están en memoria). Default: Usuario A→Z.
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({
+    key: "name",
+    dir: "asc",
+  });
+  const toggleSort = useCallback((key: SortKey) => {
+    setSort((s) =>
+      s.key === key
+        ? { key, dir: s.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "asc" },
+    );
+  }, []);
+  const sortedUsers = useMemo(() => {
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const byName = (a: AdminUserRow, b: AdminUserRow) =>
+      a.name.localeCompare(b.name, "es");
+    return [...users].sort((a, b) => {
+      let cmp: number;
+      if (sort.key === "role") {
+        cmp = a.role.localeCompare(b.role) || byName(a, b);
+      } else if (sort.key === "dept") {
+        // Dept por ORDEN DE MENÚ (DEPARTMENTS.indexOf), no alfabético;
+        // vacíos/desconocidos al final. Desempata por nombre.
+        cmp = deptOrder(a.dept) - deptOrder(b.dept) || byName(a, b);
+      } else {
+        cmp = byName(a, b);
+      }
+      return cmp * dir;
+    });
+  }, [users, sort]);
 
   const refresh = useCallback(async () => {
     try {
@@ -105,9 +140,27 @@ export function UsersTable({ initialUsers }: UsersTableProps) {
             color: "var(--fg-mute)",
           }}
         >
-          <div>USUARIO</div>
-          <div>ROL</div>
-          <div>DEPT</div>
+          <SortableTh
+            label="USUARIO"
+            sortKey="name"
+            active={sort.key === "name"}
+            dir={sort.dir}
+            onSort={toggleSort}
+          />
+          <SortableTh
+            label="ROL"
+            sortKey="role"
+            active={sort.key === "role"}
+            dir={sort.dir}
+            onSort={toggleSort}
+          />
+          <SortableTh
+            label="DEPT"
+            sortKey="dept"
+            active={sort.key === "dept"}
+            dir={sort.dir}
+            onSort={toggleSort}
+          />
           <div>EMAIL</div>
           <div>ÚLTIMO ACCESO</div>
           <div style={{ textAlign: "center" }}>TOOLS</div>
@@ -123,7 +176,7 @@ export function UsersTable({ initialUsers }: UsersTableProps) {
           </div>
         )}
 
-        {users.map((u) => (
+        {sortedUsers.map((u) => (
           <button
             key={u.id}
             type="button"
@@ -235,5 +288,47 @@ export function UsersTable({ initialUsers }: UsersTableProps) {
         />
       )}
     </>
+  );
+}
+
+/** Header de columna clickeable para ordenar (toggle asc/desc). */
+function SortableTh({
+  label,
+  sortKey,
+  active,
+  dir,
+  onSort,
+}: Readonly<{
+  label: string;
+  sortKey: SortKey;
+  active: boolean;
+  dir: SortDir;
+  onSort: (key: SortKey) => void;
+}>) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      title="ordenar"
+      style={{
+        background: "transparent",
+        border: 0,
+        padding: 0,
+        font: "inherit",
+        letterSpacing: "inherit",
+        textTransform: "inherit",
+        color: active ? "var(--fg)" : "inherit",
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        justifySelf: "start",
+      }}
+    >
+      {label}
+      <span style={{ opacity: active ? 1 : 0.3 }}>
+        {active ? (dir === "asc" ? "↑" : "↓") : "↕"}
+      </span>
+    </button>
   );
 }
