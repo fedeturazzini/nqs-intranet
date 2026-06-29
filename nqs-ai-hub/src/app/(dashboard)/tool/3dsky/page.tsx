@@ -32,6 +32,18 @@ export default async function ThreeDSkyPage() {
   const session = await requireAuth();
   const db = createServerClient();
 
+  // Si la tool está en "Próximamente" (is_active=false), no es usable por NADIE
+  // (ni admin ni quien ya tenga acceso). La mandamos al hub, donde se ve la card
+  // como las demás. Esto cierra el acceso por URL directa cuando se la pausa.
+  const { data: toolRow } = await db
+    .from("tools")
+    .select("is_active")
+    .eq("id", "3dsky")
+    .maybeSingle();
+  if (!toolRow?.is_active) {
+    redirect("/hub");
+  }
+
   // Schedule actual (la levantamos siempre — la usan los gates outside_hours).
   const { data: access } = await db
     .from("tool_access")
