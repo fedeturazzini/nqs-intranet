@@ -191,7 +191,7 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={submitting}
-              placeholder="Lucía Pérez"
+              placeholder="New User"
               style={{ ...inputStyle, ...markIf(nameInvalid) }}
             />
           </Field>
