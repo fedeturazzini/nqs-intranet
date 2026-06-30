@@ -11,7 +11,7 @@
  *   - El submit pega a POST /api/auth/login, y redirige al destino que el
  *     server diga (/hub o /admin).
  */
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { NqsLogo } from "@/components/ui/NqsLogo";
@@ -25,12 +25,6 @@ type LoginScreenProps = Readonly<{
 
 type Role = "user" | "admin";
 
-// Pre-rellena del switch — solo conveniencia, no controla autorización.
-const PREFILL: Record<Role, string> = {
-  user: "sofia@nqs.test",
-  admin: "tomas@nqs.test",
-};
-
 type LoginResponse =
   | { ok: true; redirect: string; user: { name: string; role: string } }
   | { ok: false; error: string };
@@ -43,20 +37,11 @@ export function LoginScreen({
   const nextPath = searchParams.get("next");
 
   const [role, setRole] = useState<Role>("user");
-  const [email, setEmail] = useState<string>(PREFILL.user);
+  const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [shake, setShake] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Cambio de switch pre-rellena el email, sin pisar lo que el user tipeó.
-  // Heurística: si el email actual es uno de los pre-fills, lo cambiamos.
-  useEffect(() => {
-    if (Object.values(PREFILL).includes(email)) {
-      setEmail(PREFILL[role]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
 
   const shakeTimer = useRef<number | null>(null);
   function triggerShake() {
