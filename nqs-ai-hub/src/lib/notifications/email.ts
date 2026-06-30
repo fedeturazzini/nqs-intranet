@@ -14,7 +14,7 @@
 import { Resend } from "resend";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM_EMAIL = "NQS AI Hub <noreply@nqs.com.ar>";
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "NQS AI Hub <noreply@nqscreative.com>";
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
