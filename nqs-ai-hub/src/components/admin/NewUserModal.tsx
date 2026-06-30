@@ -203,7 +203,7 @@ export function NewUserModal({ open, onClose, onCreated }: NewUserModalProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={submitting}
-                  placeholder="lucia@nqs.com.ar"
+                  placeholder="newuser@nqscreative.com"
                   style={{ ...inputStyle, ...markIf(emailInvalid) }}
                 />
               </Field>
