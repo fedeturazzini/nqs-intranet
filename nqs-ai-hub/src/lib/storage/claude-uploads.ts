@@ -112,3 +112,37 @@ export async function signDownloadUrls(
 export function pathBelongsToUser(path: string, userId: string): boolean {
   return path.startsWith(`user_${userId}/`);
 }
+
+/**
+ * Sube bytes al bucket `claude-uploads` DESDE EL SERVER (el server ya tiene los
+ * bytes en memoria; no pasa por una signed upload URL como los uploads del
+ * cliente). Se usa para los archivos que Claude genera en el sandbox (etapa 2).
+ *
+ * Misma convención de path que `createUploadTargets`:
+ *   user_{userId}/{conversationId|new}/{uuid}.{ext}
+ * El backend controla TODO el path (userId + uuid) — nada externo lo arma.
+ * Devuelve el `storage_path` (lo que se persiste en `claude_files`).
+ */
+export async function uploadBuffer(
+  userId: string,
+  conversationId: string | null,
+  bytes: Buffer,
+  contentType: string,
+  ext: string,
+): Promise<string> {
+  const db = createServerClient();
+  const convSegment = conversationId ?? "new";
+  // Sanitizamos la extensión (defensa contra path traversal): solo alfanumérico.
+  const safeExt = ext.replace(/[^a-z0-9]/gi, "").toLowerCase() || "bin";
+  const path = `user_${userId}/${convSegment}/${crypto.randomUUID()}.${safeExt}`;
+
+  const { error } = await db.storage
+    .from(CLAUDE_UPLOADS_BUCKET)
+    .upload(path, bytes, { contentType });
+  if (error) {
+    throw new Error(
+      `no pude subir el archivo generado a Storage: ${error.message}`,
+    );
+  }
+  return path;
+}

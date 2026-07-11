@@ -24,8 +24,10 @@
  * Supabase JS no las soporta. Para atomicidad de verdad habría que
  * mover la persistencia + log a un RPC de Postgres.
  */
+import { basename } from "node:path";
 import {
   buildUserContent,
+  downloadGeneratedFile,
   modelSupportsCodeExecution,
   streamClaude,
   type ClaudeMessage,
@@ -37,6 +39,7 @@ import { getActiveProjectId } from "@/lib/db/queries/projects";
 import {
   pathBelongsToUser,
   signDownloadUrls,
+  uploadBuffer,
 } from "@/lib/storage/claude-uploads";
 import { logToolUsage } from "./utils";
 import type {
@@ -378,6 +381,67 @@ export const claudeAdapter: ToolAdapter = {
         // Seguimos: el user recibe su texto. La conv queda inconsistente.
       }
 
+      // 4.5 ETAPA 2: bajar cada archivo generado de la Files API, subirlo a
+      // Storage y registrarlo en claude_files. Best-effort POR ARCHIVO: si uno
+      // falla (download/upload/insert), lo logueamos y seguimos; nunca rompemos
+      // la respuesta por un archivo. Necesita conversationId + messageId (de
+      // arriba). Solo corre con file-gen activo y si hubo file_id capturados.
+      let persistedFiles: ExecuteResult["files"];
+      const fileIds = response.generatedFiles?.map((f) => f.fileId) ?? [];
+      if (fileGenEnabled && fileIds.length > 0 && conversationId) {
+        persistedFiles = [];
+        for (const fileId of fileIds) {
+          try {
+            const dl = await downloadGeneratedFile(fileId);
+            // Sanitizamos el nombre (path traversal) y derivamos la extensión.
+            const safeName = basename(dl.name) || "archivo";
+            const ext = safeName.includes(".")
+              ? (safeName.split(".").pop() ?? "bin")
+              : "bin";
+            const storagePath = await uploadBuffer(
+              userId,
+              conversationId,
+              dl.bytes,
+              dl.mediaType,
+              ext,
+            );
+            const { data: row, error: insErr } = await db
+              .from("claude_files")
+              .insert({
+                conversation_id: conversationId,
+                message_id: messageId || null,
+                user_id: userId,
+                name: safeName,
+                media_type: dl.mediaType,
+                storage_path: storagePath,
+                size_bytes: dl.sizeBytes,
+                anthropic_file_id: fileId,
+              })
+              .select("id")
+              .single();
+            if (insErr || !row) throw insErr ?? new Error("insert sin fila");
+            persistedFiles.push({
+              id: row.id,
+              name: safeName,
+              mediaType: dl.mediaType,
+              storagePath,
+            });
+          } catch (fileErr) {
+            console.error(
+              JSON.stringify({
+                level: "error",
+                msg: "code exec: falló bajar/subir/registrar un archivo generado",
+                userId,
+                conversationId,
+                fileId,
+                error:
+                  fileErr instanceof Error ? fileErr.message : String(fileErr),
+              }),
+            );
+          }
+        }
+      }
+
       // 5. Log de uso (también best-effort). Incluimos `model` en metadata
       // para que el admin pueda filtrar logs por modelo usado (ej. ver
       // si un cambio a Haiku bajó la calidad).
@@ -413,6 +477,8 @@ export const claudeAdapter: ToolAdapter = {
           stopReason: response.stopReason,
           // ETAPA 1: capturados, todavía sin bajar ni guardar (la etapa 2 los consume).
           generatedFiles: response.generatedFiles,
+          // ETAPA 2: ya en Storage + claude_files (viajan en el `done` del NDJSON).
+          files: persistedFiles,
         },
       };
     } catch (error) {

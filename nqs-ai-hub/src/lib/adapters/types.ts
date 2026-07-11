@@ -74,6 +74,16 @@ export type ExecuteResult = {
    * a Supabase Storage). Vacío/undefined si no se generó ninguno.
    */
   generatedFiles?: Array<{ fileId: string }>;
+  /**
+   * Archivos generados que YA se bajaron, subieron a Storage y registraron en
+   * `claude_files` (ETAPA 2). Sin URL — se firma on-demand (done / etapa 3).
+   */
+  files?: Array<{
+    id: string;
+    name: string;
+    mediaType: string;
+    storagePath: string;
+  }>;
 };
 
 // ============================================================

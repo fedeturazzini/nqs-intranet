@@ -155,6 +155,67 @@ export type Database = {
           },
         ]
       }
+      claude_files: {
+        Row: {
+          anthropic_file_id: string | null
+          conversation_id: string
+          created_at: string | null
+          id: string
+          media_type: string
+          message_id: string | null
+          name: string
+          size_bytes: number | null
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          anthropic_file_id?: string | null
+          conversation_id: string
+          created_at?: string | null
+          id?: string
+          media_type: string
+          message_id?: string | null
+          name: string
+          size_bytes?: number | null
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          anthropic_file_id?: string | null
+          conversation_id?: string
+          created_at?: string | null
+          id?: string
+          media_type?: string
+          message_id?: string | null
+          name?: string
+          size_bytes?: number | null
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "claude_files_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "claude_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claude_files_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "claude_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "claude_files_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       claude_messages: {
         Row: {
           content: string

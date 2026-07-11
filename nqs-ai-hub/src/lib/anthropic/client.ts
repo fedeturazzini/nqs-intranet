@@ -386,6 +386,40 @@ async function streamWithFileGeneration(
 }
 
 // ============================================================
+// downloadGeneratedFile — bajar un archivo de la Files API (etapa 2)
+// ============================================================
+
+export type DownloadedFile = {
+  fileId: string;
+  name: string;
+  mediaType: string;
+  sizeBytes: number;
+  bytes: Buffer;
+};
+
+/**
+ * Baja un archivo que Claude generó en el sandbox (por `file_id`) usando la
+ * Files API, y resuelve su metadata (nombre / mime / tamaño). El bloque de
+ * resultado de code execution SOLO trae el `file_id`; el resto sale de acá.
+ * (El SDK agrega solo el header `files-api-2025-04-14` en `beta.files.*`.)
+ */
+export async function downloadGeneratedFile(
+  fileId: string,
+): Promise<DownloadedFile> {
+  const client = getClient();
+  const meta = await client.beta.files.retrieveMetadata(fileId);
+  const resp = await client.beta.files.download(fileId);
+  const bytes = Buffer.from(await resp.arrayBuffer());
+  return {
+    fileId,
+    name: meta.filename,
+    mediaType: meta.mime_type,
+    sizeBytes: meta.size_bytes,
+    bytes,
+  };
+}
+
+// ============================================================
 // buildUserContent — helper para armar el content multimodal
 // ============================================================
 

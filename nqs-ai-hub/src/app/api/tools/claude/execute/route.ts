@@ -111,6 +111,9 @@ export async function POST(request: Request): Promise<Response> {
             tokensInput: result.value.tokensInput,
             tokensOutput: result.value.tokensOutput,
             stopReason: result.value.stopReason,
+            // ETAPA 2: archivos generados ya en Storage + claude_files (sin URL;
+            // se firma en la etapa 3). undefined si no hubo.
+            files: result.value.files,
           });
         }
       } catch {
