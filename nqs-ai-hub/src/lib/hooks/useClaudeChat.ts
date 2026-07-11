@@ -172,20 +172,49 @@ export function useClaudeChat() {
       abortRef.current = controller;
 
       try {
-        const res = await fetch("/api/tools/claude/execute", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            prompt,
-            imagePaths: imagePaths.length > 0 ? imagePaths : undefined,
-            conversationId: conversationId ?? undefined,
-          }),
-        });
+        // El POST al execute, envuelto para poder reintentarlo UNA vez tras
+        // refrescar la sesión (el JWT dura ~1h; en chats largos se vence).
+        const callExecute = () =>
+          fetch("/api/tools/claude/execute", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              prompt,
+              imagePaths: imagePaths.length > 0 ? imagePaths : undefined,
+              conversationId: conversationId ?? undefined,
+            }),
+          });
+
+        let res = await callExecute();
+
+        // 401 = sesión vencida (NO 403 de permisos, que el refresh no arregla).
+        // Refrescamos en silencio y reintentamos UNA sola vez; el placeholder
+        // "pensando…" sigue visible, así que el usuario no lo nota.
+        if (res.status === 401) {
+          const refreshed = await fetch("/api/auth/refresh", {
+            method: "POST",
+            signal: controller.signal,
+          });
+          if (refreshed.ok) {
+            res = await callExecute();
+          } else {
+            // El refresh token también murió → sesión perdida, a re-loguear.
+            setErrorOnPending("Tu sesión expiró. Te llevamos al login…");
+            window.location.href = "/login";
+            return { ok: false, error: "session_expired" };
+          }
+        }
 
         // Errores tempranos (auth / permiso / validación) → JSON con status
         // distinto de 2xx, NO stream.
         if (!res.ok || !res.body) {
+          // Si sigue 401 tras refrescar + reintentar, la sesión no se salvó.
+          if (res.status === 401) {
+            setErrorOnPending("Tu sesión expiró. Te llevamos al login…");
+            window.location.href = "/login";
+            return { ok: false, error: "session_expired" };
+          }
           const data = (await res.json().catch(() => ({}))) as {
             error?: string;
             message?: string;
