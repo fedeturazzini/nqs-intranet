@@ -163,7 +163,12 @@ export const claudeAdapter: ToolAdapter = {
     });
   },
 
-  async execute(userId, params, onText): Promise<Result<ExecuteResult>> {
+  async execute(
+    userId,
+    params,
+    onText,
+    onStatus,
+  ): Promise<Result<ExecuteResult>> {
     try {
       const db = createServerClient();
 
@@ -278,6 +283,7 @@ export const claudeAdapter: ToolAdapter = {
         messages,
         { model: systemPrompt.model, enableFileGeneration: fileGenEnabled },
         onText,
+        onStatus,
       );
 
       // ETAPA 1: si Claude generó archivos en el sandbox, logueamos los file_id

@@ -53,6 +53,10 @@ export type ChatMessage = {
    *  "done"). La UI lo usa para distinguir un artifact "generándose" de uno
    *  que quedó cortado. */
   streaming?: boolean;
+  /** True mientras Claude genera un archivo en el sandbox (entre el evento
+   *  "generating_file" y el "done"). La UI muestra un indicador "generando
+   *  archivo…" durante la espera silenciosa del code execution. */
+  generatingFile?: boolean;
   /** Por qué terminó la respuesta ("end_turn", "max_tokens", …). Si es
    *  "max_tokens" la UI muestra un aviso de respuesta cortada. */
   stopReason?: string | null;
@@ -258,6 +262,7 @@ export function useClaudeChat() {
             let ev: {
               type: string;
               text?: string;
+              status?: string;
               conversationId?: string;
               messageId?: string;
               tokensInput?: number;
@@ -279,6 +284,24 @@ export function useClaudeChat() {
                 prev.map((m) =>
                   m.id === pendingMsgId
                     ? { ...m, isPending: false, streaming: true, content: acc }
+                    : m,
+                ),
+              );
+            } else if (
+              ev.type === "status" &&
+              ev.status === "generating_file"
+            ) {
+              // Claude arrancó a generar un archivo → indicador "generando…".
+              started = true;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === pendingMsgId
+                    ? {
+                        ...m,
+                        isPending: false,
+                        streaming: true,
+                        generatingFile: true,
+                      }
                     : m,
                 ),
               );

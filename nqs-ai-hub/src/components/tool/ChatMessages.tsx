@@ -183,6 +183,18 @@ function MessageBubble({
           <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
         )}
 
+        {/* Mientras Claude genera el archivo en el sandbox (espera silenciosa
+            del code execution): indicador "generando archivo…". Desaparece
+            cuando llega la card (o si falló). */}
+        {isAi &&
+          msg.generatingFile &&
+          !msg.errorMsg &&
+          (!msg.files || msg.files.length === 0) && (
+            <div style={{ marginTop: 10 }}>
+              <ArtifactGeneratingPlaceholder />
+            </div>
+          )}
+
         {/* Archivos REALES generados por Claude (PDF/Word/Excel/PPT): una card
             por archivo, con descarga por signed URL. */}
         {isAi && msg.files && msg.files.length > 0 && (

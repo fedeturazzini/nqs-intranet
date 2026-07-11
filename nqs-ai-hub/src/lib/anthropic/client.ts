@@ -189,6 +189,8 @@ export async function streamClaude(
   messages: ClaudeMessage[],
   options: CallClaudeOptions = {},
   onText?: (delta: string) => void,
+  /** Señales de estado (ej. "generating_file"). Solo aplica al path beta. */
+  onStatus?: (status: string) => void,
 ): Promise<ClaudeResponse> {
   const client = getClient();
   const model = options.model ?? DEFAULT_MODEL;
@@ -203,6 +205,7 @@ export async function streamClaude(
       systemPrompt,
       messages,
       onText,
+      onStatus,
     );
   }
 
@@ -267,6 +270,7 @@ async function streamWithFileGeneration(
   systemPrompt: string,
   messages: ClaudeMessage[],
   onText?: (delta: string) => void,
+  onStatus?: (status: string) => void,
 ): Promise<ClaudeResponse> {
   // Historia mutable: el loop de pause_turn le appendea el turno del assistant
   // para que la API resuma desde donde quedó. (MessageParam ⊆ BetaMessageParam.)
@@ -291,6 +295,19 @@ async function streamWithFileGeneration(
 
     if (onText) {
       stream.on("text", (delta) => onText(delta));
+    }
+    // Señal para la UI: cuando Claude ARRANCA a usar el tool (server_tool_use),
+    // avisamos "generando archivo" para mostrar un indicador durante la espera
+    // del sandbox (que es silenciosa y puede tardar).
+    if (onStatus) {
+      stream.on("streamEvent", (event) => {
+        if (
+          event.type === "content_block_start" &&
+          event.content_block.type === "server_tool_use"
+        ) {
+          onStatus("generating_file");
+        }
+      });
     }
 
     const final = await stream.finalMessage();

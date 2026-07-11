@@ -86,6 +86,7 @@ export async function POST(request: Request): Promise<Response> {
 
   // Respuesta NDJSON (una línea JSON por evento):
   //   {"type":"delta","text":"…"}                        ← por cada fragmento
+  //   {"type":"status","status":"generating_file"}       ← generando un archivo
   //   {"type":"done","conversationId","messageId",…}     ← al terminar OK
   //   {"type":"error","message":"…"}                     ← si falló el modelo
   const encoder = new TextEncoder();
@@ -97,8 +98,11 @@ export async function POST(request: Request): Promise<Response> {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
       try {
-        const result = await execute(userId, params, (delta) =>
-          send({ type: "delta", text: delta }),
+        const result = await execute(
+          userId,
+          params,
+          (delta) => send({ type: "delta", text: delta }),
+          (status) => send({ type: "status", status }),
         );
         if (!result.ok) {
           send({ type: "error", message: result.error.message });

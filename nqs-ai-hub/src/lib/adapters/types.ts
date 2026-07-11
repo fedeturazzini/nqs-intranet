@@ -127,6 +127,10 @@ export type ToolAdapter = {
     userId: string,
     params: ExecuteParams,
     onText?: (delta: string) => void,
+    /** Señales de estado durante la ejecución (ej. "generating_file" cuando
+     *  Claude arranca a generar un archivo en el sandbox). La UI muestra un
+     *  indicador mientras tanto. */
+    onStatus?: (status: string) => void,
   ): Promise<Result<ExecuteResult>>;
 
   /** Tools con créditos. Cuántos le quedan al user. */
