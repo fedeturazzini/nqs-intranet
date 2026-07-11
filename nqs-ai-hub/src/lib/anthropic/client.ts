@@ -30,6 +30,57 @@ export const DEFAULT_MAX_TOKENS = 8192;
 export function maxTokensFor(model: string): number {
   return /haiku/i.test(model) ? 4096 : DEFAULT_MAX_TOKENS;
 }
+
+/**
+ * La code execution (server tool de Anthropic que corre Python en un sandbox y
+ * genera archivos reales) requiere Sonnet 4.5+ / Opus 4.5+ / Fable 5. Haiku y
+ * modelos viejos NO la soportan → si el proyecto usa uno de esos, NO agregamos
+ * el tool y respondemos como hoy (solo texto). Conservador a propósito: ante la
+ * duda, false, para no romper proyectos con modelos viejos.
+ */
+export function modelSupportsCodeExecution(model: string): boolean {
+  const m = model.toLowerCase();
+  if (/haiku/.test(m)) return false;
+  return (
+    /claude-sonnet-(4-[5-9]|[5-9])/.test(m) || // Sonnet 4.5/4.6/5+
+    /claude-opus-(4-[5-9]|[5-9])/.test(m) || // Opus 4.5/4.6/4.7/4.8+
+    /claude-fable-[5-9]/.test(m) // Fable 5+
+  );
+}
+
+/**
+ * Un archivo binario que Claude generó en el sandbox (code execution).
+ * ETAPA 1: solo capturamos el `fileId` (la metadata —nombre/tipo— se resuelve
+ * en la etapa 2 vía Files API; el bloque de resultado NO la trae).
+ */
+export type GeneratedFile = { fileId: string };
+
+// ── Config de generación de archivos (code execution + Agent Skills) ──
+// Strings verificados contra @anthropic-ai/sdk 0.98.0 (el SDK NO tiene el
+// `code_execution_20260521` del skill; usa 20250825, que date-matchea la beta).
+const MAX_FILE_GEN_TURNS = 8; // tope de re-envíos por pause_turn (anti loop infinito)
+
+const CODE_EXECUTION_TOOL: Anthropic.Beta.BetaCodeExecutionTool20250825 = {
+  type: "code_execution_20250825",
+  name: "code_execution",
+};
+
+// Skills pre-armadas de Anthropic para generar Office/PDF reales (el sandbox ya
+// trae python-docx, openpyxl, pypdf, python-pptx, etc.).
+const FILE_SKILLS: Anthropic.Beta.BetaSkillParams[] = [
+  { type: "anthropic", skill_id: "pdf" },
+  { type: "anthropic", skill_id: "docx" },
+  { type: "anthropic", skill_id: "xlsx" },
+  { type: "anthropic", skill_id: "pptx" },
+];
+
+// Se infiere string[] (asignable a Array<AnthropicBeta>). `code-execution-...`
+// entra por el (string & {}) de la union; skills/files-api están tipadas.
+const FILE_GEN_BETAS = [
+  "code-execution-2025-08-25",
+  "skills-2025-10-02",
+  "files-api-2025-04-14",
+];
 // Con streaming el timeout se "renueva" por chunk, así que generaciones
 // largas no se cortan. Igual dejamos un techo generoso por las dudas.
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -68,6 +119,13 @@ export type CallClaudeOptions = {
   model?: string;
   /** Default: 8192 (Haiku: 4096). */
   maxTokens?: number;
+  /**
+   * Si true, la llamada usa el path beta con code execution + skills para
+   * generar archivos reales (PDF/Word/Excel/PPT). El caller (adapter) ya validó
+   * el flag `ENABLE_FILE_GENERATION` + que el modelo lo soporte. Solo aplica a
+   * `streamClaude`. Default false → comportamiento actual (solo texto).
+   */
+  enableFileGeneration?: boolean;
 };
 
 export type ClaudeResponse = {
@@ -75,6 +133,8 @@ export type ClaudeResponse = {
   tokensInput: number;
   tokensOutput: number;
   stopReason: string | null;
+  /** Archivos generados en el sandbox (solo con `enableFileGeneration`). */
+  generatedFiles?: GeneratedFile[];
 };
 
 /**
@@ -131,10 +191,25 @@ export async function streamClaude(
   onText?: (delta: string) => void,
 ): Promise<ClaudeResponse> {
   const client = getClient();
+  const model = options.model ?? DEFAULT_MODEL;
+  const maxTokens = options.maxTokens ?? maxTokensFor(model);
 
+  // Path con generación de archivos (code execution + skills) — ver helper abajo.
+  if (options.enableFileGeneration) {
+    return streamWithFileGeneration(
+      client,
+      model,
+      maxTokens,
+      systemPrompt,
+      messages,
+      onText,
+    );
+  }
+
+  // Path text-only (comportamiento actual, sin cambios).
   const stream = client.messages.stream({
-    model: options.model ?? DEFAULT_MODEL,
-    max_tokens: options.maxTokens ?? maxTokensFor(options.model ?? DEFAULT_MODEL),
+    model,
+    max_tokens: maxTokens,
     system: systemPrompt,
     messages,
   });
@@ -155,6 +230,87 @@ export async function streamClaude(
     tokensOutput: final.usage.output_tokens,
     stopReason: final.stop_reason,
   };
+}
+
+/**
+ * `streamClaude` con code execution + Agent Skills → Claude genera archivos
+ * reales (PDF/Word/Excel/PPT) en el sandbox de Anthropic.
+ *
+ *   - Path beta (`client.beta.messages.stream`) con el tool `code_execution`,
+ *     `container.skills` (pdf/docx/xlsx/pptx) y los beta headers.
+ *   - Maneja `pause_turn`: con server-tools el loop puede pausar (~cada 10 iter);
+ *     re-enviamos el turno del assistant para que la API resuma, hasta terminar
+ *     o hasta `MAX_FILE_GEN_TURNS` (anti loop infinito).
+ *   - Sigue streameando texto (`onText`) en cada vuelta.
+ *   - ETAPA 1: captura los `file_id` de los bloques de resultado y los devuelve
+ *     en `generatedFiles`. NO baja ni guarda nada (eso es la etapa 2).
+ */
+async function streamWithFileGeneration(
+  client: Anthropic,
+  model: string,
+  maxTokens: number,
+  systemPrompt: string,
+  messages: ClaudeMessage[],
+  onText?: (delta: string) => void,
+): Promise<ClaudeResponse> {
+  // Historia mutable: el loop de pause_turn le appendea el turno del assistant
+  // para que la API resuma desde donde quedó. (MessageParam ⊆ BetaMessageParam.)
+  const working = [...messages] as Anthropic.Beta.BetaMessageParam[];
+
+  let text = "";
+  let tokensInput = 0;
+  let tokensOutput = 0;
+  let stopReason: string | null = null;
+  const generatedFiles: GeneratedFile[] = [];
+
+  for (let turn = 0; turn < MAX_FILE_GEN_TURNS; turn++) {
+    const stream = client.beta.messages.stream({
+      model,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: working,
+      tools: [CODE_EXECUTION_TOOL],
+      container: { skills: FILE_SKILLS },
+      betas: FILE_GEN_BETAS,
+    });
+
+    if (onText) {
+      stream.on("text", (delta) => onText(delta));
+    }
+
+    const final = await stream.finalMessage();
+
+    // Recorremos TODOS los bloques (no solo texto): juntamos el texto y, además,
+    // capturamos los file_id de los resultados de code execution.
+    for (const block of final.content) {
+      if (block.type === "text") {
+        text += block.text;
+      } else if (block.type === "bash_code_execution_tool_result") {
+        const result = block.content;
+        if (result.type === "bash_code_execution_result") {
+          for (const out of result.content) {
+            if (out.type === "bash_code_execution_output") {
+              generatedFiles.push({ fileId: out.file_id });
+            }
+          }
+        }
+      }
+    }
+
+    tokensInput += final.usage.input_tokens;
+    tokensOutput += final.usage.output_tokens;
+    stopReason = final.stop_reason;
+
+    // Si no pausó, terminamos. Si pausó, appendeamos el turno del assistant y
+    // volvemos a llamar (la API detecta el server_tool_use final y resume).
+    if (final.stop_reason !== "pause_turn") break;
+    working.push({
+      role: "assistant",
+      content: final.content,
+    } as Anthropic.Beta.BetaMessageParam);
+  }
+
+  return { text, tokensInput, tokensOutput, stopReason, generatedFiles };
 }
 
 // ============================================================

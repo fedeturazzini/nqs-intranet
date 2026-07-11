@@ -26,6 +26,7 @@
  */
 import {
   buildUserContent,
+  modelSupportsCodeExecution,
   streamClaude,
   type ClaudeMessage,
 } from "@/lib/anthropic/client";
@@ -95,6 +96,22 @@ NUNCA uses:
 - Preámbulos antes del output ("Acá va el artifact:", "Listo, generando…"). EXCEPCIÓN: si vas a generar un artifact, podés decir UNA frase breve conversacional antes (ej: "Listo, va el archivo.") y nada más.
 Si tenés que pensar internamente, hacelo en silencio y devolvé solo el resultado final.
 Mantené el tono conversacional y profesional. Hablale al user en segunda persona ("vos", "tu pedido"), nunca en tercera.`;
+
+/**
+ * Instrucciones EXTRA que se appendean SOLO cuando la generación de archivos
+ * está activa (flag + modelo compatible). Le dicen a Claude que use la
+ * generación real (code execution + skills) para binarios, en vez de devolver
+ * un script de Python o un artifact de código. El artifact de TEXTO
+ * (txt/markdown) sigue igual — esto no lo toca.
+ */
+const FILE_GEN_INSTRUCTIONS = `=== GENERACIÓN DE ARCHIVOS REALES ===
+Cuando el user pida un DOCUMENTO BINARIO (PDF, Word/.docx, Excel/.xlsx, PowerPoint/.pptx),
+GENERALO DE VERDAD ejecutando código en el sandbox (tenés python-docx, openpyxl, pypdf,
+python-pptx, matplotlib, etc. disponibles). Producí el archivo real como salida.
+- NO devuelvas un script de Python para que lo corra el user.
+- NO metas el contenido en un artifact de código ni en el pseudo-XML de artifacts.
+- Una frase breve alcanza ("Listo, te armé el PDF."); el archivo es la entrega.
+Para TEXTO o Markdown (no binario), seguí usando el artifact de texto de siempre.`;
 
 export const claudeAdapter: ToolAdapter = {
   id: TOOL_ID,
@@ -179,9 +196,18 @@ export const claudeAdapter: ToolAdapter = {
       const projectSystem = memoryText
         ? `<system_prompt>${systemPrompt.content}</system_prompt>\n<workspace_memory>${memoryText}</workspace_memory>`
         : systemPrompt.content;
-      // Las instrucciones de formato (no-artifacts) van al final, después del
-      // cerebro del proyecto, para que tengan prioridad.
-      const fullSystem = `${projectSystem}\n\n${FORMAT_INSTRUCTIONS}`;
+      // Generación de archivos reales (etapa 1): detrás de un flag (costo de
+      // container) + solo si el modelo del proyecto soporta code execution
+      // (Sonnet/Opus 4.5+, Fable 5). Si no, se comporta como hoy (solo texto).
+      const fileGenEnabled =
+        process.env.ENABLE_FILE_GENERATION === "true" &&
+        modelSupportsCodeExecution(systemPrompt.model);
+
+      // Las instrucciones de formato van al final (prioridad). Con file-gen
+      // activo, sumamos las instrucciones de generación real de binarios.
+      const fullSystem = fileGenEnabled
+        ? `${projectSystem}\n\n${FORMAT_INSTRUCTIONS}\n\n${FILE_GEN_INSTRUCTIONS}`
+        : `${projectSystem}\n\n${FORMAT_INSTRUCTIONS}`;
 
       // 2. Construir history si vino conversationId.
       const messages: ClaudeMessage[] = [];
@@ -247,9 +273,23 @@ export const claudeAdapter: ToolAdapter = {
       const response = await streamClaude(
         fullSystem,
         messages,
-        { model: systemPrompt.model },
+        { model: systemPrompt.model, enableFileGeneration: fileGenEnabled },
         onText,
       );
+
+      // ETAPA 1: si Claude generó archivos en el sandbox, logueamos los file_id
+      // para confirmar que anda. Todavía NO se bajan ni se guardan (etapa 2).
+      if (response.generatedFiles && response.generatedFiles.length > 0) {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            msg: "code exec: archivos generados (etapa 1, solo captura de file_id)",
+            userId,
+            conversationId,
+            fileIds: response.generatedFiles.map((f) => f.fileId),
+          }),
+        );
+      }
 
       // 4. Persistencia. Best-effort: si falla algo acá, igual devolvemos
       // la respuesta al user porque ya pagamos los tokens.
@@ -352,6 +392,8 @@ export const claudeAdapter: ToolAdapter = {
           conversationId: conversationId ?? "",
           messageId,
           stopReason: response.stopReason,
+          // ETAPA 1: capturados, todavía sin bajar ni guardar (la etapa 2 los consume).
+          generatedFiles: response.generatedFiles,
         },
       };
     } catch (error) {

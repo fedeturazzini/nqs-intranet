@@ -67,6 +67,13 @@ export type ExecuteResult = {
   /** Por qué terminó la respuesta: "end_turn" (normal), "max_tokens"
    *  (cortada por el techo), etc. Lo usa la UI para avisar si se cortó. */
   stopReason?: string | null;
+  /**
+   * Archivos binarios (PDF/Word/Excel/PPT) que Claude generó en el sandbox de
+   * Anthropic vía code execution. ETAPA 1: solo el `fileId` capturado (todavía
+   * no se baja ni se guarda; la etapa 2 los descarga de la Files API y los sube
+   * a Supabase Storage). Vacío/undefined si no se generó ninguno.
+   */
+  generatedFiles?: Array<{ fileId: string }>;
 };
 
 // ============================================================
