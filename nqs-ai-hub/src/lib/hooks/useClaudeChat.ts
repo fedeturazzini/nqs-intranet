@@ -24,6 +24,17 @@ import { useCallback, useRef, useState } from "react";
 // Tipos del chat (UI-side)
 // ============================================================
 
+/**
+ * Un archivo REAL (PDF/Word/Excel/PPT) generado por Claude, adjunto a un mensaje
+ * del assistant. La descarga la resuelve `FileCard` por signed URL (el binario
+ * vive en Storage privado). Distinto del artifact de texto (Blob en memoria).
+ */
+export type ChatFile = {
+  id: string;
+  name: string;
+  mediaType: string;
+};
+
 /** Mensaje tal como lo renderea la UI. */
 export type ChatMessage = {
   /** ID DB cuando existe, o "local-…" para optimistic. */
@@ -32,6 +43,8 @@ export type ChatMessage = {
   content: string;
   /** Solo en mensajes del user que adjuntaron imágenes (data URLs para preview). */
   imagePreviews?: string[];
+  /** Archivos generados por Claude adjuntos a este mensaje (assistant). */
+  files?: ChatFile[];
   tokensInput?: number;
   tokensOutput?: number;
   /** Cuando true, en lugar de content se muestra el "Claude está pensando…". */
@@ -71,6 +84,8 @@ type ConversationDetailResponse = {
     tokens_output: number | null;
     /** Signed download URLs (1h) generadas por el endpoint. */
     imageUrls?: string[];
+    /** Archivos generados (claude_files) asociados a este mensaje. */
+    files?: ChatFile[];
   }>;
 };
 
@@ -115,6 +130,7 @@ export function useClaudeChat() {
           tokensOutput: m.tokens_output ?? undefined,
           imagePreviews:
             m.imageUrls && m.imageUrls.length > 0 ? m.imageUrls : undefined,
+          files: m.files && m.files.length > 0 ? m.files : undefined,
         })),
       );
     } catch (err) {
@@ -248,6 +264,7 @@ export function useClaudeChat() {
               tokensOutput?: number;
               stopReason?: string | null;
               message?: string;
+              files?: ChatFile[];
             };
             try {
               ev = JSON.parse(line);
@@ -283,6 +300,10 @@ export function useClaudeChat() {
                         tokensOutput: ev.tokensOutput,
                         streaming: false,
                         stopReason: ev.stopReason ?? null,
+                        files:
+                          ev.files && ev.files.length > 0
+                            ? ev.files
+                            : undefined,
                       }
                     : m,
                 ),

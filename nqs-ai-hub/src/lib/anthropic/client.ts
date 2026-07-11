@@ -128,17 +128,6 @@ export type CallClaudeOptions = {
   enableFileGeneration?: boolean;
 };
 
-// TEMP DEBUG - remover: diagnóstico de la code execution para ver en el chat
-// (sin logs de Vercel) por qué no se genera el archivo. Lo llena el path beta.
-export type CodeExecDebug = {
-  toolVersion: string;
-  betas: string[];
-  stopReasons: string[];
-  codeExecBlocksSeen: number;
-  fileIdsCount: number;
-  errorIfAny?: string;
-};
-
 export type ClaudeResponse = {
   text: string;
   tokensInput: number;
@@ -146,8 +135,6 @@ export type ClaudeResponse = {
   stopReason: string | null;
   /** Archivos generados en el sandbox (solo con `enableFileGeneration`). */
   generatedFiles?: GeneratedFile[];
-  /** TEMP DEBUG - remover: diagnóstico del intento de code execution. */
-  codeExecDebug?: CodeExecDebug;
 };
 
 /**
@@ -224,9 +211,8 @@ export async function streamClaude(
 }
 
 /**
- * Path de solo texto (el de siempre). Extraído a un helper para reusarlo también
- * como fallback si el path beta de code execution falla (TEMP DEBUG - remover el
- * uso como fallback; el helper en sí puede quedar).
+ * Path de solo texto (el de siempre). Extraído a un helper para que
+ * `streamClaude` lo reuse cuando la generación de archivos está apagada.
  */
 async function streamTextOnly(
   client: Anthropic,
@@ -291,98 +277,55 @@ async function streamWithFileGeneration(
   let tokensOutput = 0;
   let stopReason: string | null = null;
   const generatedFiles: GeneratedFile[] = [];
-  // TEMP DEBUG - remover: contadores para el bloque [DEBUG code-exec].
-  const stopReasons: string[] = [];
-  let codeExecBlocksSeen = 0;
-  let errorIfAny: string | undefined;
 
-  try {
-    for (let turn = 0; turn < MAX_FILE_GEN_TURNS; turn++) {
-      const stream = client.beta.messages.stream({
-        model,
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages: working,
-        tools: [CODE_EXECUTION_TOOL],
-        container: { skills: FILE_SKILLS },
-        betas: FILE_GEN_BETAS,
-      });
+  for (let turn = 0; turn < MAX_FILE_GEN_TURNS; turn++) {
+    const stream = client.beta.messages.stream({
+      model,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: working,
+      tools: [CODE_EXECUTION_TOOL],
+      container: { skills: FILE_SKILLS },
+      betas: FILE_GEN_BETAS,
+    });
 
-      if (onText) {
-        stream.on("text", (delta) => onText(delta));
-      }
+    if (onText) {
+      stream.on("text", (delta) => onText(delta));
+    }
 
-      const final = await stream.finalMessage();
+    const final = await stream.finalMessage();
 
-      // Recorremos TODOS los bloques (no solo texto): juntamos el texto y, además,
-      // capturamos los file_id de los resultados de code execution.
-      for (const block of final.content) {
-        if (block.type === "text") {
-          text += block.text;
-        } else if (block.type === "bash_code_execution_tool_result") {
-          codeExecBlocksSeen++; // TEMP DEBUG
-          const result = block.content;
-          if (result.type === "bash_code_execution_result") {
-            for (const out of result.content) {
-              if (out.type === "bash_code_execution_output") {
-                generatedFiles.push({ fileId: out.file_id });
-              }
+    // Recorremos TODOS los bloques (no solo texto): juntamos el texto y, además,
+    // capturamos los file_id de los resultados de code execution.
+    for (const block of final.content) {
+      if (block.type === "text") {
+        text += block.text;
+      } else if (block.type === "bash_code_execution_tool_result") {
+        const result = block.content;
+        if (result.type === "bash_code_execution_result") {
+          for (const out of result.content) {
+            if (out.type === "bash_code_execution_output") {
+              generatedFiles.push({ fileId: out.file_id });
             }
           }
-        } else if (block.type === "server_tool_use") {
-          codeExecBlocksSeen++; // TEMP DEBUG (la llamada al tool, aunque no traiga result)
         }
       }
-
-      tokensInput += final.usage.input_tokens;
-      tokensOutput += final.usage.output_tokens;
-      stopReason = final.stop_reason;
-      stopReasons.push(final.stop_reason ?? "null"); // TEMP DEBUG
-
-      // Si no pausó, terminamos. Si pausó, appendeamos el turno del assistant y
-      // volvemos a llamar (la API detecta el server_tool_use final y resume).
-      if (final.stop_reason !== "pause_turn") break;
-      working.push({
-        role: "assistant",
-        content: final.content,
-      } as Anthropic.Beta.BetaMessageParam);
     }
-  } catch (err) {
-    // TEMP DEBUG - remover: si la API rechaza el tool/beta (o cualquier error),
-    // lo registramos y caemos al path text-only para que el chat siga andando y
-    // el bloque [DEBUG] muestre el error. (Cambia el manejo de error de la etapa 1
-    // SOLO mientras dure este debug.)
-    errorIfAny = err instanceof Error ? err.message : String(err);
-    const fallback = await streamTextOnly(
-      client,
-      model,
-      maxTokens,
-      systemPrompt,
-      messages,
-      onText,
-    );
-    text = fallback.text;
-    tokensInput = fallback.tokensInput;
-    tokensOutput = fallback.tokensOutput;
-    stopReason = fallback.stopReason;
+
+    tokensInput += final.usage.input_tokens;
+    tokensOutput += final.usage.output_tokens;
+    stopReason = final.stop_reason;
+
+    // Si no pausó, terminamos. Si pausó, appendeamos el turno del assistant y
+    // volvemos a llamar (la API detecta el server_tool_use final y resume).
+    if (final.stop_reason !== "pause_turn") break;
+    working.push({
+      role: "assistant",
+      content: final.content,
+    } as Anthropic.Beta.BetaMessageParam);
   }
 
-  return {
-    text,
-    tokensInput,
-    tokensOutput,
-    stopReason,
-    generatedFiles,
-    // TEMP DEBUG - remover
-    codeExecDebug: {
-      toolVersion: CODE_EXECUTION_TOOL.type,
-      betas: FILE_GEN_BETAS,
-      stopReasons,
-      codeExecBlocksSeen,
-      fileIdsCount: generatedFiles.length,
-      errorIfAny,
-    },
-  };
+  return { text, tokensInput, tokensOutput, stopReason, generatedFiles };
 }
 
 // ============================================================

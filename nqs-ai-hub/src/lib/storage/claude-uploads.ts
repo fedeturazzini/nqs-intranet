@@ -146,3 +146,32 @@ export async function uploadBuffer(
   }
   return path;
 }
+
+/**
+ * Firma UNA download URL con `Content-Disposition: attachment; filename=<name>`,
+ * para que el archivo baje con su nombre real. Distinta de `signDownloadUrls`
+ * (batch, sin nombre): se usa en el endpoint de descarga de archivos generados.
+ * Devuelve null si falla (el caller responde el error).
+ */
+export async function createFileDownloadUrl(
+  storagePath: string,
+  filename: string,
+): Promise<string | null> {
+  const db = createServerClient();
+  const { data, error } = await db.storage
+    .from(CLAUDE_UPLOADS_BUCKET)
+    .createSignedUrl(storagePath, SIGNED_DOWNLOAD_EXPIRY_SECONDS, {
+      download: filename,
+    });
+  if (error || !data) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "createFileDownloadUrl failed",
+        error: error?.message ?? "unknown",
+      }),
+    );
+    return null;
+  }
+  return data.signedUrl;
+}

@@ -199,13 +199,12 @@ export const claudeAdapter: ToolAdapter = {
       const projectSystem = memoryText
         ? `<system_prompt>${systemPrompt.content}</system_prompt>\n<workspace_memory>${memoryText}</workspace_memory>`
         : systemPrompt.content;
-      // Generación de archivos reales (etapa 1): detrás de un flag (costo de
-      // container) + solo si el modelo del proyecto soporta code execution
-      // (Sonnet/Opus 4.5+, Fable 5). Si no, se comporta como hoy (solo texto).
-      // TEMP DEBUG: flag y soporte separados para poder reportarlos en el chat.
-      const flagEnabled = process.env.ENABLE_FILE_GENERATION === "true";
-      const modelSupported = modelSupportsCodeExecution(systemPrompt.model);
-      const fileGenEnabled = flagEnabled && modelSupported;
+      // Generación de archivos reales: detrás de un flag (costo de container) +
+      // solo si el modelo del proyecto soporta code execution (Sonnet/Opus 4.5+,
+      // Fable 5). Si no, se comporta como hoy (solo texto).
+      const fileGenEnabled =
+        process.env.ENABLE_FILE_GENERATION === "true" &&
+        modelSupportsCodeExecution(systemPrompt.model);
 
       // Las instrucciones de formato van al final (prioridad). Con file-gen
       // activo, sumamos las instrucciones de generación real de binarios.
@@ -293,24 +292,6 @@ export const claudeAdapter: ToolAdapter = {
             fileIds: response.generatedFiles.map((f) => f.fileId),
           }),
         );
-      }
-
-      // TEMP DEBUG - remover: con DEBUG_FILE_GENERATION=true, appendeamos un bloque
-      // de diagnóstico AL STREAM (onText) para verlo en el chat sin logs de Vercel.
-      // Se muestra en vivo (queda en el `acc` del cliente) pero NO se persiste:
-      // abajo guardamos `response.text` (sin este bloque). Todo detrás del flag.
-      if (process.env.DEBUG_FILE_GENERATION === "true" && onText) {
-        const d = response.codeExecDebug;
-        const dbg =
-          `\n\n---\n[DEBUG code-exec]\n` +
-          `flagEnabled=${flagEnabled} model=${systemPrompt.model} ` +
-          `modelSupported=${modelSupported} toolIncluded=${fileGenEnabled}\n` +
-          `toolVersion=${d?.toolVersion ?? "-"} betas=[${d?.betas?.join(",") ?? ""}] ` +
-          `stopReasons=[${d?.stopReasons?.join(",") ?? ""}] ` +
-          `codeExecBlocksSeen=${d?.codeExecBlocksSeen ?? 0} ` +
-          `fileIdsCount=${d?.fileIdsCount ?? response.generatedFiles?.length ?? 0} ` +
-          `error=${d?.errorIfAny ?? "none"}`;
-        onText(dbg);
       }
 
       // 4. Persistencia. Best-effort: si falla algo acá, igual devolvemos

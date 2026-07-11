@@ -89,13 +89,30 @@ export async function GET(
     for (const s of signed) signedByPath.set(s.path, s.url);
   }
 
+  // Archivos generados (claude_files) de la conversación, agrupados por
+  // message_id para adjuntarlos a cada mensaje del assistant al recargar.
+  const { data: files } = await db
+    .from("claude_files")
+    .select("id, message_id, name, media_type")
+    .eq("conversation_id", id);
+  const filesByMessage = new Map<
+    string,
+    Array<{ id: string; name: string; mediaType: string }>
+  >();
+  for (const f of files ?? []) {
+    if (!f.message_id) continue;
+    const arr = filesByMessage.get(f.message_id) ?? [];
+    arr.push({ id: f.id, name: f.name, mediaType: f.media_type });
+    filesByMessage.set(f.message_id, arr);
+  }
+
   const messagesWithUrls = (messages ?? []).map((m) => {
     const imgs = Array.isArray(m.images) ? (m.images as unknown[]) : [];
     const imageUrls = imgs
       .filter((p): p is string => typeof p === "string")
       .map((p) => signedByPath.get(p))
       .filter((u): u is string => Boolean(u));
-    return { ...m, imageUrls };
+    return { ...m, imageUrls, files: filesByMessage.get(m.id) };
   });
 
   return NextResponse.json({

@@ -18,6 +18,7 @@ import {
   ArtifactCard,
   ArtifactGeneratingPlaceholder,
 } from "@/components/chat/ArtifactCard";
+import { FileCard } from "@/components/chat/FileCard";
 import {
   parseMessageWithArtifacts,
   hasIncompleteArtifact,
@@ -180,6 +181,23 @@ function MessageBubble({
         ) : (
           // Mensajes del user: texto plano (no es markdown).
           <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
+        )}
+
+        {/* Archivos REALES generados por Claude (PDF/Word/Excel/PPT): una card
+            por archivo, con descarga por signed URL. */}
+        {isAi && msg.files && msg.files.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
+            {msg.files.map((f) => (
+              <FileCard key={f.id} file={f} />
+            ))}
+          </div>
         )}
 
         {isAi && msg.stopReason === "max_tokens" && (
