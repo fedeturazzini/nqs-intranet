@@ -29,6 +29,64 @@ export function OrgAdminPanel({ initialUsers }: OrgAdminPanelProps) {
   const inOrgUsers = useMemo(() => rows.filter((r) => r.isInOrg), [rows]);
   const previewNodes: OrgNode[] = inOrgUsers;
 
+  // Orden entre hermanos: agrupamos los in-org por reports_to (null = raíces) y
+  // ordenamos con el MISMO criterio que OrgChart (org_position → nombre). De ahí
+  // sacamos, por persona, su índice y el tamaño del grupo (para las flechas ↑/↓).
+  const orderInfo = useMemo(() => {
+    const groups = new Map<string, Row[]>();
+    for (const r of rows) {
+      if (!r.isInOrg) continue;
+      const key = r.reportsToId ?? "__root__";
+      const arr = groups.get(key) ?? [];
+      arr.push(r);
+      groups.set(key, arr);
+    }
+    const info = new Map<string, { index: number; size: number }>();
+    for (const arr of groups.values()) {
+      arr.sort(compareSiblings);
+      arr.forEach((r, i) => info.set(r.id, { index: i, size: arr.length }));
+    }
+    return info;
+  }, [rows]);
+
+  // Mueve a `id` un lugar arriba (dir=-1) o abajo (dir=+1) dentro de su grupo de
+  // hermanos, normaliza las posiciones del grupo a 1..n y marca dirty los que
+  // cambiaron. Recalcula el grupo del estado ACTUAL (no cachea) → si cambió el
+  // "reporta a", opera sobre el grupo nuevo.
+  function move(id: string, dir: -1 | 1) {
+    const me = rows.find((r) => r.id === id);
+    if (!me || !me.isInOrg) return;
+    const meKey = me.reportsToId ?? null;
+    const group = rows
+      .filter((r) => r.isInOrg && (r.reportsToId ?? null) === meKey)
+      .sort(compareSiblings);
+    const idx = group.findIndex((r) => r.id === id);
+    const target = idx + dir;
+    if (idx < 0 || target < 0 || target >= group.length) return;
+
+    const reordered = [...group];
+    [reordered[idx], reordered[target]] = [reordered[target], reordered[idx]];
+
+    // Normalizar a 1..n; juntar los que REALMENTE cambian de posición.
+    const newPos = new Map<string, number>();
+    reordered.forEach((r, i) => {
+      const pos = i + 1;
+      if (r.orgPosition !== pos) newPos.set(r.id, pos);
+    });
+    if (newPos.size === 0) return;
+
+    setRows((prev) =>
+      prev.map((r) =>
+        newPos.has(r.id) ? { ...r, orgPosition: newPos.get(r.id)! } : r,
+      ),
+    );
+    setDirty((prev) => {
+      const next = new Set(prev);
+      for (const rid of newPos.keys()) next.add(rid);
+      return next;
+    });
+  }
+
   async function saveAll() {
     if (dirty.size === 0) return;
     setSaving(true);
@@ -104,71 +162,99 @@ export function OrgAdminPanel({ initialUsers }: OrgAdminPanelProps) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} style={{ borderTop: "1px solid var(--line)" }}>
-                <Td>
-                  <input
-                    type="checkbox"
-                    checked={r.isInOrg}
-                    onChange={(e) =>
-                      update(r.id, {
-                        isInOrg: e.target.checked,
-                        // si sale del org, limpiamos su jefe
-                        reportsToId: e.target.checked ? r.reportsToId : null,
-                      })
-                    }
-                  />
-                </Td>
-                <Td>
-                  <div style={{ fontWeight: 500 }}>{r.name}</div>
-                  <div className="t-meta dim" style={{ fontSize: 10 }}>
-                    {r.dept ?? "—"}
-                  </div>
-                </Td>
-                <Td>
-                  <select
-                    value={r.reportsToId ?? ""}
-                    disabled={!r.isInOrg}
-                    onChange={(e) =>
-                      update(r.id, { reportsToId: e.target.value || null })
-                    }
-                    style={selectStyle}
-                  >
-                    <option value="">— (raíz)</option>
-                    {inOrgUsers
-                      .filter((u) => u.id !== r.id)
-                      .map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                  </select>
-                </Td>
-                <Td>
-                  <input
-                    type="text"
-                    value={r.orgRole ?? ""}
-                    disabled={!r.isInOrg}
-                    onChange={(e) => update(r.id, { orgRole: e.target.value })}
-                    placeholder="Head of Design"
-                    style={inputStyle}
-                  />
-                </Td>
-                <Td>
-                  <input
-                    type="number"
-                    value={r.orgPosition ?? ""}
-                    disabled={!r.isInOrg}
-                    onChange={(e) =>
-                      update(r.id, {
-                        orgPosition: e.target.value === "" ? null : Number(e.target.value),
-                      })
-                    }
-                    style={{ ...inputStyle, width: 64 }}
-                  />
-                </Td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const oi = orderInfo.get(r.id);
+              const isFirst = !oi || oi.index === 0;
+              const isLast = !oi || oi.index === oi.size - 1;
+              return (
+                <tr key={r.id} style={{ borderTop: "1px solid var(--line)" }}>
+                  <Td>
+                    <input
+                      type="checkbox"
+                      checked={r.isInOrg}
+                      onChange={(e) =>
+                        update(r.id, {
+                          isInOrg: e.target.checked,
+                          // si sale del org, limpiamos su jefe
+                          reportsToId: e.target.checked ? r.reportsToId : null,
+                        })
+                      }
+                    />
+                  </Td>
+                  <Td>
+                    <div style={{ fontWeight: 500 }}>{r.name}</div>
+                    <div className="t-meta dim" style={{ fontSize: 10 }}>
+                      {r.dept ?? "—"}
+                    </div>
+                  </Td>
+                  <Td>
+                    <select
+                      value={r.reportsToId ?? ""}
+                      disabled={!r.isInOrg}
+                      onChange={(e) =>
+                        update(r.id, { reportsToId: e.target.value || null })
+                      }
+                      style={selectStyle}
+                    >
+                      <option value="">— (raíz)</option>
+                      {inOrgUsers
+                        .filter((u) => u.id !== r.id)
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))}
+                    </select>
+                  </Td>
+                  <Td>
+                    <input
+                      type="text"
+                      value={r.orgRole ?? ""}
+                      disabled={!r.isInOrg}
+                      onChange={(e) => update(r.id, { orgRole: e.target.value })}
+                      placeholder="Head of Design"
+                      style={inputStyle}
+                    />
+                  </Td>
+                  <Td>
+                    {/* Orden entre hermanos: flechas ↑/↓ (reemplaza el input
+                        número). Deshabilitadas en los bordes del grupo. */}
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 4 }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => move(r.id, -1)}
+                        disabled={!r.isInOrg || isFirst}
+                        title="Subir"
+                        aria-label="Subir"
+                        style={arrowBtnStyle(!r.isInOrg || isFirst)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => move(r.id, 1)}
+                        disabled={!r.isInOrg || isLast}
+                        title="Bajar"
+                        aria-label="Bajar"
+                        style={arrowBtnStyle(!r.isInOrg || isLast)}
+                      >
+                        ↓
+                      </button>
+                      {r.isInOrg && oi && (
+                        <span
+                          className="t-meta dim"
+                          style={{ fontSize: 10, marginLeft: 2 }}
+                        >
+                          {oi.index + 1}/{oi.size}
+                        </span>
+                      )}
+                    </div>
+                  </Td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -211,3 +297,25 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
 };
 const selectStyle: React.CSSProperties = { ...inputStyle };
+
+/** Mismo criterio de orden que OrgChart: org_position ?? 9999 → nombre. */
+function compareSiblings(a: Row, b: Row): number {
+  const pa = a.orgPosition ?? 9999;
+  const pb = b.orgPosition ?? 9999;
+  if (pa !== pb) return pa - pb;
+  return a.name.localeCompare(b.name, "es");
+}
+
+function arrowBtnStyle(disabled: boolean): React.CSSProperties {
+  return {
+    background: "var(--bg)",
+    border: "1px solid var(--line-strong)",
+    borderRadius: 6,
+    color: "var(--fg)",
+    cursor: disabled ? "default" : "pointer",
+    fontSize: 13,
+    lineHeight: 1,
+    padding: "5px 9px",
+    opacity: disabled ? 0.35 : 1,
+  };
+}
