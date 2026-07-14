@@ -453,6 +453,50 @@ export type Database = {
           },
         ]
       }
+      org_dept_nodes: {
+        Row: {
+          accent: string | null
+          created_at: string | null
+          department: string | null
+          id: string
+          name: string
+          org_x: number | null
+          org_y: number | null
+          parent_person_id: string | null
+          sort_order: number | null
+        }
+        Insert: {
+          accent?: string | null
+          created_at?: string | null
+          department?: string | null
+          id?: string
+          name: string
+          org_x?: number | null
+          org_y?: number | null
+          parent_person_id?: string | null
+          sort_order?: number | null
+        }
+        Update: {
+          accent?: string | null
+          created_at?: string | null
+          department?: string | null
+          id?: string
+          name?: string
+          org_x?: number | null
+          org_y?: number | null
+          parent_person_id?: string | null
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_dept_nodes_parent_person_id_fkey"
+            columns: ["parent_person_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string
@@ -919,6 +963,8 @@ export type Database = {
           name: string
           org_position: number | null
           org_role: string | null
+          org_x: number | null
+          org_y: number | null
           reports_to_id: string | null
           role: Database["public"]["Enums"]["user_role"]
           theme_preference: string
@@ -937,6 +983,8 @@ export type Database = {
           name: string
           org_position?: number | null
           org_role?: string | null
+          org_x?: number | null
+          org_y?: number | null
           reports_to_id?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           theme_preference?: string
@@ -955,6 +1003,8 @@ export type Database = {
           name?: string
           org_position?: number | null
           org_role?: string | null
+          org_x?: number | null
+          org_y?: number | null
           reports_to_id?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           theme_preference?: string

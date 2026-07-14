@@ -63,6 +63,80 @@ export async function getAllUsersForOrg(): Promise<
   }));
 }
 
+/** Persona (nodo del organigrama) con lo que necesita el auto-layout. */
+export type OrgPerson = {
+  id: string;
+  name: string;
+  dept: string | null;
+  orgRole: string | null;
+  reportsToId: string | null;
+  orgPosition: number | null;
+  orgX: number | null;
+  orgY: number | null;
+};
+
+/** Caja de área (org_dept_nodes): agrupa reportes de una persona por dept. */
+export type OrgDeptNode = {
+  id: string;
+  name: string;
+  department: string | null;
+  parentPersonId: string | null;
+  accent: string | null;
+  sortOrder: number | null;
+  orgX: number | null;
+  orgY: number | null;
+};
+
+/**
+ * Datos crudos para el auto-layout del organigrama híbrido: personas in-org +
+ * cajas de área. Las posiciones/edges/teamCount se calculan en
+ * `src/lib/org/layout.ts` a partir de esto (posición = override org_x/org_y ??
+ * calculada). No ordena — el layout ordena hermanos por org_position → nombre.
+ */
+export async function getOrgLayoutData(): Promise<{
+  persons: OrgPerson[];
+  deptNodes: OrgDeptNode[];
+}> {
+  const db = createServerClient();
+  const [personsRes, deptRes] = await Promise.all([
+    db
+      .from("users")
+      .select(
+        "id, name, dept, org_role, reports_to_id, org_position, org_x, org_y",
+      )
+      .eq("is_in_org", true)
+      .eq("is_active", true),
+    db
+      .from("org_dept_nodes")
+      .select(
+        "id, name, department, parent_person_id, accent, sort_order, org_x, org_y",
+      ),
+  ]);
+  if (personsRes.error) throw personsRes.error;
+  if (deptRes.error) throw deptRes.error;
+  const persons: OrgPerson[] = (personsRes.data ?? []).map((u) => ({
+    id: u.id,
+    name: u.name,
+    dept: u.dept,
+    orgRole: u.org_role,
+    reportsToId: u.reports_to_id,
+    orgPosition: u.org_position,
+    orgX: u.org_x,
+    orgY: u.org_y,
+  }));
+  const deptNodes: OrgDeptNode[] = (deptRes.data ?? []).map((d) => ({
+    id: d.id,
+    name: d.name,
+    department: d.department,
+    parentPersonId: d.parent_person_id,
+    accent: d.accent,
+    sortOrder: d.sort_order,
+    orgX: d.org_x,
+    orgY: d.org_y,
+  }));
+  return { persons, deptNodes };
+}
+
 /**
  * ¿Setear `reportsToId` como jefe de `userId` crearía un ciclo? Caminamos
  * hacia arriba desde `reportsToId`; si llegamos a `userId`, hay ciclo.
