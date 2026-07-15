@@ -1739,3 +1739,380 @@
   font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em;
   text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
 }
+
+/* =============================================================
+   ORGANIGRAMA · CANVAS (etapa 2) — portado de organigrama.css del
+   diseño NQS, adaptado a los tokens del hub. Scope: clases .org-canvas*
+   / .org-node* / .org-zoom* / .org-search* / .org-legend* / .org-panel*
+   (no colisiona con el árbol viejo .org-card/.org-tree).
+   Map de tokens: --dim→--fg-mute · --border-soft→--line ·
+   --border-strong→--line-strong · fuentes→--sans/--mono/--serif.
+   ============================================================= */
+
+/* ── Controls bar (buscador + zoom) ────────────────────── */
+.org-controls-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin: 24px 0 18px;
+  position: relative;
+}
+.org-search-wrap { position: relative; }
+.org-search-trigger {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 10px 16px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.org-search-trigger:hover,
+.org-search-trigger.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.org-search-trigger > span:first-child {
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+}
+.org-search-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 360px;
+  max-width: 86vw;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  z-index: 50;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.org-search-input {
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--sans);
+  font-size: 14px;
+  outline: none;
+}
+.org-search-input::placeholder { color: var(--fg-mute); }
+.org-search-results { max-height: 320px; overflow-y: auto; }
+.org-search-result {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--sans);
+}
+.org-search-result:last-child { border-bottom: 0; }
+.org-search-result:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.org-search-dot {
+  width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%;
+}
+.org-search-name { color: var(--fg); font-size: 13px; font-weight: 500; }
+.org-search-role {
+  color: var(--fg-mute); font-size: 11px; margin-left: auto;
+}
+
+.org-controls-right { display: flex; align-items: center; gap: 12px; }
+.org-zoom-group {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+}
+.org-zoom-btn,
+.org-zoom-pct {
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.org-zoom-btn { font-size: 16px; line-height: 1; min-width: 36px; }
+.org-zoom-pct {
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  min-width: 60px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+.org-zoom-btn:hover,
+.org-zoom-pct:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.org-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--fg-mute);
+  letter-spacing: 0.02em;
+}
+.org-hint > span:first-child { color: var(--accent); }
+.org-hint-kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 10px;
+  margin: 0 2px;
+}
+
+/* ── Canvas (pan/zoom Miro-style) ──────────────────────── */
+.org-canvas-scale {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background:
+    repeating-linear-gradient(0deg, transparent 0 23px, color-mix(in srgb, var(--fg) 4%, transparent) 23px 24px),
+    repeating-linear-gradient(90deg, transparent 0 23px, color-mix(in srgb, var(--fg) 4%, transparent) 23px 24px);
+  cursor: grab;
+  touch-action: pan-y;
+}
+.org-canvas-scale.is-dragging { cursor: grabbing; }
+.org-canvas-scale.is-dragging .org-canvas { transition: none; }
+.org-pan-bg { position: absolute; inset: 0; z-index: 0; }
+.org-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: transform 60ms linear;
+  will-change: transform;
+}
+
+/* ── Nodos ─────────────────────────────────────────────── */
+.org-node {
+  position: absolute;
+  display: flex;
+  align-items: stretch;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+  user-select: none;
+  z-index: 2;
+}
+.org-node:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  z-index: 5;
+}
+.org-node.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+  z-index: 10;
+}
+.org-node-bar { width: 4px; flex-shrink: 0; }
+.org-node-body {
+  padding: 6px 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.org-node-name {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.org-node-role {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  color: var(--fg-mute);
+  letter-spacing: 0.02em;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.org-node-sm .org-node-name { font-size: 11.5px; font-weight: 500; }
+.org-node-sm .org-node-role { font-size: 9.5px; }
+.org-node-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  border-radius: 9px;
+  letter-spacing: 0;
+}
+/* Tinte sutil por nivel (persona) usando el accent del dato */
+.org-node-person {
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+}
+/* Caja de área (dept): más marcada, centrada, mayúsculas */
+.org-node-dept {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line-strong));
+}
+.org-node-dept .org-node-body { padding: 4px 10px; align-items: center; }
+.org-node-dept .org-node-name {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg);
+  text-align: center;
+  width: 100%;
+}
+
+/* ── Líneas SVG ────────────────────────────────────────── */
+.org-lines {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Leyenda de áreas ──────────────────────────────────── */
+.org-legend {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  padding: 16px 0 6px;
+}
+.org-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--fg-mute);
+  letter-spacing: 0.02em;
+}
+.org-legend-dot { width: 10px; height: 10px; flex-shrink: 0; }
+
+/* ── Panel de detalle (modal lateral) ──────────────────── */
+.org-panel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+  animation: orgPanelFade 200ms ease;
+}
+@keyframes orgPanelFade { from { opacity: 0; } to { opacity: 1; } }
+.org-panel {
+  width: 460px;
+  max-width: 95vw;
+  height: 100%;
+  background: var(--bg);
+  border-left: 1px solid var(--line-strong);
+  padding: 32px 36px;
+  overflow-y: auto;
+  position: relative;
+  animation: orgPanelSlide 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes orgPanelSlide {
+  from { transform: translateX(40px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.org-panel-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  background: transparent;
+  border: 0;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--fg-mute);
+  cursor: pointer;
+  padding: 4px 10px;
+}
+.org-panel-close:hover { color: var(--fg); }
+.org-panel-name {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 44px;
+  line-height: 1;
+  color: var(--fg);
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+.org-panel-role {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--fg-mute);
+  letter-spacing: 0.02em;
+  margin-bottom: 16px;
+}
+.org-panel-bar { height: 3px; width: 64px; margin-bottom: 24px; }
+.org-panel-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--fg);
+}
+.org-panel-section { margin-top: 24px; margin-bottom: 12px; }
+.org-panel-list { display: flex; flex-direction: column; gap: 0; }
+.org-panel-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font-family: var(--sans);
+  text-align: left;
+  transition: padding-left 120ms ease;
+}
+.org-panel-member:last-child { border-bottom: 0; }
+.org-panel-member:hover { padding-left: 6px; }
+.org-panel-dot { width: 8px; height: 8px; flex-shrink: 0; }
+.org-panel-mname { color: var(--fg); font-size: 13px; font-weight: 500; }
+.org-panel-mrole { color: var(--fg-mute); font-size: 12px; }
+
+/* Responsive: en pantallas chicas la barra de controles envuelve */
+@media (max-width: 640px) {
+  .org-controls-bar { flex-wrap: wrap; gap: 12px; }
+  .org-search-wrap { order: 2; width: 100%; }
+  .org-controls-right { order: 1; }
+}
