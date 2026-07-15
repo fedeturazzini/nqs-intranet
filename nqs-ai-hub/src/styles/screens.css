@@ -2114,5 +2114,228 @@
 @media (max-width: 640px) {
   .org-controls-bar { flex-wrap: wrap; gap: 12px; }
   .org-search-wrap { order: 2; width: 100%; }
-  .org-controls-right { order: 1; }
+  .org-controls-right { order: 1; flex-wrap: wrap; }
+}
+
+/* =============================================================
+   ORGANIGRAMA · EDICIÓN (etapa 3) — modo edición admin, drag para
+   fijar posición, indicadores de override, CRUD de cajas.
+   ============================================================= */
+
+/* Toggle "Editar posiciones" + botón destructivo */
+.org-edit-toggle {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 8px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+.org-edit-toggle:hover { border-color: var(--accent); }
+.org-edit-toggle.is-on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--fg);
+}
+.org-edit-danger {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--danger) 50%, var(--line));
+  color: var(--danger);
+  padding: 8px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+.org-edit-danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/* El canvas en modo edición: borde accent + ribbon, para que se note */
+.org-canvas-scale.is-editing {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.org-edit-ribbon {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 20;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  padding: 4px 10px;
+  pointer-events: none;
+}
+.org-canvas.is-editing .org-node { cursor: move; }
+
+/* Nodo con posición fijada a mano (override): borde punteado + pin */
+.org-node.is-fixed {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 80%, var(--fg));
+  outline-offset: 2px;
+}
+.org-node-pin {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  z-index: 3;
+}
+/* Nodo que se está arrastrando: se "levanta" y no transiciona */
+.org-node.is-dragging-node {
+  transition: none;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  opacity: 0.95;
+}
+
+/* Panel: sección de posición (fijar/resetear) */
+.org-panel-fixed { margin-top: 4px; }
+.org-panel-reset {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--fg);
+  padding: 8px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+.org-panel-reset:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* Modal de confirmación */
+.org-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: orgPanelFade 160ms ease;
+}
+.org-confirm {
+  width: 420px;
+  max-width: 92vw;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  padding: 26px 28px;
+}
+.org-confirm-title {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 26px;
+  color: var(--fg);
+  margin-bottom: 10px;
+}
+.org-confirm-body {
+  font-family: var(--sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--fg-mute);
+  margin: 0 0 22px;
+}
+.org-confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.org-confirm-cancel,
+.org-confirm-ok {
+  padding: 9px 16px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--fg);
+  transition: all 140ms ease;
+}
+.org-confirm-cancel:hover { border-color: var(--fg); }
+.org-confirm-ok {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+.org-confirm-ok:hover { background: color-mix(in srgb, var(--danger) 24%, transparent); }
+
+/* Tag "posición fija" en la tabla del admin */
+.org-fixed-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--accent-fg);
+  background: var(--accent);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* ── CRUD de cajas de área (admin) ─────────────────────── */
+.org-boxes {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 28px;
+}
+.org-boxes-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.org-boxes-table tbody tr { border-top: 1px solid var(--line); }
+.org-boxes-new {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px dashed var(--line-strong);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.org-boxes-new-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Botones chicos (tabla de cajas) */
+.btn-sm {
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 11px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.btn-sm:hover:not(:disabled) { border-color: var(--accent); }
+.btn-sm:disabled { opacity: 0.5; cursor: default; }
+.btn-sm-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line-strong)); }
+.btn-sm-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: var(--danger);
 }

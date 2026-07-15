@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * Canvas del organigrama híbrido (etapa 2). Porta el LOOK y las INTERACCIONES
- * del diseño NQS (organigrama.jsx/.css) a nuestro stack, pero se alimenta 100%
- * de los datos calculados por el motor (`computeOrgLayout`): nada de x/y, edges
- * ni teamCount hardcodeados. Todavía sin edición (drag/CRUD = etapa 3).
+ * Canvas del organigrama híbrido. Etapa 2: render + zoom/paneo/buscador/leyenda
+ * (read-only). Etapa 3: modo edición admin — arrastrar nodos para FIJAR su
+ * posición (override org_x/org_y), resetear al automático, y reacomodar todo.
  *
- * Interacciones portadas:
- *  - zoom con rueda SOLO con ctrl/cmd (Figma/Miro), hacia el cursor, límites 0.3–2.5;
- *  - paneo arrastrando el fondo (no los nodos);
- *  - botones − / % / + (el % resetea la vista); fit-to-width como zoom inicial;
- *  - click en nodo → panel de detalle; buscador de persona; leyenda por área.
+ * El componente tiene los datos crudos (personas + cajas) y calcula el layout
+ * en el cliente con el MISMO motor que el server (`computeOrgLayout`). Así una
+ * edición (fijar/resetear posición) se ve al instante: se muta org_x/org_y en
+ * el estado local y el layout se recalcula (posición = override ?? auto). El
+ * guardado es optimista contra el endpoint admin; si falla, revierte y avisa.
+ *
+ * CLAVE del híbrido: el override es la EXCEPCIÓN. Por default todo es
+ * automático (org_x/org_y = null); mover un nodo fija SOLO ese; siempre se
+ * puede volver al automático. Por eso agregar gente nueva no es trabajo manual.
  */
 import {
   useCallback,
@@ -21,20 +24,43 @@ import {
   type CSSProperties,
   type ReactElement,
 } from "react";
-import type { OrgLayout, OrgLayoutNode, OrgEdge } from "@/lib/org/layout";
+import { computeOrgLayout, type OrgLayoutNode } from "@/lib/org/layout";
+import type { OrgPerson, OrgDeptNode } from "@/lib/db/queries/org";
+import { showToast } from "@/lib/store/toast";
 
 const VIEW_H = 600; // alto visible del viewport pan/zoom
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 2.5;
+const SNAP = 5; // grilla de snap al fijar posición (px del canvas)
 
-type OrgCanvasProps = Readonly<{ layout: OrgLayout }>;
+type NodeType = "person" | "dept";
+
+type OrgCanvasProps = Readonly<{
+  persons: OrgPerson[];
+  deptNodes: OrgDeptNode[];
+  isAdmin: boolean;
+}>;
 
 /** Estilo con la custom property --accent (para barra/tinte por dato). */
 function accentStyle(base: CSSProperties, accent: string): CSSProperties {
   return { ...base, ["--accent" as string]: accent } as CSSProperties;
 }
 
-export function OrgCanvas({ layout }: OrgCanvasProps) {
+export function OrgCanvas({
+  persons: initialPersons,
+  deptNodes: initialDeptNodes,
+  isAdmin,
+}: OrgCanvasProps) {
+  // Datos locales (para edición optimista). El layout se recalcula de acá. Se
+  // siembran de los props una vez; cada navegación re-monta con datos frescos.
+  const [persons, setPersons] = useState(initialPersons);
+  const [deptNodes, setDeptNodes] = useState(initialDeptNodes);
+
+  const layout = useMemo(
+    () => computeOrgLayout(persons, deptNodes),
+    [persons, deptNodes],
+  );
+
   const CANVAS_W = Math.max(layout.width, 1);
   const CANVAS_H = Math.max(layout.height, 1);
 
@@ -44,10 +70,17 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  // Nodo que se está arrastrando (preview mientras sigue al cursor).
+  const [dragPreview, setDragPreview] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
-  // Refs con el último scale/pan para leerlos desde listeners nativos sin re-attach.
   const scaleRef = useRef(scale);
   scaleRef.current = scale;
   const panRef = useRef(pan);
@@ -80,12 +113,9 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
     const s = fitScale();
     const cw = el?.clientWidth ?? CANVAS_W;
     setScale(s);
-    // Centrado horizontal; top-alineado (raíz arriba) con un margen chico. Más
-    // predecible que centrar en vertical: árboles cortos no quedan flotando.
     setPan({ x: Math.max(0, (cw - CANVAS_W * s) / 2), y: 20 });
   }, [fitScale, CANVAS_W]);
 
-  // Init + fit-to-width al montar y al resize.
   useEffect(() => {
     resetView();
     const onResize = () => setScale(fitScale());
@@ -150,7 +180,6 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
   const zoomIn = () => setScale((s) => Math.min(MAX_SCALE, s * 1.2));
   const zoomOut = () => setScale((s) => Math.max(MIN_SCALE, s / 1.2));
 
-  // Centra un nodo en el viewport (para el resultado del buscador).
   const centerOn = useCallback((node: OrgLayoutNode) => {
     const el = wrapRef.current;
     if (!el) return;
@@ -161,9 +190,167 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
     });
   }, []);
 
+  // ── Edición de posición (admin) ──────────────────────────────────────────
+
+  /** Muta el override local (recalcula el layout al instante). */
+  const applyPos = useCallback(
+    (type: NodeType, id: string, x: number | null, y: number | null) => {
+      if (type === "person") {
+        setPersons((ps) =>
+          ps.map((p) => (p.id === id ? { ...p, orgX: x, orgY: y } : p)),
+        );
+      } else {
+        setDeptNodes((ds) =>
+          ds.map((d) => (d.id === id ? { ...d, orgX: x, orgY: y } : d)),
+        );
+      }
+    },
+    [],
+  );
+
+  const currentOverride = useCallback(
+    (type: NodeType, id: string): { x: number | null; y: number | null } => {
+      if (type === "person") {
+        const p = persons.find((p) => p.id === id);
+        return { x: p?.orgX ?? null, y: p?.orgY ?? null };
+      }
+      const d = deptNodes.find((d) => d.id === id);
+      return { x: d?.orgX ?? null, y: d?.orgY ?? null };
+    },
+    [persons, deptNodes],
+  );
+
+  /** Persiste la posición; si falla, revierte al valor previo y avisa. */
+  const persistPos = useCallback(
+    async (
+      type: NodeType,
+      id: string,
+      x: number | null,
+      y: number | null,
+      prevX: number | null,
+      prevY: number | null,
+    ) => {
+      try {
+        const res = await fetch("/api/admin/organigrama/position", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ type, id, x, y }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+      } catch {
+        applyPos(type, id, prevX, prevY); // revert
+        showToast({
+          title: "NO SE GUARDÓ",
+          msg: "No se pudo guardar la posición. Se revirtió.",
+          color: "var(--danger)",
+        });
+      }
+    },
+    [applyPos],
+  );
+
+  /** Fija la posición de un nodo (optimista) y persiste. */
+  const fixPosition = useCallback(
+    (type: NodeType, id: string, x: number, y: number) => {
+      const prev = currentOverride(type, id);
+      applyPos(type, id, x, y);
+      void persistPos(type, id, x, y, prev.x, prev.y);
+    },
+    [applyPos, persistPos, currentOverride],
+  );
+
+  /** Resetea un nodo al automático (org_x/org_y = null). */
+  const resetPosition = useCallback(
+    (type: NodeType, id: string) => {
+      const prev = currentOverride(type, id);
+      applyPos(type, id, null, null);
+      void persistPos(type, id, null, null, prev.x, prev.y);
+    },
+    [applyPos, persistPos, currentOverride],
+  );
+
+  /** Reacomodar todo: borra TODOS los overrides. Con confirmación. */
+  const reacomodarTodo = useCallback(async () => {
+    setConfirmReset(false);
+    const snapPersons = persons;
+    const snapDept = deptNodes;
+    setPersons((ps) => ps.map((p) => ({ ...p, orgX: null, orgY: null })));
+    setDeptNodes((ds) => ds.map((d) => ({ ...d, orgX: null, orgY: null })));
+    try {
+      const res = await fetch("/api/admin/organigrama/reset-all", {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      showToast({
+        title: "ORGANIGRAMA REACOMODADO",
+        msg: "Todas las posiciones volvieron al automático.",
+        color: "var(--ok)",
+      });
+    } catch {
+      setPersons(snapPersons);
+      setDeptNodes(snapDept);
+      showToast({
+        title: "NO SE PUDO REACOMODAR",
+        msg: "Se revirtió el cambio.",
+        color: "var(--danger)",
+      });
+    }
+  }, [persons, deptNodes]);
+
+  // Arranca el drag de un NODO en modo edición. Distingue click (sin mover →
+  // selecciona) de arrastre (fija posición). El delta se divide por scale para
+  // que el nodo siga al cursor con cualquier zoom.
+  const startNodeDrag = useCallback(
+    (e: React.MouseEvent, node: OrgLayoutNode) => {
+      if (!editMode) return;
+      e.stopPropagation(); // no disparar el paneo del fondo
+      e.preventDefault();
+      const startMX = e.clientX;
+      const startMY = e.clientY;
+      const startX = node.x;
+      const startY = node.y;
+      let moved = false;
+
+      const onMove = (ev: MouseEvent) => {
+        const s = scaleRef.current;
+        const dx = (ev.clientX - startMX) / s;
+        const dy = (ev.clientY - startMY) / s;
+        if (Math.abs(ev.clientX - startMX) > 3 || Math.abs(ev.clientY - startMY) > 3) {
+          moved = true;
+        }
+        setDragPreview({ id: node.id, x: startX + dx, y: startY + dy });
+      };
+      const onUp = (ev: MouseEvent) => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        setDragPreview(null);
+        if (moved) {
+          const s = scaleRef.current;
+          const nx = Math.round((startX + (ev.clientX - startMX) / s) / SNAP) * SNAP;
+          const ny = Math.round((startY + (ev.clientY - startMY) / s) / SNAP) * SNAP;
+          fixPosition(node.type, node.id, nx, ny);
+        } else {
+          setSelectedId(node.id); // fue un click
+        }
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [editMode, fixPosition],
+  );
+
+  // ── Derivados de render ──────────────────────────────────────────────────
+
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
 
-  // Buscador: personas por nombre o rol, máx 8.
+  // Nodos a dibujar: aplica el preview del drag al nodo que se está moviendo.
+  const displayNodes = useMemo(() => {
+    if (!dragPreview) return layout.nodes;
+    return layout.nodes.map((n) =>
+      n.id === dragPreview.id ? { ...n, x: dragPreview.x, y: dragPreview.y } : n,
+    );
+  }, [layout.nodes, dragPreview]);
+
   const searchIndex = useMemo(
     () =>
       layout.nodes
@@ -190,8 +377,6 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
     if (node) centerOn(node);
   }
 
-  // Leyenda: áreas presentes (cajas por su nombre, personas por su dept) con el
-  // color que viene del dato. Siempre poblada desde la gente real.
   const legend = useMemo(() => {
     const m = new Map<string, string>();
     for (const n of layout.nodes) {
@@ -259,6 +444,25 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
         </div>
 
         <div className="org-controls-right">
+          {isAdmin && editMode && (
+            <button
+              type="button"
+              className="org-edit-danger"
+              onClick={() => setConfirmReset(true)}
+              title="Borra todas las posiciones fijadas a mano"
+            >
+              Reacomodar todo
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              className={`org-edit-toggle ${editMode ? "is-on" : ""}`}
+              onClick={() => setEditMode((v) => !v)}
+            >
+              {editMode ? "✓ Editando posiciones" : "Editar posiciones"}
+            </button>
+          )}
           <div className="org-zoom-group">
             <button
               type="button"
@@ -289,20 +493,29 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
       </div>
 
       <div className="org-hint">
-        <span>⌕</span> Click en cualquier nodo para ver detalle · Arrastrá el
-        fondo para moverte · <span className="org-hint-kbd">⌃</span> + Rueda para
-        zoom
+        <span>⌕</span>{" "}
+        {editMode
+          ? "Arrastrá un nodo para fijar su posición · click para ver detalle y resetear · arrastrá el fondo para moverte"
+          : "Click en cualquier nodo para ver detalle · Arrastrá el fondo para moverte · "}
+        {!editMode && (
+          <>
+            <span className="org-hint-kbd">⌃</span> + Rueda para zoom
+          </>
+        )}
       </div>
 
       <div
         ref={wrapRef}
-        className={`org-canvas-scale ${isDragging ? "is-dragging" : ""}`}
+        className={`org-canvas-scale ${isDragging ? "is-dragging" : ""} ${
+          editMode ? "is-editing" : ""
+        }`}
         style={{ height: VIEW_H }}
         onMouseDown={onMouseDown}
       >
+        {editMode && <div className="org-edit-ribbon">MODO EDICIÓN</div>}
         <div className="org-pan-bg" />
         <div
-          className="org-canvas"
+          className={`org-canvas ${editMode ? "is-editing" : ""}`}
           style={{
             width: CANVAS_W,
             height: CANVAS_H,
@@ -310,25 +523,21 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
             transformOrigin: "top left",
           }}
         >
-          <OrgLines
-            nodes={layout.nodes}
-            childrenMap={childrenMap}
-            byId={byId}
-            width={CANVAS_W}
-            height={CANVAS_H}
-          />
-          {layout.nodes.map((n) => (
+          <OrgLines nodes={displayNodes} childrenMap={childrenMap} width={CANVAS_W} height={CANVAS_H} />
+          {displayNodes.map((n) => (
             <OrgNode
               key={n.id}
               n={n}
               isSelected={selectedId === n.id}
-              onClick={() => setSelectedId(n.id)}
+              editMode={editMode}
+              isDraggingThis={dragPreview?.id === n.id}
+              onSelect={() => setSelectedId(n.id)}
+              onMouseDown={(e) => startNodeDrag(e, n)}
             />
           ))}
         </div>
       </div>
 
-      {/* Leyenda de áreas (colores desde el dato) */}
       {legend.length > 0 && (
         <div className="org-legend">
           {legend.map(([label, color]) => (
@@ -345,8 +554,20 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
           n={selected}
           childIds={childrenMap.get(selected.id) ?? []}
           byId={byId}
+          editMode={editMode}
+          onResetPosition={() => resetPosition(selected.type, selected.id)}
           onClose={() => setSelectedId(null)}
           onPick={(id) => setSelectedId(id)}
+        />
+      )}
+
+      {confirmReset && (
+        <ConfirmModal
+          title="Reacomodar todo"
+          body="Se borran TODAS las posiciones fijadas a mano y el organigrama vuelve al layout automático. No se puede deshacer."
+          confirmLabel="Sí, reacomodar"
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={reacomodarTodo}
         />
       )}
     </>
@@ -359,8 +580,18 @@ export function OrgCanvas({ layout }: OrgCanvasProps) {
 function OrgNode({
   n,
   isSelected,
-  onClick,
-}: Readonly<{ n: OrgLayoutNode; isSelected: boolean; onClick: () => void }>) {
+  editMode,
+  isDraggingThis,
+  onSelect,
+  onMouseDown,
+}: Readonly<{
+  n: OrgLayoutNode;
+  isSelected: boolean;
+  editMode: boolean;
+  isDraggingThis: boolean;
+  onSelect: () => void;
+  onMouseDown: (e: React.MouseEvent) => void;
+}>) {
   const isPerson = n.type === "person";
   const small = isPerson && n.h <= 34;
   const cls = [
@@ -368,6 +599,8 @@ function OrgNode({
     isPerson ? "org-node-person" : "org-node-dept",
     small ? "org-node-sm" : "",
     isSelected ? "is-selected" : "",
+    editMode && n.overridden ? "is-fixed" : "",
+    isDraggingThis ? "is-dragging-node" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -381,16 +614,20 @@ function OrgNode({
     <div
       className={cls}
       style={style}
-      onClick={onClick}
+      onClick={editMode ? undefined : onSelect}
+      onMouseDown={onMouseDown}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (!editMode && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
-          onClick();
+          onSelect();
         }
       }}
       role="button"
       tabIndex={0}
     >
+      {editMode && n.overridden && (
+        <span className="org-node-pin" title="Posición fijada a mano" aria-hidden />
+      )}
       {isPerson && (
         <div className="org-node-bar" style={{ background: n.accent }} />
       )}
@@ -413,22 +650,19 @@ function OrgNode({
 
 // =============================================================
 // Líneas (edges) — ruteo ortogonal, portado del algoritmo NQS (caso general).
-// Cada padre: si sus hijos están alineados debajo → línea recta; si es uno →
-// codo en L; si son varios → tronco + barra horizontal + bajadas a cada hijo.
 // =============================================================
 function OrgLines({
   nodes,
   childrenMap,
-  byId,
   width,
   height,
 }: Readonly<{
   nodes: OrgLayoutNode[];
   childrenMap: Map<string, string[]>;
-  byId: Map<string, OrgLayoutNode>;
   width: number;
   height: number;
 }>) {
+  const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const stroke = "var(--line-strong)";
   const sw = "1";
   const cx = (n: OrgLayoutNode) => n.x + n.w / 2;
@@ -485,7 +719,6 @@ function OrgLines({
       continue;
     }
 
-    // Varios hijos: tronco + barra + bajada por hijo.
     const minChildTop = Math.min(...kids.map(top));
     const stemY = minChildTop - 14;
     const xs = kids.map(cx);
@@ -510,12 +743,16 @@ function PersonPanel({
   n,
   childIds,
   byId,
+  editMode,
+  onResetPosition,
   onClose,
   onPick,
 }: Readonly<{
   n: OrgLayoutNode;
   childIds: string[];
   byId: Map<string, OrgLayoutNode>;
+  editMode: boolean;
+  onResetPosition: () => void;
   onClose: () => void;
   onPick: (id: string) => void;
 }>) {
@@ -534,10 +771,7 @@ function PersonPanel({
         >
           ×
         </button>
-        <div
-          className="t-eyebrow"
-          style={{ color: n.accent, marginBottom: 12 }}
-        >
+        <div className="t-eyebrow" style={{ color: n.accent, marginBottom: 12 }}>
           ↳ {n.type === "person" ? "PERSONA" : "ÁREA"}
         </div>
         <div className="org-panel-name">{n.name}</div>
@@ -548,6 +782,30 @@ function PersonPanel({
           <div className="org-panel-meta">
             <span className="t-eyebrow">Departamento</span>
             <span>{n.dept}</span>
+          </div>
+        )}
+
+        {editMode && (
+          <div className="org-panel-fixed">
+            <div className="t-eyebrow org-panel-section">↳ Posición</div>
+            {n.overridden ? (
+              <>
+                <p className="t-meta dim" style={{ margin: "0 0 10px", fontSize: 12 }}>
+                  Fijada a mano. No responde al orden automático.
+                </p>
+                <button
+                  type="button"
+                  className="org-panel-reset"
+                  onClick={onResetPosition}
+                >
+                  ↺ Resetear al automático
+                </button>
+              </>
+            ) : (
+              <p className="t-meta dim" style={{ margin: 0, fontSize: 12 }}>
+                Automática. Arrastrá el nodo para fijarla.
+              </p>
+            )}
           </div>
         )}
 
@@ -564,10 +822,7 @@ function PersonPanel({
                   className="org-panel-member"
                   onClick={() => onPick(c.id)}
                 >
-                  <span
-                    className="org-panel-dot"
-                    style={{ background: c.accent }}
-                  />
+                  <span className="org-panel-dot" style={{ background: c.accent }} />
                   <span className="org-panel-mname">{c.name}</span>
                   {c.role && <span className="org-panel-mrole">· {c.role}</span>}
                 </button>
@@ -575,6 +830,40 @@ function PersonPanel({
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================
+// Modal de confirmación (para acciones destructivas)
+// =============================================================
+function ConfirmModal({
+  title,
+  body,
+  confirmLabel,
+  onCancel,
+  onConfirm,
+}: Readonly<{
+  title: string;
+  body: string;
+  confirmLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}>) {
+  return (
+    <div className="org-confirm-overlay" onClick={onCancel}>
+      <div className="org-confirm" onClick={(e) => e.stopPropagation()}>
+        <div className="org-confirm-title">{title}</div>
+        <p className="org-confirm-body">{body}</p>
+        <div className="org-confirm-actions">
+          <button type="button" className="org-confirm-cancel" onClick={onCancel}>
+            Cancelar
+          </button>
+          <button type="button" className="org-confirm-ok" onClick={onConfirm}>
+            {confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

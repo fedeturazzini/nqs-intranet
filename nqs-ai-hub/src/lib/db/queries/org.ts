@@ -7,6 +7,9 @@
  * Server-only.
  */
 import { createServerClient } from "@/lib/db/supabase";
+import type { Database } from "@/types/db";
+
+type DeptNodeUpdate = Database["public"]["Tables"]["org_dept_nodes"]["Update"];
 
 export type OrgNode = {
   id: string;
@@ -40,13 +43,13 @@ export async function getOrgNodes(): Promise<OrgNode[]> {
 
 /** Todos los users (para el panel admin del organigrama). */
 export async function getAllUsersForOrg(): Promise<
-  Array<OrgNode & { isInOrg: boolean }>
+  Array<OrgNode & { isInOrg: boolean; overridden: boolean }>
 > {
   const db = createServerClient();
   const { data, error } = await db
     .from("users")
     .select(
-      "id, name, initials, dept, org_role, reports_to_id, org_position, is_in_org",
+      "id, name, initials, dept, org_role, reports_to_id, org_position, is_in_org, org_x, org_y",
     )
     .eq("is_active", true)
     .order("name", { ascending: true });
@@ -60,6 +63,9 @@ export async function getAllUsersForOrg(): Promise<
     reportsToId: u.reports_to_id,
     orgPosition: u.org_position,
     isInOrg: u.is_in_org,
+    // Posición fijada a mano (override): su ubicación ya no responde al orden
+    // automático (las flechas ↑/↓ no la mueven en el canvas).
+    overridden: u.org_x !== null && u.org_y !== null,
   }));
 }
 
@@ -163,4 +169,138 @@ export async function wouldCreateCycle(
     current = parent?.reports_to_id ?? null;
   }
   return false;
+}
+
+// ============================================================
+// Edición del organigrama (etapa 3) — overrides de posición + CRUD de cajas.
+// Todo esto es admin-only (los endpoints lo garantizan con requireAdminApi).
+// ============================================================
+
+function mapDeptRow(d: {
+  id: string;
+  name: string;
+  department: string | null;
+  parent_person_id: string | null;
+  accent: string | null;
+  sort_order: number | null;
+  org_x: number | null;
+  org_y: number | null;
+}): OrgDeptNode {
+  return {
+    id: d.id,
+    name: d.name,
+    department: d.department,
+    parentPersonId: d.parent_person_id,
+    accent: d.accent,
+    sortOrder: d.sort_order,
+    orgX: d.org_x,
+    orgY: d.org_y,
+  };
+}
+
+const DEPT_COLS =
+  "id, name, department, parent_person_id, accent, sort_order, org_x, org_y";
+
+/**
+ * Fija (o resetea con null) el override de posición de un nodo. `type` decide
+ * la tabla: "person" → users, "dept" → org_dept_nodes. Setear null vuelve el
+ * nodo al layout automático.
+ */
+export async function setNodePosition(
+  type: "person" | "dept",
+  id: string,
+  x: number | null,
+  y: number | null,
+): Promise<void> {
+  const db = createServerClient();
+  if (type === "person") {
+    const { error } = await db
+      .from("users")
+      .update({ org_x: x, org_y: y, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) throw error;
+  } else {
+    const { error } = await db
+      .from("org_dept_nodes")
+      .update({ org_x: x, org_y: y })
+      .eq("id", id);
+    if (error) throw error;
+  }
+}
+
+/** Borra TODOS los overrides (users + cajas) → todo vuelve al automático. */
+export async function resetAllPositions(): Promise<void> {
+  const db = createServerClient();
+  const [u, d] = await Promise.all([
+    db
+      .from("users")
+      .update({ org_x: null, org_y: null, updated_at: new Date().toISOString() })
+      .not("org_x", "is", null),
+    db
+      .from("org_dept_nodes")
+      .update({ org_x: null, org_y: null })
+      .not("org_x", "is", null),
+  ]);
+  if (u.error) throw u.error;
+  if (d.error) throw d.error;
+}
+
+/** Crea una caja de área. Devuelve la caja creada. */
+export async function createDeptNode(input: {
+  name: string;
+  department: string | null;
+  parentPersonId: string | null;
+  accent: string | null;
+  sortOrder: number | null;
+}): Promise<OrgDeptNode> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("org_dept_nodes")
+    .insert({
+      name: input.name,
+      department: input.department,
+      parent_person_id: input.parentPersonId,
+      accent: input.accent,
+      sort_order: input.sortOrder,
+    })
+    .select(DEPT_COLS)
+    .single();
+  if (error) throw error;
+  return mapDeptRow(data);
+}
+
+/** Edita una caja de área (solo los campos que vienen). Devuelve la actualizada. */
+export async function updateDeptNode(
+  id: string,
+  patch: Partial<{
+    name: string;
+    department: string | null;
+    parentPersonId: string | null;
+    accent: string | null;
+    sortOrder: number | null;
+  }>,
+): Promise<OrgDeptNode | null> {
+  const db = createServerClient();
+  const row: DeptNodeUpdate = {};
+  if (patch.name !== undefined) row.name = patch.name;
+  if (patch.department !== undefined) row.department = patch.department;
+  if (patch.parentPersonId !== undefined)
+    row.parent_person_id = patch.parentPersonId;
+  if (patch.accent !== undefined) row.accent = patch.accent;
+  if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
+  const { data, error } = await db
+    .from("org_dept_nodes")
+    .update(row)
+    .eq("id", id)
+    .select(DEPT_COLS)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapDeptRow(data) : null;
+}
+
+/** Borra una caja de área. Los reportes que colgaban se recalculan solos. */
+export async function deleteDeptNode(id: string): Promise<void> {
+  const db = createServerClient();
+  const { error } = await db.from("org_dept_nodes").delete().eq("id", id);
+  if (error) throw error;
 }

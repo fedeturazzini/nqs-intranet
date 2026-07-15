@@ -10,7 +10,7 @@ import { OrgChart } from "@/components/screens/OrgChart";
 import { showToast } from "@/lib/store/toast";
 import type { OrgNode } from "@/lib/db/queries/org";
 
-type Row = OrgNode & { isInOrg: boolean };
+type Row = OrgNode & { isInOrg: boolean; overridden: boolean };
 
 type OrgAdminPanelProps = Readonly<{ initialUsers: Row[] }>;
 
@@ -182,7 +182,17 @@ export function OrgAdminPanel({ initialUsers }: OrgAdminPanelProps) {
                     />
                   </Td>
                   <Td>
-                    <div style={{ fontWeight: 500 }}>{r.name}</div>
+                    <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                      {r.name}
+                      {r.overridden && (
+                        <span
+                          className="org-fixed-tag"
+                          title="Tiene la posición fijada a mano en el canvas: no responde al orden automático (las flechas ↑/↓ no la mueven). Reseteala desde /organigrama."
+                        >
+                          📌 fija
+                        </span>
+                      )}
+                    </div>
                     <div className="t-meta dim" style={{ fontSize: 10 }}>
                       {r.dept ?? "—"}
                     </div>
