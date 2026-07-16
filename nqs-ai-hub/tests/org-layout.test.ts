@@ -206,4 +206,39 @@ describe("computeOrgLayout", () => {
     expect(layout.width).toBe(0);
     expect(layout.height).toBe(0);
   });
+
+  test("nombres largos ensanchan el nodo (nada de '…') y no generan solapes", () => {
+    const nombreLargo = "Santiago Gonzalez Palermo"; // 25 chars
+    const persons = [
+      person("boss", { name: "Tincho", dept: "PARTNER", orgPosition: 1 }),
+      person("largo", {
+        name: nombreLargo,
+        dept: "AD",
+        reportsToId: "boss",
+        orgRole: "Head of Business Development",
+        orgPosition: 1,
+      }),
+      person("corto", { name: "Ana", dept: "PM", reportsToId: "boss", orgPosition: 2 }),
+    ];
+    const { nodes } = computeOrgLayout(persons, []);
+    const m = new Map(nodes.map((n) => [n.id, n]));
+    const largo = m.get("largo")!;
+    const corto = m.get("corto")!;
+    // El ancho crece con el texto (el hermano corto queda en el mínimo del tier).
+    expect(largo.w).toBeGreaterThan(corto.w);
+    // La estimación cubre el nombre completo (px/char de 13px + chrome), con tope.
+    expect(largo.w).toBeGreaterThanOrEqual(
+      Math.min(240, Math.ceil(nombreLargo.length * 8.2) + 34),
+    );
+    expect(largo.w).toBeLessThanOrEqual(240);
+    // Y el no-solape se mantiene (dx sale del ancho real máximo).
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        expect(
+          overlaps(nodes[i], nodes[j]),
+          `${nodes[i].id} se solapa con ${nodes[j].id}`,
+        ).toBe(false);
+      }
+    }
+  });
 });

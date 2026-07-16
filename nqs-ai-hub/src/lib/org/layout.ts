@@ -19,7 +19,12 @@
  * Si una persona no tiene cajas, todos sus reportes cuelgan directo (degrada al
  * árbol clásico de reports_to_id). Server-safe y puro (testeable sin DB).
  */
-import { hierarchy, tree, type HierarchyPointNode } from "d3-hierarchy";
+import {
+  hierarchy,
+  tree,
+  type HierarchyNode,
+  type HierarchyPointNode,
+} from "d3-hierarchy";
 import type { OrgPerson, OrgDeptNode } from "@/lib/db/queries/org";
 
 export type OrgLayoutNode = {
@@ -64,6 +69,18 @@ const PERSON_TIERS = [
 const H_GAP = 28; // separación mínima horizontal entre nodos
 const V_GAP = 44; // separación vertical entre filas
 const MARGIN = 40; // margen del canvas
+
+// Ancho adaptado al texto: los tiers de arriba son el MÍNIMO; si el nombre o
+// el rol no entran, el nodo se ensancha hasta MAX_NODE_W (la separación dx se
+// calcula del ancho real máximo, así el no-solape se mantiene). Estimación en
+// px por carácter, generosa (sin DOM en el server; la elipsis del CSS es la
+// red de seguridad si un texto exótico se pasa igual).
+const MAX_NODE_W = 240;
+const CH_NAME = 8.2; // Inter 600 13px (.org-node-name)
+const CH_NAME_SM = 7.2; // Inter 500 11.5px (.org-node-sm)
+const CH_ROLE = 6.2; // Inter 10.5px (.org-node-role)
+const CH_ROLE_SM = 5.6; // Inter 9.5px (rol en nodos chicos)
+const CH_DEPT = 9.3; // 12px uppercase + tracking (cajas de área)
 
 const VROOT = "__vroot__"; // super-raíz virtual (soporta varias raíces reales)
 
@@ -240,34 +257,51 @@ export function computeOrgLayout(
     children: roots,
   };
 
-  // Layout tidy-tree. dx = ancho máximo + gap → separación uniforme que
-  // garantiza que ningún par de nodos se solape horizontalmente.
-  let maxW = DEPT_SIZE.w;
-  for (const t of PERSON_TIERS) maxW = Math.max(maxW, t.w);
-  const dx = maxW + H_GAP;
   const root = hierarchy<TNode>(virtual, (d) => d.children);
+
+  // Tamaño de un nodo: alto por tier (como el diseño); ancho ADAPTADO AL TEXTO
+  // (nombre y rol) para que no se trunque con "…". Estimación generosa por
+  // caracteres (sin DOM en el server), clampeada a MAX_NODE_W; la elipsis del
+  // CSS queda como red de seguridad para casos exóticos.
+  function sizeOf(n: HierarchyNode<TNode>): { w: number; h: number } {
+    if (n.data.type === "dept") {
+      const w = Math.ceil(n.data.name.length * CH_DEPT) + 26; // padding+borde
+      return { w: Math.min(MAX_NODE_W, Math.max(DEPT_SIZE.w, w)), h: DEPT_SIZE.h };
+    }
+    const tier = n
+      .ancestors()
+      .slice(1)
+      .filter((a) => a.data.type === "person" && a.data.id !== VROOT).length;
+    const t = PERSON_TIERS[Math.min(tier, PERSON_TIERS.length - 1)];
+    const small = t.h <= 34; // mismo criterio que .org-node-sm en el canvas
+    const nameW = n.data.name.length * (small ? CH_NAME_SM : CH_NAME);
+    const roleW = (n.data.role?.length ?? 0) * (small ? CH_ROLE_SM : CH_ROLE);
+    const w = Math.ceil(Math.max(nameW, roleW)) + 34; // barra+padding+borde
+    return { w: Math.min(MAX_NODE_W, Math.max(t.w, w)), h: t.h };
+  }
+
+  // Anchos primero (dependen solo del dato/tier, no de la posición): dx =
+  // ancho máximo REAL + gap → separación uniforme que garantiza que ningún
+  // par de nodos se solape horizontalmente, aún con nombres largos.
+  const sizeById = new Map<string, { w: number; h: number }>();
+  let maxW = 1;
+  for (const n of root.descendants()) {
+    if (n.data.id === VROOT) continue;
+    const s = sizeOf(n);
+    sizeById.set(n.data.id, s);
+    maxW = Math.max(maxW, s.w);
+  }
+  const dx = maxW + H_GAP;
   const laidOut = tree<TNode>().nodeSize([dx, 1])(root);
 
   const nodes = laidOut
     .descendants()
     .filter((n) => n.data.id !== VROOT);
 
-  // Tamaño de un nodo: cajas fijas; personas según su tier (personas por encima).
-  function sizeOf(n: HierarchyPointNode<TNode>): { w: number; h: number } {
-    if (n.data.type === "dept") return DEPT_SIZE;
-    const tier = n
-      .ancestors()
-      .slice(1)
-      .filter((a) => a.data.type === "person" && a.data.id !== VROOT).length;
-    return PERSON_TIERS[Math.min(tier, PERSON_TIERS.length - 1)];
-  }
-
   // Alto de cada fila (por profundidad real = depth - 1, vroot en depth 0).
-  const sizeById = new Map<string, { w: number; h: number }>();
   const rowH = new Map<number, number>();
   for (const n of nodes) {
-    const s = sizeOf(n);
-    sizeById.set(n.data.id, s);
+    const s = sizeById.get(n.data.id)!;
     const d = n.depth - 1;
     rowH.set(d, Math.max(rowH.get(d) ?? 0, s.h));
   }
