@@ -43,7 +43,7 @@ export async function getOrgNodes(): Promise<OrgNode[]> {
 
 /** Todos los users (para el panel admin del organigrama). */
 export async function getAllUsersForOrg(): Promise<
-  Array<OrgNode & { isInOrg: boolean; overridden: boolean }>
+  Array<OrgNode & { isInOrg: boolean; orgX: number | null; orgY: number | null }>
 > {
   const db = createServerClient();
   const { data, error } = await db
@@ -63,9 +63,10 @@ export async function getAllUsersForOrg(): Promise<
     reportsToId: u.reports_to_id,
     orgPosition: u.org_position,
     isInOrg: u.is_in_org,
-    // Posición fijada a mano (override): su ubicación ya no responde al orden
-    // automático (las flechas ↑/↓ no la mueven en el canvas).
-    overridden: u.org_x !== null && u.org_y !== null,
+    // Override de posición crudo (org_x/org_y ambos != null ⇒ fijada a mano y
+    // no responde al orden automático). El panel lo deriva en vivo.
+    orgX: u.org_x,
+    orgY: u.org_y,
   }));
 }
 

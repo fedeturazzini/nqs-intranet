@@ -1,11 +1,14 @@
 "use client";
 
 /**
- * CRUD de las cajas de área del organigrama (org_dept_nodes). Vive en
- * /admin/organigrama. Una caja agrupa a los reportes de una persona por
- * department (ej. PEOPLE cuelga de Tincho y junta a los de AD). Campos: nombre,
- * department (de DEPARTMENTS), de quién cuelga, color y orden. Al borrar una
- * caja, los que colgaban se recalculan solos en el layout.
+ * CRUD de las cajas de área del organigrama (org_dept_nodes). Vive dentro de
+ * la pantalla /admin/organigrama. Una caja agrupa a los reportes de una persona
+ * por department (ej. PEOPLE cuelga de Tincho y junta a los de AD). Campos:
+ * nombre, department (de DEPARTMENTS), de quién cuelga, color y orden. Al
+ * borrar una caja, los que colgaban se recalculan solos en el layout.
+ *
+ * CONTROLADO: el estado `boxes` es del padre (OrgAdminPanel) — así el preview
+ * (canvas) refleja el CRUD en vivo.
  */
 import { useState } from "react";
 import { DEPARTMENTS } from "@/lib/constants/departments";
@@ -15,7 +18,8 @@ import type { OrgDeptNode } from "@/lib/db/queries/org";
 type PersonOpt = Readonly<{ id: string; name: string }>;
 
 type Props = Readonly<{
-  initialBoxes: OrgDeptNode[];
+  boxes: OrgDeptNode[];
+  onBoxesChange: React.Dispatch<React.SetStateAction<OrgDeptNode[]>>;
   persons: PersonOpt[];
 }>;
 
@@ -29,16 +33,12 @@ const emptyDraft = {
   sortOrder: "" as string,
 };
 
-export function OrgBoxesAdmin({ initialBoxes, persons }: Props) {
-  const [boxes, setBoxes] = useState<OrgDeptNode[]>(initialBoxes);
+export function OrgBoxesAdmin({ boxes, onBoxesChange, persons }: Props) {
   const [draft, setDraft] = useState(emptyDraft);
   const [busy, setBusy] = useState(false);
 
-  const personName = (id: string | null) =>
-    id ? persons.find((p) => p.id === id)?.name ?? "—" : "—";
-
   function updateBox(id: string, patch: Partial<OrgDeptNode>) {
-    setBoxes((bs) => bs.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+    onBoxesChange((bs) => bs.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   }
 
   async function createBox() {
@@ -61,7 +61,7 @@ export function OrgBoxesAdmin({ initialBoxes, persons }: Props) {
     setBusy(false);
     if (res.ok) {
       const { node } = (await res.json()) as { node: OrgDeptNode };
-      setBoxes((bs) => [...bs, node]);
+      onBoxesChange((bs) => [...bs, node]);
       setDraft(emptyDraft);
       showToast({ title: "CAJA CREADA", msg: node.name, color: "var(--ok)" });
     } else {
@@ -102,7 +102,7 @@ export function OrgBoxesAdmin({ initialBoxes, persons }: Props) {
     });
     setBusy(false);
     if (res.ok) {
-      setBoxes((bs) => bs.filter((b) => b.id !== box.id));
+      onBoxesChange((bs) => bs.filter((b) => b.id !== box.id));
       showToast({ title: "CAJA BORRADA", msg: box.name, color: "var(--ok)" });
     } else {
       showToast({ title: "NO SE BORRÓ", msg: "error", color: "var(--danger)" });

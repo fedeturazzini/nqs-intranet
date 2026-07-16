@@ -1154,148 +1154,6 @@
 }
 .playbook-card:hover .playbook-card-cta { color: var(--accent); background: rgba(232, 255, 61, 0.06); }
 
-/* ========== ORGANIGRAMA ========== */
-.org-lead {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 0;
-}
-.org-trunk {
-  width: 1px;
-  height: 32px;
-  background: var(--line-strong);
-  margin: 0 auto;
-}
-.org-pillars {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 18px;
-  position: relative;
-  padding-top: 18px;
-}
-.org-pillars::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 12.5%;
-  right: 12.5%;
-  height: 1px;
-  background: var(--line-strong);
-}
-.org-pillar {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-top: 8px;
-  position: relative;
-}
-.org-pillar::before {
-  content: "";
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  width: 1px;
-  height: 18px;
-  background: var(--pillar, var(--line-strong));
-}
-.org-pillar-head {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-top: 3px solid var(--pillar, var(--accent));
-  border-radius: 10px;
-  background: var(--bg-elev);
-}
-.org-pillar-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-left: 10px;
-  border-left: 1px dashed var(--line-strong);
-  margin-left: 14px;
-}
-
-.org-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--bg-elev);
-  border: 1px solid var(--line);
-  transition: border-color 0.15s, background 0.15s;
-}
-.org-card:hover { border-color: var(--line-strong); }
-.org-card-lg {
-  padding: 22px 28px;
-  border-color: var(--accent);
-  background: linear-gradient(135deg, rgba(232, 255, 61, 0.06), transparent 60%), var(--bg-elev);
-  min-width: 380px;
-  max-width: 540px;
-}
-.org-card-lg.is-highlight { box-shadow: 0 0 0 4px rgba(232, 255, 61, 0.04); }
-.org-card-md { background: transparent; border: 0; padding: 0; }
-.org-card-sm { padding: 8px 10px; background: var(--bg); }
-.org-card.is-me {
-  border-color: var(--accent);
-  background: linear-gradient(135deg, rgba(232, 255, 61, 0.08), transparent 50%), var(--bg-elev);
-}
-.org-av {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: var(--bg-elev-2);
-  display: grid;
-  place-items: center;
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  flex-shrink: 0;
-  letter-spacing: 0.04em;
-}
-.org-card-lg .org-av { width: 56px; height: 56px; font-size: 16px; background: var(--accent); color: var(--accent-fg); }
-.org-card-sm .org-av { width: 28px; height: 28px; font-size: 10px; }
-.org-card-body { flex: 1; min-width: 0; }
-.org-card-name {
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 17px;
-  letter-spacing: -0.01em;
-  line-height: 1.1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.org-card-lg .org-card-name { font-size: 30px; }
-.org-card-sm .org-card-name { font-size: 14px; }
-.org-card-role {
-  font-family: var(--mono);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--fg-mute);
-  margin-top: 2px;
-}
-.org-card-sm .org-card-role { font-size: 10px; letter-spacing: 0.06em; }
-.org-card-bio {
-  margin-top: 8px;
-  line-height: 1.5;
-}
-.org-me-pill {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  background: var(--accent);
-  color: var(--accent-fg);
-  padding: 2px 6px;
-  border-radius: 3px;
-  margin-left: 4px;
-}
-
-
 /* ========== TUTORIALES — grid de how-to ========== */
 .tut-grid {
   display: grid;
@@ -1521,41 +1379,6 @@
   to { transform: translateX(-50%); }
 }
 
-/* ── Organigrama dinámico (S18) — árbol centrado con conectores ── */
-.org-tree-scroll { overflow-x: auto; padding: 16px 8px 8px; }
-.org-tree, .org-tree ul { display: flex; justify-content: center; }
-.org-tree { flex-direction: column; align-items: center; min-width: max-content; }
-.org-tree ul { padding-top: 22px; position: relative; }
-.org-tree li {
-  list-style: none; position: relative; padding: 22px 10px 0 10px;
-  display: flex; flex-direction: column; align-items: center;
-}
-.org-tree li::before, .org-tree li::after {
-  content: ''; position: absolute; top: 0; right: 50%;
-  border-top: 1px solid var(--line-strong); width: 50%; height: 22px;
-}
-.org-tree li::after { right: auto; left: 50%; border-left: 1px solid var(--line-strong); }
-.org-tree li:only-child::after, .org-tree li:only-child::before { display: none; }
-.org-tree li:only-child { padding-top: 0; }
-.org-tree li:first-child::before, .org-tree li:last-child::after { border: 0 none; }
-.org-tree li:last-child::before { border-right: 1px solid var(--line-strong); }
-.org-tree li:first-child::after { border-left: 1px solid var(--line-strong); }
-.org-tree ul ul::before {
-  content: ''; position: absolute; top: 0; left: 50%;
-  border-left: 1px solid var(--line-strong); width: 0; height: 22px;
-}
-.org-card {
-  display: flex; align-items: stretch; min-width: 150px; max-width: 220px;
-  border: 1px solid var(--line); border-radius: 8px; background: var(--bg-elev);
-  cursor: pointer; overflow: hidden; transition: border-color .12s, transform .12s;
-}
-.org-card:hover { border-color: var(--accent); transform: translateY(-1px); }
-.org-card-bar { width: 4px; flex-shrink: 0; }
-.org-card-body { padding: 8px 12px; text-align: left; min-width: 0; }
-.org-card-name { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
-.org-card-role { font-size: 10.5px; color: var(--fg-mute); margin-top: 1px; }
-.org-card-dept { font-size: 9px; color: var(--fg-mute); text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; }
-
 /* ── Tutoriales (S18) — cards del diseño del cliente ── */
 .tut-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
 .tut-card {
@@ -1743,8 +1566,9 @@
 /* =============================================================
    ORGANIGRAMA · CANVAS (etapa 2) — portado de organigrama.css del
    diseño NQS, adaptado a los tokens del hub. Scope: clases .org-canvas*
-   / .org-node* / .org-zoom* / .org-search* / .org-legend* / .org-panel*
-   (no colisiona con el árbol viejo .org-card/.org-tree).
+   / .org-node* / .org-zoom* / .org-search* / .org-legend* / .org-panel*.
+   (El árbol CSS viejo .org-tree/.org-card se borró: el canvas es el único
+   render del organigrama, también en el preview del admin.)
    Map de tokens: --dim→--fg-mute · --border-soft→--line ·
    --border-strong→--line-strong · fuentes→--sans/--mono/--serif.
    ============================================================= */

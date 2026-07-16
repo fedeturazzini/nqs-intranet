@@ -39,6 +39,19 @@ type OrgCanvasProps = Readonly<{
   persons: OrgPerson[];
   deptNodes: OrgDeptNode[];
   isAdmin: boolean;
+  /**
+   * Modo CONTROLADO (preview del admin): si viene, los datos vivos son los
+   * props (el padre es dueño del estado) y toda mutación de posición sale por
+   * este callback en vez del estado interno — así el padre ve los overrides al
+   * instante (tag "📌 fija", etc.). Sin él, el canvas es autónomo (página
+   * pública): copia los props una vez y edita su propio estado.
+   */
+  onPositionChange?: (
+    type: NodeType,
+    id: string,
+    x: number | null,
+    y: number | null,
+  ) => void;
 }>;
 
 /** Estilo con la custom property --accent (para barra/tinte por dato). */
@@ -47,14 +60,20 @@ function accentStyle(base: CSSProperties, accent: string): CSSProperties {
 }
 
 export function OrgCanvas({
-  persons: initialPersons,
-  deptNodes: initialDeptNodes,
+  persons: propPersons,
+  deptNodes: propDeptNodes,
   isAdmin,
+  onPositionChange,
 }: OrgCanvasProps) {
-  // Datos locales (para edición optimista). El layout se recalcula de acá. Se
-  // siembran de los props una vez; cada navegación re-monta con datos frescos.
-  const [persons, setPersons] = useState(initialPersons);
-  const [deptNodes, setDeptNodes] = useState(initialDeptNodes);
+  // Datos vivos. NO controlado (página pública): copia local sembrada de los
+  // props una vez, ediciones optimistas acá. CONTROLADO (preview admin): los
+  // props SON el estado (el padre lo actualiza vía onPositionChange) → la
+  // edición de la tabla se refleja en vivo.
+  const controlled = Boolean(onPositionChange);
+  const [innerPersons, setInnerPersons] = useState(propPersons);
+  const [innerDeptNodes, setInnerDeptNodes] = useState(propDeptNodes);
+  const persons = controlled ? propPersons : innerPersons;
+  const deptNodes = controlled ? propDeptNodes : innerDeptNodes;
 
   const layout = useMemo(
     () => computeOrgLayout(persons, deptNodes),
@@ -116,8 +135,15 @@ export function OrgCanvas({
     setPan({ x: Math.max(0, (cw - CANVAS_W * s) / 2), y: 20 });
   }, [fitScale, CANVAS_W]);
 
+  // Fit inicial UNA sola vez (ref-guard): si el layout cambia de tamaño después
+  // (drag que agranda el canvas, edición en vivo del preview), NO se resetea el
+  // zoom/paneo del usuario. El resize de ventana solo re-fittea la escala.
+  const didInitRef = useRef(false);
   useEffect(() => {
-    resetView();
+    if (!didInitRef.current) {
+      didInitRef.current = true;
+      resetView();
+    }
     const onResize = () => setScale(fitScale());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -192,20 +218,25 @@ export function OrgCanvas({
 
   // ── Edición de posición (admin) ──────────────────────────────────────────
 
-  /** Muta el override local (recalcula el layout al instante). */
+  /** Muta el override (recalcula el layout al instante). En modo controlado
+   *  delega en el padre; si no, en el estado interno. */
   const applyPos = useCallback(
     (type: NodeType, id: string, x: number | null, y: number | null) => {
+      if (onPositionChange) {
+        onPositionChange(type, id, x, y);
+        return;
+      }
       if (type === "person") {
-        setPersons((ps) =>
+        setInnerPersons((ps) =>
           ps.map((p) => (p.id === id ? { ...p, orgX: x, orgY: y } : p)),
         );
       } else {
-        setDeptNodes((ds) =>
+        setInnerDeptNodes((ds) =>
           ds.map((d) => (d.id === id ? { ...d, orgX: x, orgY: y } : d)),
         );
       }
     },
-    [],
+    [onPositionChange],
   );
 
   const currentOverride = useCallback(
@@ -274,8 +305,44 @@ export function OrgCanvas({
     setConfirmReset(false);
     const snapPersons = persons;
     const snapDept = deptNodes;
-    setPersons((ps) => ps.map((p) => ({ ...p, orgX: null, orgY: null })));
-    setDeptNodes((ds) => ds.map((d) => ({ ...d, orgX: null, orgY: null })));
+    // Limpiar overrides. En controlado va nodo a nodo por el callback (React
+    // batchea); en interno, bulk.
+    const clearAll = () => {
+      if (onPositionChange) {
+        for (const p of snapPersons) {
+          if (p.orgX !== null || p.orgY !== null) {
+            onPositionChange("person", p.id, null, null);
+          }
+        }
+        for (const d of snapDept) {
+          if (d.orgX !== null || d.orgY !== null) {
+            onPositionChange("dept", d.id, null, null);
+          }
+        }
+      } else {
+        setInnerPersons((ps) => ps.map((p) => ({ ...p, orgX: null, orgY: null })));
+        setInnerDeptNodes((ds) => ds.map((d) => ({ ...d, orgX: null, orgY: null })));
+      }
+    };
+    const restoreAll = () => {
+      if (onPositionChange) {
+        for (const p of snapPersons) {
+          if (p.orgX !== null || p.orgY !== null) {
+            onPositionChange("person", p.id, p.orgX, p.orgY);
+          }
+        }
+        for (const d of snapDept) {
+          if (d.orgX !== null || d.orgY !== null) {
+            onPositionChange("dept", d.id, d.orgX, d.orgY);
+          }
+        }
+      } else {
+        setInnerPersons(snapPersons);
+        setInnerDeptNodes(snapDept);
+      }
+    };
+
+    clearAll();
     try {
       const res = await fetch("/api/admin/organigrama/reset-all", {
         method: "POST",
@@ -287,15 +354,14 @@ export function OrgCanvas({
         color: "var(--ok)",
       });
     } catch {
-      setPersons(snapPersons);
-      setDeptNodes(snapDept);
+      restoreAll();
       showToast({
         title: "NO SE PUDO REACOMODAR",
         msg: "Se revirtió el cambio.",
         color: "var(--danger)",
       });
     }
-  }, [persons, deptNodes]);
+  }, [persons, deptNodes, onPositionChange]);
 
   // Arranca el drag de un NODO en modo edición. Distingue click (sin mover →
   // selecciona) de arrastre (fija posición). El delta se divide por scale para

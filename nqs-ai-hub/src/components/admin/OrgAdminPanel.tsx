@@ -1,21 +1,34 @@
 "use client";
 
 /**
- * Panel admin del organigrama (S18). Por cada user: toggle is_in_org,
- * "reporta a" (dropdown), rol en org y orden. "Guardar cambios" persiste
- * los users editados (PATCH). Abajo, preview en vivo del árbol.
+ * Pantalla admin del organigrama (S18). Tres bloques con estado compartido:
+ *   - Tabla por user: toggle is_in_org, "reporta a", rol y orden (↑/↓).
+ *     "Guardar cambios" persiste los editados (PATCH).
+ *   - Cajas de área (OrgBoxesAdmin): CRUD sobre `boxes`.
+ *   - Preview: el canvas REAL (OrgCanvas, el mismo de /organigrama) en modo
+ *     CONTROLADO — refleja tabla y cajas EN VIVO antes de guardar, y el drag
+ *     de posiciones vuelve por handlePos (el tag "📌 fija" se actualiza solo).
  */
-import { useMemo, useState } from "react";
-import { OrgChart } from "@/components/screens/OrgChart";
+import { useCallback, useMemo, useState } from "react";
+import { OrgBoxesAdmin } from "@/components/admin/OrgBoxesAdmin";
+import { OrgCanvas } from "@/components/screens/OrgCanvas";
 import { showToast } from "@/lib/store/toast";
-import type { OrgNode } from "@/lib/db/queries/org";
+import type { OrgNode, OrgPerson, OrgDeptNode } from "@/lib/db/queries/org";
 
-type Row = OrgNode & { isInOrg: boolean; overridden: boolean };
+type Row = OrgNode & {
+  isInOrg: boolean;
+  orgX: number | null;
+  orgY: number | null;
+};
 
-type OrgAdminPanelProps = Readonly<{ initialUsers: Row[] }>;
+type OrgAdminPanelProps = Readonly<{
+  initialUsers: Row[];
+  initialBoxes: OrgDeptNode[];
+}>;
 
-export function OrgAdminPanel({ initialUsers }: OrgAdminPanelProps) {
+export function OrgAdminPanel({ initialUsers, initialBoxes }: OrgAdminPanelProps) {
   const [rows, setRows] = useState<Row[]>(initialUsers);
+  const [boxes, setBoxes] = useState<OrgDeptNode[]>(initialBoxes);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
@@ -27,7 +40,46 @@ export function OrgAdminPanel({ initialUsers }: OrgAdminPanelProps) {
   }
 
   const inOrgUsers = useMemo(() => rows.filter((r) => r.isInOrg), [rows]);
-  const previewNodes: OrgNode[] = inOrgUsers;
+
+  // Datos del preview EN VIVO: personas del canvas derivadas del estado de la
+  // tabla (incluye cambios sin guardar) + cajas. Mapa campo a campo a OrgPerson.
+  const previewPersons: OrgPerson[] = useMemo(
+    () =>
+      inOrgUsers.map((r) => ({
+        id: r.id,
+        name: r.name,
+        dept: r.dept,
+        orgRole: r.orgRole || null,
+        reportsToId: r.reportsToId,
+        orgPosition: r.orgPosition,
+        orgX: r.orgX,
+        orgY: r.orgY,
+      })),
+    [inOrgUsers],
+  );
+
+  // El canvas (controlado) fija/resetea posiciones acá → tabla y canvas quedan
+  // sincronizados al instante. NO marca dirty: la posición se persiste sola al
+  // soltar (endpoint propio del canvas), no con "guardar cambios".
+  const handlePos = useCallback(
+    (
+      type: "person" | "dept",
+      id: string,
+      x: number | null,
+      y: number | null,
+    ) => {
+      if (type === "person") {
+        setRows((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, orgX: x, orgY: y } : r)),
+        );
+      } else {
+        setBoxes((prev) =>
+          prev.map((b) => (b.id === id ? { ...b, orgX: x, orgY: y } : b)),
+        );
+      }
+    },
+    [],
+  );
 
   // Orden entre hermanos: agrupamos los in-org por reports_to (null = raíces) y
   // ordenamos con el MISMO criterio que OrgChart (org_position → nombre). De ahí
@@ -184,7 +236,7 @@ export function OrgAdminPanel({ initialUsers }: OrgAdminPanelProps) {
                   <Td>
                     <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
                       {r.name}
-                      {r.overridden && (
+                      {r.orgX !== null && r.orgY !== null && (
                         <span
                           className="org-fixed-tag"
                           title="Tiene la posición fijada a mano en el canvas: no responde al orden automático (las flechas ↑/↓ no la mueven). Reseteala desde /organigrama."
@@ -269,14 +321,24 @@ export function OrgAdminPanel({ initialUsers }: OrgAdminPanelProps) {
         </table>
       </div>
 
-      {/* Preview */}
-      <div className="t-eyebrow" style={{ marginTop: 28, marginBottom: 4 }}>
+      {/* Cajas de área — comparten estado con el preview */}
+      <OrgBoxesAdmin boxes={boxes} onBoxesChange={setBoxes} persons={inOrgUsers} />
+
+      {/* Preview = el canvas REAL (el mismo de /organigrama), en vivo */}
+      <div className="t-eyebrow" style={{ marginTop: 32, marginBottom: 4 }}>
         ↳ PREVIEW
       </div>
       <p className="t-meta dim" style={{ marginBottom: 12, fontSize: 11 }}>
-        Cómo se va a ver (en vivo, antes de guardar).
+        El canvas real, en vivo: los cambios de la tabla y de las cajas se ven
+        acá antes de guardar. En “Editar posiciones”, el drag fija la posición y
+        se guarda solo al soltar (independiente del botón de arriba).
       </p>
-      <OrgChart nodes={previewNodes} />
+      <OrgCanvas
+        persons={previewPersons}
+        deptNodes={boxes}
+        isAdmin
+        onPositionChange={handlePos}
+      />
     </div>
   );
 }
