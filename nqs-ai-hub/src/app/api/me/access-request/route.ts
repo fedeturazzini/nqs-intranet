@@ -17,7 +17,7 @@
  *
  * Inserta access_request con request_type='access' + notif a Slack.
  */
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
@@ -133,16 +133,21 @@ export async function POST(request: Request): Promise<NextResponse> {
   const adminUrl = appUrl
     ? `${appUrl.replace(/\/$/, "")}/admin/requests`
     : undefined;
-  // Fire-and-forget: la solicitud ya está guardada (insert arriba), el Slack NO
-  // debe bloquear la respuesta — viaja en paralelo. Si falla, se loguea.
-  void notifySlack({
-    kind: "access_request",
-    userName: session.name,
-    toolName: tool.name,
-    reason,
-    requestId: created.id,
-    adminUrl,
-  }).catch((e) => console.error("slack notify failed", e));
+  // after(): corre DESPUÉS de enviar la respuesta pero mantiene VIVA la función
+  // en serverless, así el POST a Slack se completa. Con `void` quedaba pendiente
+  // y Vercel congelaba la función al responder → el aviso nunca salía (ver
+  // slack-notif-audit.md). La solicitud ya está guardada (insert arriba); el
+  // aviso viaja aparte y no bloquea la respuesta (el botón no se cuelga).
+  after(() =>
+    notifySlack({
+      kind: "access_request",
+      userName: session.name,
+      toolName: tool.name,
+      reason,
+      requestId: created.id,
+      adminUrl,
+    }).catch((e) => console.error("slack notify failed", e)),
+  );
 
   return NextResponse.json({ ok: true, requestId: created.id });
 }
