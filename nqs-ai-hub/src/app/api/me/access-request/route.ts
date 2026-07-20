@@ -15,7 +15,10 @@
  *   - el user NO tiene ya acceso activo
  *   - el user NO tiene una request 'access' pendiente para esta tool
  *
- * Inserta access_request con request_type='access' + notif a Slack.
+ * Inserta access_request con request_type='access' + notif a Slack. Si el
+ * aviso se confirma (200), marca notified_at (observabilidad — ver migración
+ * 0015). Los cortes silenciosos (already_pending / already_has_access) se
+ * loguean pero NO avisan a Slack (por ahora — la re-emisión es fase 2).
  */
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
@@ -84,6 +87,17 @@ export async function POST(request: Request): Promise<NextResponse> {
     .eq("tool_id", toolId)
     .maybeSingle();
   if (access?.status === "active") {
+    // Observabilidad (fase 1): este path NO avisa a Slack (el user ya tiene la
+    // tool). Lo logueamos porque, si aparece seguido en prod, es un pedido que
+    // "no llegó" explicado por tener acceso activo — no un webhook caído.
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "access-request corto: already_has_access (sin Slack)",
+        userId: session.userId,
+        toolId,
+      }),
+    );
     return NextResponse.json(
       { error: "already_has_access", message: "Ya tenés acceso a esta herramienta" },
       { status: 400 },
@@ -100,6 +114,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     .eq("status", "pending")
     .maybeSingle();
   if (pending) {
+    // Observabilidad (fase 1): hoy este path NO re-emite el aviso — esa es la
+    // fase 2 (re-emisión con throttle, ver slack-intermitente-audit.md). El log
+    // deja medir en prod cuántas veces se choca una fila pendiente sin avisar.
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "access-request corto: already_pending (sin Slack)",
+        userId: session.userId,
+        toolId,
+        pendingId: pending.id,
+      }),
+    );
     return NextResponse.json(
       {
         error: "already_pending",
@@ -138,16 +164,45 @@ export async function POST(request: Request): Promise<NextResponse> {
   // y Vercel congelaba la función al responder → el aviso nunca salía (ver
   // slack-notif-audit.md). La solicitud ya está guardada (insert arriba); el
   // aviso viaja aparte y no bloquea la respuesta (el botón no se cuelga).
-  after(() =>
-    notifySlack({
+  //
+  // Observabilidad (fase 1): si Slack confirma el envío (200), marcamos
+  // notified_at. Best-effort — si el update falla, la solicitud y el aviso ya
+  // salieron igual. Un notified_at que queda null = aviso NO confirmado: la
+  // señal que queremos medir en prod antes de decidir la re-emisión (fase 2).
+  after(async () => {
+    const sent = await notifySlack({
       kind: "access_request",
       userName: session.name,
       toolName: tool.name,
       reason,
       requestId: created.id,
       adminUrl,
-    }).catch((e) => console.error("slack notify failed", e)),
-  );
+    });
+    if (!sent) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          msg: "access_request aviso NO confirmado (notified_at queda null)",
+          requestId: created.id,
+        }),
+      );
+      return;
+    }
+    const { error: markErr } = await db
+      .from("access_requests")
+      .update({ notified_at: new Date().toISOString() })
+      .eq("id", created.id);
+    if (markErr) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          msg: "notified_at update falló (el aviso sí salió)",
+          requestId: created.id,
+          error: markErr.message,
+        }),
+      );
+    }
+  });
 
   return NextResponse.json({ ok: true, requestId: created.id });
 }

@@ -89,10 +89,12 @@ function slackIdentity(): {
 }
 
 /**
- * Manda una notificación a Slack. Promesa resuelve siempre — el caller
- * puede `await`-earla con tranquilidad sin try/catch.
+ * Manda una notificación a Slack. Nunca tira: la promesa resuelve siempre.
+ * Devuelve `true` sólo si Slack confirmó el envío (200); `false` si no hay
+ * webhook configurado, si Slack respondió no-OK, o si el POST falló. El caller
+ * usa ese booleano para registrar `notified_at` (observabilidad del envío).
  */
-export async function notifySlack(payload: SlackNotification): Promise<void> {
+export async function notifySlack(payload: SlackNotification): Promise<boolean> {
   const url = process.env.SLACK_WEBHOOK_URL;
   if (!url) {
     console.log(
@@ -102,7 +104,7 @@ export async function notifySlack(payload: SlackNotification): Promise<void> {
         kind: payload.kind,
       }),
     );
-    return;
+    return false;
   }
 
   const body = { ...slackIdentity(), ...buildPayload(payload) };
@@ -128,18 +130,19 @@ export async function notifySlack(payload: SlackNotification): Promise<void> {
           kind: payload.kind,
         }),
       );
-    } else {
-      // Log de éxito: hoy sin esto, "no hay log" era ambiguo (¿no se ejecutó el
-      // envío, o salió bien?). Con esto el diagnóstico es mirar una línea.
-      console.log(
-        JSON.stringify({
-          level: "info",
-          msg: "slack webhook ok",
-          status: res.status,
-          kind: payload.kind,
-        }),
-      );
+      return false;
     }
+    // Log de éxito: hoy sin esto, "no hay log" era ambiguo (¿no se ejecutó el
+    // envío, o salió bien?). Con esto el diagnóstico es mirar una línea.
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "slack webhook ok",
+        status: res.status,
+        kind: payload.kind,
+      }),
+    );
+    return true;
   } catch (err) {
     console.error(
       JSON.stringify({
@@ -149,6 +152,7 @@ export async function notifySlack(payload: SlackNotification): Promise<void> {
         kind: payload.kind,
       }),
     );
+    return false;
   } finally {
     clearTimeout(timer);
   }

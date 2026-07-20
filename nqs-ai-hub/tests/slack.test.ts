@@ -2,10 +2,11 @@
  * Tests del notifier de Slack.
  *
  * Validaciones críticas:
- *   1. Si SLACK_WEBHOOK_URL no está seteada → no-op silencioso, no throw.
- *   2. Si fetch tira → no-op silencioso, no propaga el error.
- *   3. Si Slack devuelve 5xx → loguea pero no throw.
- *   4. El payload tiene el shape de Slack Blocks correcto.
+ *   1. Si SLACK_WEBHOOK_URL no está seteada → no-op silencioso, no throw, false.
+ *   2. Si fetch tira → no-op silencioso, no propaga el error, false.
+ *   3. Si Slack devuelve 5xx → loguea pero no throw, false.
+ *   4. Si Slack confirma (200) → true (contrato del que depende notified_at).
+ *   5. El payload tiene el shape de Slack Blocks correcto.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { notifySlack, __testing } from "@/lib/notifications/slack";
@@ -26,8 +27,8 @@ afterEach(() => {
   }
 });
 
-describe("notifySlack — graceful degradation", () => {
-  test("sin SLACK_WEBHOOK_URL no hace POST y no throwea", async () => {
+describe("notifySlack — graceful degradation + contrato booleano", () => {
+  test("sin SLACK_WEBHOOK_URL no hace POST y devuelve false", async () => {
     delete process.env.SLACK_WEBHOOK_URL;
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
@@ -41,11 +42,11 @@ describe("notifySlack — graceful degradation", () => {
         reason: "render fin de semana",
         requestId: "abc-123",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test("si fetch rechaza, notifySlack no propaga", async () => {
+  test("si fetch rechaza, notifySlack no propaga y devuelve false", async () => {
     process.env.SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/X";
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("network down")) as unknown as typeof fetch;
 
@@ -58,10 +59,10 @@ describe("notifySlack — graceful degradation", () => {
         reason: "render",
         requestId: "abc",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
   });
 
-  test("si Slack devuelve 500, notifySlack no propaga", async () => {
+  test("si Slack devuelve 500, notifySlack no propaga y devuelve false", async () => {
     process.env.SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/X";
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
@@ -76,7 +77,28 @@ describe("notifySlack — graceful degradation", () => {
         toolName: "3DSky",
         requestId: "abc",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
+  });
+
+  test("si Slack confirma (200), notifySlack devuelve true", async () => {
+    // Este es el contrato del que depende el endpoint de access-request para
+    // marcar notified_at: sólo un 200 confirma el envío.
+    process.env.SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/X";
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "ok",
+    } as unknown as Response) as unknown as typeof fetch;
+
+    await expect(
+      notifySlack({
+        kind: "access_request",
+        userName: "Sofía",
+        toolName: "Claude",
+        reason: "para arrancar un proyecto",
+        requestId: "abc",
+      }),
+    ).resolves.toBe(true);
   });
 });
 

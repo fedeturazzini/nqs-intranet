@@ -21,6 +21,7 @@ export type Database = {
           duration_minutes: number | null
           exceptional_duration_minutes: number | null
           id: string
+          notified_at: string | null
           reason: string | null
           request_type: string
           review_note: string | null
@@ -36,6 +37,7 @@ export type Database = {
           duration_minutes?: number | null
           exceptional_duration_minutes?: number | null
           id?: string
+          notified_at?: string | null
           reason?: string | null
           request_type?: string
           review_note?: string | null
@@ -51,6 +53,7 @@ export type Database = {
           duration_minutes?: number | null
           exceptional_duration_minutes?: number | null
           id?: string
+          notified_at?: string | null
           reason?: string | null
           request_type?: string
           review_note?: string | null
