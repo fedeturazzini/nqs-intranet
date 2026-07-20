@@ -108,11 +108,22 @@ export async function GET(
 
   const messagesWithUrls = (messages ?? []).map((m) => {
     const imgs = Array.isArray(m.images) ? (m.images as unknown[]) : [];
-    const imageUrls = imgs
-      .filter((p): p is string => typeof p === "string")
-      .map((p) => signedByPath.get(p))
-      .filter((u): u is string => Boolean(u));
-    return { ...m, imageUrls, files: filesByMessage.get(m.id) };
+    // Los paths mezclan imágenes y PDFs; se distinguen por extensión. El
+    // nombre original del PDF no se persiste (solo el path uuid.pdf) → label
+    // genérico. Imágenes → imageUrls (como antes); PDFs → pdfAttachments.
+    const imageUrls: string[] = [];
+    const pdfAttachments: Array<{ url: string; name: string }> = [];
+    for (const p of imgs) {
+      if (typeof p !== "string") continue;
+      const url = signedByPath.get(p);
+      if (!url) continue;
+      if (p.toLowerCase().endsWith(".pdf")) {
+        pdfAttachments.push({ url, name: "documento.pdf" });
+      } else {
+        imageUrls.push(url);
+      }
+    }
+    return { ...m, imageUrls, pdfAttachments, files: filesByMessage.get(m.id) };
   });
 
   return NextResponse.json({

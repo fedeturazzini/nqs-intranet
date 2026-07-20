@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { showToast } from "@/lib/store/toast";
 import { useClaudeChat } from "@/lib/hooks/useClaudeChat";
+import type { PdfAttachment } from "@/lib/hooks/useClaudeChat";
 import { ChatInput } from "@/components/tool/ChatInput";
 import { ChatMessages } from "@/components/tool/ChatMessages";
 import { ConversationsSidebar } from "@/components/tool/ConversationsSidebar";
@@ -81,9 +82,19 @@ export function ClaudeView({
   );
 
   const onSend = useCallback(
-    async (prompt: string, imagePaths: string[], previews: string[]) => {
+    async (
+      prompt: string,
+      imagePaths: string[],
+      previews: string[],
+      pdfPreviews: PdfAttachment[],
+    ) => {
       const wasNew = chat.conversationId === null;
-      const result = await chat.sendMessage(prompt, imagePaths, previews);
+      const result = await chat.sendMessage(
+        prompt,
+        imagePaths,
+        previews,
+        pdfPreviews,
+      );
       if (!result.ok) {
         showToast({
           title: "ERROR",

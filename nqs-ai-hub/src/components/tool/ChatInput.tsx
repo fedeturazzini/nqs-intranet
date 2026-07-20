@@ -12,7 +12,7 @@
  *   - Drag-and-drop sobre cualquier parte del componente.
  *   - Click en 📎 abre el file picker.
  *   - Validación local antes de subir (tipo + tamaño).
- *   - Max 5 por mensaje (= MAX_IMAGES_PER_MESSAGE).
+ *   - Max 5 adjuntos por mensaje (= MAX_ATTACHMENTS). Imágenes o PDF.
  */
 import {
   useCallback,
@@ -26,12 +26,14 @@ import {
 import { showToast } from "@/lib/store/toast";
 import {
   ACCEPTED_MEDIA_TYPES,
-  MAX_IMAGES_PER_MESSAGE,
+  MAX_ATTACHMENTS,
   fileToPreviewUrl,
+  isPdfFile,
   uploadImages,
-  validateImage,
+  validateAttachment,
 } from "@/lib/utils/images";
 import { compressImageIfNeeded } from "@/lib/utils/image-compression";
+import type { PdfAttachment } from "@/lib/hooks/useClaudeChat";
 
 const TEXTAREA_MIN_ROWS = 1;
 const TEXTAREA_MAX_ROWS = 8;
@@ -41,6 +43,8 @@ type Attachment = {
   /** ID local para keys del React. */
   id: string;
   file: File;
+  kind: "image" | "pdf";
+  /** Imagen: data URL para el thumbnail. PDF: object URL para el iframe. */
   previewUrl: string;
 };
 
@@ -48,12 +52,14 @@ type ChatInputProps = Readonly<{
   isSending: boolean;
   /** Conversación actual — para armar el path de Storage. null = nueva. */
   conversationId: string | null;
-  /** `imagePaths` son paths de Storage ya subidos; `previews` son data
-   *  URLs locales para el render optimista. */
+  /** `imagePaths` = paths de Storage ya subidos (imágenes + PDFs, mixtos);
+   *  `previews` = data URLs de las imágenes; `pdfPreviews` = {url,name} de los
+   *  PDFs — todo para el render optimista. */
   onSend: (
     prompt: string,
     imagePaths: string[],
     previews: string[],
+    pdfPreviews: PdfAttachment[],
   ) => void;
   /** Aborta la respuesta en curso (botón "Detener" mientras streamea). */
   onStop: () => void;
@@ -96,43 +102,55 @@ export function ChatInput({
   const addFiles = useCallback(
     async (files: FileList | File[]) => {
       const arr = Array.from(files);
-      if (attachments.length + arr.length > MAX_IMAGES_PER_MESSAGE) {
+      if (attachments.length + arr.length > MAX_ATTACHMENTS) {
         showToast({
-          title: "DEMASIADAS IMÁGENES",
-          msg: `Máximo ${MAX_IMAGES_PER_MESSAGE} por mensaje.`,
+          title: "DEMASIADOS ADJUNTOS",
+          msg: `Máximo ${MAX_ATTACHMENTS} por mensaje.`,
           color: "var(--warn, #FFB800)",
         });
         return;
       }
-      // Compresión client-side (Web Worker): no bloquea la UI principal.
+      // Estado de "procesando" (compresión de imágenes en Web Worker). Los PDFs
+      // no se comprimen — se suben tal cual.
       setCompressing(true);
       try {
         const newAtts: Attachment[] = [];
         for (const file of arr) {
-          const validation = validateImage(file);
+          const validation = validateAttachment(file);
           if (!validation.ok) {
             showToast({
-              title: "IMAGEN INVÁLIDA",
+              title: "ADJUNTO INVÁLIDO",
               msg: validation.error,
               color: "var(--danger, #ff5c5c)",
             });
             continue;
           }
           try {
-            // Si pesa más del tope de salida, se comprime a ~4MB antes de subir.
-            const { file: processed, compressed, originalSizeMB, finalSizeMB } =
-              await compressImageIfNeeded(file);
-            if (compressed) {
-              console.log(
-                `[img] ${file.name}: ${originalSizeMB.toFixed(1)}MB → ${finalSizeMB.toFixed(1)}MB`,
-              );
+            if (isPdfFile(file)) {
+              // PDF: sin compresión. Object URL para la preview/iframe.
+              newAtts.push({
+                id: crypto.randomUUID(),
+                file,
+                kind: "pdf",
+                previewUrl: URL.createObjectURL(file),
+              });
+            } else {
+              // Imagen: se comprime/reescala a ~4MB / ≤1568px antes de subir.
+              const { file: processed, compressed, originalSizeMB, finalSizeMB } =
+                await compressImageIfNeeded(file);
+              if (compressed) {
+                console.log(
+                  `[img] ${file.name}: ${originalSizeMB.toFixed(1)}MB → ${finalSizeMB.toFixed(1)}MB`,
+                );
+              }
+              const previewUrl = await fileToPreviewUrl(processed);
+              newAtts.push({
+                id: crypto.randomUUID(),
+                file: processed,
+                kind: "image",
+                previewUrl,
+              });
             }
-            const previewUrl = await fileToPreviewUrl(processed);
-            newAtts.push({
-              id: crypto.randomUUID(),
-              file: processed,
-              previewUrl,
-            });
           } catch {
             showToast({
               title: "ERROR",
@@ -152,16 +170,21 @@ export function ChatInput({
   );
 
   function removeAttachment(id: string) {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
+    setAttachments((prev) => {
+      const gone = prev.find((a) => a.id === id);
+      // Liberar el object URL del PDF (las imágenes usan data URL, no hace falta).
+      if (gone?.kind === "pdf") URL.revokeObjectURL(gone.previewUrl);
+      return prev.filter((a) => a.id !== id);
+    });
   }
 
   async function handleSend() {
     const trimmed = text.trim();
     if (!trimmed || isSending || uploading || compressing) return;
 
-    // Subimos las imágenes a Storage ANTES de mandar el mensaje. El
-    // execute recibe los paths, no los bytes (esquiva el límite de
-    // body de Vercel). Si la subida falla, no enviamos.
+    // Subimos los adjuntos a Storage ANTES de mandar el mensaje. El execute
+    // recibe los paths (mixtos: imágenes + PDFs), no los bytes (esquiva el
+    // límite de body de Vercel). Si la subida falla, no enviamos.
     let imagePaths: string[] = [];
     if (attachments.length > 0) {
       setUploading(true);
@@ -173,7 +196,7 @@ export function ChatInput({
       } catch (err) {
         showToast({
           title: "ERROR AL SUBIR",
-          msg: err instanceof Error ? err.message : "no pude subir las imágenes",
+          msg: err instanceof Error ? err.message : "no pude subir los adjuntos",
           color: "var(--danger, #ff5c5c)",
         });
         setUploading(false);
@@ -182,8 +205,13 @@ export function ChatInput({
       setUploading(false);
     }
 
-    const previews = attachments.map((a) => a.previewUrl);
-    onSend(trimmed, imagePaths, previews);
+    const imagePreviews = attachments
+      .filter((a) => a.kind === "image")
+      .map((a) => a.previewUrl);
+    const pdfPreviews: PdfAttachment[] = attachments
+      .filter((a) => a.kind === "pdf")
+      .map((a) => ({ url: a.previewUrl, name: a.file.name }));
+    onSend(trimmed, imagePaths, imagePreviews, pdfPreviews);
     setText("");
     setAttachments([]);
   }
@@ -254,22 +282,52 @@ export function ChatInput({
               key={a.id}
               style={{
                 position: "relative",
-                width: 60,
                 height: 60,
+                width: a.kind === "pdf" ? "auto" : 60,
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={a.previewUrl}
-                alt={a.file.name}
-                style={{
-                  width: 60,
-                  height: 60,
-                  objectFit: "cover",
-                  borderRadius: 8,
-                  border: "1px solid var(--line-strong)",
-                }}
-              />
+              {a.kind === "image" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={a.previewUrl}
+                  alt={a.file.name}
+                  style={{
+                    width: 60,
+                    height: 60,
+                    objectFit: "cover",
+                    borderRadius: 8,
+                    border: "1px solid var(--line-strong)",
+                  }}
+                />
+              ) : (
+                // Chip de PDF (no hay miniatura de imagen).
+                <div
+                  title={a.file.name}
+                  style={{
+                    height: 60,
+                    maxWidth: 180,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "0 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--line-strong)",
+                    background: "var(--bg-elev)",
+                  }}
+                >
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {a.file.name}
+                  </span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => removeAttachment(a.id)}
@@ -308,7 +366,7 @@ export function ChatInput({
             fontFamily: "var(--mono)",
           }}
         >
-          ⏳ optimizando imagen…
+          ⏳ procesando adjunto…
         </div>
       )}
 
@@ -316,9 +374,9 @@ export function ChatInput({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          // FEEDBACK Chule: hasta 30MB con compresión automática.
-          title="Adjuntar imagen · Hasta 30MB. Se comprimen automáticamente. Mismas limitaciones que Claude online."
-          aria-label="Adjuntar imagen. Hasta 30MB por imagen, se comprimen automáticamente, mismas limitaciones que Claude online."
+          // Imágenes (hasta 30MB, se comprimen) o PDF (hasta 32MB).
+          title="Adjuntar imagen o PDF · Imágenes hasta 30MB (se comprimen); PDF hasta 32MB. Claude lee el PDF."
+          aria-label="Adjuntar imagen o PDF. Imágenes hasta 30MB (se comprimen automáticamente); PDF hasta 32MB."
           style={{
             background: "transparent",
             border: 0,
@@ -345,7 +403,7 @@ export function ChatInput({
           onKeyDown={onKeyDown}
           placeholder={
             isDragging
-              ? "soltá las imágenes acá…"
+              ? "soltá los archivos acá…"
               : "Escribí tu mensaje… (Enter para enviar, Shift+Enter para nueva línea)"
           }
           disabled={isSending}

@@ -19,6 +19,7 @@ import {
   ArtifactGeneratingPlaceholder,
 } from "@/components/chat/ArtifactCard";
 import { FileCard } from "@/components/chat/FileCard";
+import { UploadedPdfCard } from "@/components/chat/UploadedPdfCard";
 import {
   parseMessageWithArtifacts,
   hasIncompleteArtifact,
@@ -135,6 +136,8 @@ function MessageBubble({
 
   // FEEDBACK NQS v2.0 (Part 6): visor de imágenes en grande.
   const images = msg.imagePreviews ?? [];
+  // PDFs adjuntos del user → cards (no <img>).
+  const pdfs = msg.pdfAttachments ?? [];
   const [lightbox, setLightbox] = useState<{ open: boolean; index: number }>({
     open: false,
     index: 0,
@@ -245,6 +248,21 @@ function MessageBubble({
                   cursor: "zoom-in",
                 }}
               />
+            ))}
+          </div>
+        )}
+
+        {pdfs.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
+            {pdfs.map((p, i) => (
+              <UploadedPdfCard key={i} url={p.url} name={p.name} />
             ))}
           </div>
         )}

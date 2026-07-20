@@ -29,7 +29,9 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const MAX_PROMPT_CHARS = 10_000;
-const MAX_IMAGES = 5;
+// Máximo de adjuntos por mensaje (imágenes + PDFs). `imagePaths` lleva paths
+// mixtos; el adapter decide el tipo de bloque por la extensión.
+const MAX_ATTACHMENTS = 5;
 
 // Las imágenes ya viajaron a Storage (vía /upload-url). Acá solo
 // recibimos los PATHS — el adapter valida ownership y genera signed
@@ -37,7 +39,7 @@ const MAX_IMAGES = 5;
 // límite de 4.5MB de Vercel.
 const ExecuteSchema = z.object({
   prompt: z.string().min(1).max(MAX_PROMPT_CHARS),
-  imagePaths: z.array(z.string().min(1).max(500)).max(MAX_IMAGES).optional(),
+  imagePaths: z.array(z.string().min(1).max(500)).max(MAX_ATTACHMENTS).optional(),
   conversationId: z.string().uuid().optional(),
 });
 

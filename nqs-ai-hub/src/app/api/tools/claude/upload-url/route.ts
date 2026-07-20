@@ -18,7 +18,13 @@ import { getSession } from "@/lib/auth/server";
 import { requireToolAccess } from "@/lib/middleware/permissions";
 import { createUploadTargets } from "@/lib/storage/claude-uploads";
 
-const ACCEPTED = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+const ACCEPTED = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+] as const;
 
 const BodySchema = z.object({
   mediaTypes: z.array(z.enum(ACCEPTED)).min(1).max(5),

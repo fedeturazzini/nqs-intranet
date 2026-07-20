@@ -263,12 +263,13 @@ export const claudeAdapter: ToolAdapter = {
       );
       const signed =
         imagePaths.length > 0 ? await signDownloadUrls(imagePaths) : [];
-      const imageUrls = signed.map((s) => s.url);
 
-      // Mensaje del user actual (texto + imágenes).
+      // Mensaje del user actual (texto + adjuntos). `signed` son pares
+      // { path, url }: buildUserContent decide image vs document por la
+      // extensión del path (.pdf → document).
       messages.push({
         role: "user",
-        content: buildUserContent(params.prompt, imageUrls),
+        content: buildUserContent(params.prompt, signed),
       });
 
       // 3. Anthropic.

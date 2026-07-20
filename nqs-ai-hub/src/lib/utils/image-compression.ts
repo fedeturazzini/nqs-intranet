@@ -15,7 +15,7 @@
  * reescala de su lado las imágenes >~1568px al lado largo para los modelos en
  * uso, así que capear acá no pierde calidad real y ahorra tokens.
  *
- * El tope de entrada (30MB) lo valida `validateImage` en `images.ts`.
+ * El tope de entrada lo valida `validateAttachment` en `images.ts`.
  */
 import imageCompression from "browser-image-compression";
 
@@ -66,6 +66,13 @@ export async function compressImageIfNeeded(
   file: File,
 ): Promise<CompressResult> {
   const originalSizeMB = file.size / (1024 * 1024);
+
+  // Solo comprimimos imágenes. Un PDF (u otro no-imagen) se sube tal cual —
+  // browser-image-compression rompería con un archivo que no es imagen.
+  if (!file.type.startsWith("image/")) {
+    return { file, compressed: false, originalSizeMB, finalSizeMB: originalSizeMB };
+  }
+
   const dims = await readDimensions(file);
 
   const tooHeavy = originalSizeMB > MAX_OUTPUT_SIZE_MB;

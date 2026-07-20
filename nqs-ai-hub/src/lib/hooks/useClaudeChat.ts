@@ -35,6 +35,12 @@ export type ChatFile = {
   mediaType: string;
 };
 
+/** PDF adjunto por el user a un mensaje (signed URL ya resuelta + nombre). */
+export type PdfAttachment = {
+  url: string;
+  name: string;
+};
+
 /** Mensaje tal como lo renderea la UI. */
 export type ChatMessage = {
   /** ID DB cuando existe, o "local-…" para optimistic. */
@@ -43,6 +49,8 @@ export type ChatMessage = {
   content: string;
   /** Solo en mensajes del user que adjuntaron imágenes (data URLs para preview). */
   imagePreviews?: string[];
+  /** PDFs que adjuntó el user a este mensaje (se muestran como card). */
+  pdfAttachments?: PdfAttachment[];
   /** Archivos generados por Claude adjuntos a este mensaje (assistant). */
   files?: ChatFile[];
   tokensInput?: number;
@@ -86,8 +94,10 @@ type ConversationDetailResponse = {
     content: string;
     tokens_input: number | null;
     tokens_output: number | null;
-    /** Signed download URLs (1h) generadas por el endpoint. */
+    /** Signed download URLs (1h) de las IMÁGENES del mensaje. */
     imageUrls?: string[];
+    /** PDFs adjuntos del mensaje (signed URL + nombre), re-firmados. */
+    pdfAttachments?: PdfAttachment[];
     /** Archivos generados (claude_files) asociados a este mensaje. */
     files?: ChatFile[];
   }>;
@@ -134,6 +144,10 @@ export function useClaudeChat() {
           tokensOutput: m.tokens_output ?? undefined,
           imagePreviews:
             m.imageUrls && m.imageUrls.length > 0 ? m.imageUrls : undefined,
+          pdfAttachments:
+            m.pdfAttachments && m.pdfAttachments.length > 0
+              ? m.pdfAttachments
+              : undefined,
           files: m.files && m.files.length > 0 ? m.files : undefined,
         })),
       );
@@ -153,6 +167,7 @@ export function useClaudeChat() {
       prompt: string,
       imagePaths: string[],
       imagePreviews: string[],
+      pdfPreviews: PdfAttachment[] = [],
     ): Promise<{ ok: true; conversationId: string } | { ok: false; error: string }> => {
       const userMsgId = `local-${crypto.randomUUID()}`;
       const pendingMsgId = `local-${crypto.randomUUID()}`;
@@ -165,6 +180,7 @@ export function useClaudeChat() {
           role: "user",
           content: prompt,
           imagePreviews: imagePreviews.length > 0 ? imagePreviews : undefined,
+          pdfAttachments: pdfPreviews.length > 0 ? pdfPreviews : undefined,
         },
         {
           id: pendingMsgId,

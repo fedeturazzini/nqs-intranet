@@ -101,8 +101,8 @@ describe("buildUserContent", () => {
 
   test("imágenes ANTES del texto, como source url", () => {
     const blocks = buildUserContent("describí esto", [
-      "https://signed/img1.png",
-      "https://signed/img2.png",
+      { path: "user_x/c/img1.png", url: "https://signed/img1.png" },
+      { path: "user_x/c/img2.png", url: "https://signed/img2.png" },
     ]);
     // 2 imágenes + 1 texto, en ese orden.
     expect(blocks).toHaveLength(3);
@@ -115,5 +115,22 @@ describe("buildUserContent", () => {
       source: { type: "url", url: "https://signed/img2.png" },
     });
     expect(blocks[2]).toEqual({ type: "text", text: "describí esto" });
+  });
+
+  test("el .pdf va como bloque document; la imagen como image", () => {
+    const blocks = buildUserContent("resumí", [
+      { path: "user_x/c/a.jpg", url: "https://signed/a.jpg" },
+      { path: "user_x/c/b.pdf", url: "https://signed/b.pdf" },
+    ]);
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]).toEqual({
+      type: "image",
+      source: { type: "url", url: "https://signed/a.jpg" },
+    });
+    expect(blocks[1]).toEqual({
+      type: "document",
+      source: { type: "url", url: "https://signed/b.pdf" },
+    });
+    expect(blocks[2]).toEqual({ type: "text", text: "resumí" });
   });
 });

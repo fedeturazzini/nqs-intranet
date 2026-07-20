@@ -4,7 +4,7 @@
  * Helpers de imágenes para el wrapper de Claude.
  *
  * Flujo de upload (cliente → Storage directo, sin pasar por Vercel):
- *   1. `validateImage(file)` — tipo + tamaño (≤30MB, se comprime al subir).
+ *   1. `validateAttachment(file)` — tipo (imagen o PDF) + tamaño.
  *   2. `uploadImages(files, conversationId)`:
  *        a. pide signed upload URLs a /api/tools/claude/upload-url
  *        b. sube cada file directo a Supabase Storage con la signed URL
@@ -14,34 +14,49 @@
  */
 import { createBrowserClient } from "@/lib/db/supabase";
 
-// 30 MB = tope de ENTRADA que el user puede seleccionar (como Claude online).
-// Antes de subir, `compressImageIfNeeded` comprime las grandes a ~4MB
-// (Anthropic acepta hasta 5MB/imagen).
+// 30 MB = tope de ENTRADA de imágenes (como Claude online). Antes de subir,
+// `compressImageIfNeeded` comprime las grandes a ~4MB (Anthropic acepta 5MB/img).
 export const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
-export const MAX_IMAGES_PER_MESSAGE = 5;
+// PDF: límite de Anthropic (32 MB por request). Los PDFs NO se comprimen.
+export const MAX_PDF_BYTES = 32 * 1024 * 1024;
+/** Máximo de adjuntos por mensaje (imágenes + PDFs, contados juntos). */
+export const MAX_ATTACHMENTS = 5;
 export const ACCEPTED_MEDIA_TYPES = [
   "image/jpeg",
   "image/png",
   "image/gif",
   "image/webp",
+  "application/pdf",
 ] as const;
 export type AcceptedMediaType = (typeof ACCEPTED_MEDIA_TYPES)[number];
 const CLAUDE_UPLOADS_BUCKET = "claude-uploads";
 
+/** True si el archivo (o path) es un PDF. */
+export function isPdfFile(file: File): boolean {
+  return file.type === "application/pdf";
+}
+/** True si el path guardado corresponde a un PDF (por extensión). */
+export function isPdfPath(path: string): boolean {
+  return path.toLowerCase().endsWith(".pdf");
+}
+
 export type ValidateResult = { ok: true } | { ok: false; error: string };
 
-export function validateImage(file: File): ValidateResult {
+/** Valida un adjunto (imagen o PDF): tipo aceptado + tamaño según el tipo. */
+export function validateAttachment(file: File): ValidateResult {
   if (!ACCEPTED_MEDIA_TYPES.includes(file.type as AcceptedMediaType)) {
     return {
       ok: false,
-      error: `${file.name}: tipo no soportado (solo JPG, PNG, GIF, WebP)`,
+      error: `${file.name}: tipo no soportado (solo JPG, PNG, GIF, WebP o PDF)`,
     };
   }
-  if (file.size > MAX_IMAGE_BYTES) {
+  const pdf = isPdfFile(file);
+  const limitBytes = pdf ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
+  if (file.size > limitBytes) {
     const mb = (file.size / (1024 * 1024)).toFixed(1);
     return {
       ok: false,
-      error: `${file.name}: ${mb} MB excede el límite de 30 MB`,
+      error: `${file.name}: ${mb} MB excede el límite de ${pdf ? "32 MB" : "30 MB"}`,
     };
   }
   return { ok: true };
@@ -65,11 +80,11 @@ export async function uploadImages(
 
   // Validación local (defensa además de la del modal).
   for (const f of files) {
-    const v = validateImage(f);
+    const v = validateAttachment(f);
     if (!v.ok) throw new Error(v.error);
   }
-  if (files.length > MAX_IMAGES_PER_MESSAGE) {
-    throw new Error(`máximo ${MAX_IMAGES_PER_MESSAGE} imágenes por mensaje`);
+  if (files.length > MAX_ATTACHMENTS) {
+    throw new Error(`máximo ${MAX_ATTACHMENTS} adjuntos por mensaje`);
   }
 
   // 1) pedir signed upload URLs (una por file, en orden)

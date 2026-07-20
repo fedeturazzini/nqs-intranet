@@ -383,21 +383,27 @@ export async function downloadGeneratedFile(
 // buildUserContent — helper para armar el content multimodal
 // ============================================================
 
+/** Adjunto ya subido: su path en Storage (define el tipo) + la signed URL. */
+export type UserAttachment = { path: string; url: string };
+
 export function buildUserContent(
   prompt: string,
-  imageUrls?: string[],
+  attachments?: UserAttachment[],
 ): Anthropic.Messages.ContentBlockParam[] {
   const blocks: Anthropic.Messages.ContentBlockParam[] = [];
-  if (imageUrls && imageUrls.length > 0) {
-    // Convención de la API: imágenes ANTES del texto da mejores
-    // resultados (Anthropic lo recomienda en sus docs de vision).
-    // Usamos `source: { type: "url" }` con signed download URLs de
-    // Supabase Storage — Anthropic las descarga server-side.
-    for (const url of imageUrls) {
-      blocks.push({
-        type: "image",
-        source: { type: "url", url },
-      });
+  if (attachments && attachments.length > 0) {
+    // Convención de la API: los adjuntos ANTES del texto dan mejores
+    // resultados (Anthropic lo recomienda para vision y documentos).
+    // Todo va con `source: { type: "url" }` (signed URL de Supabase, que
+    // Anthropic descarga server-side). El tipo de bloque sale de la
+    // extensión del path: .pdf → `document`; el resto → `image`. El source
+    // url NO necesita `media_type` (solo lo pide el source base64).
+    for (const { path, url } of attachments) {
+      if (path.toLowerCase().endsWith(".pdf")) {
+        blocks.push({ type: "document", source: { type: "url", url } });
+      } else {
+        blocks.push({ type: "image", source: { type: "url", url } });
+      }
     }
   }
   blocks.push({ type: "text", text: prompt });
