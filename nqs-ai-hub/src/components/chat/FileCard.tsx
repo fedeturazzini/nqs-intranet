@@ -15,7 +15,7 @@
  * Reusa las clases `artifact-card*` para verse igual que la card de artifacts.
  */
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { PdfViewerModal } from "@/components/chat/PdfViewerModal";
 import { showToast } from "@/lib/store/toast";
 import type { ChatFile } from "@/lib/hooks/useClaudeChat";
 
@@ -68,32 +68,31 @@ export function FileCard({ file }: Readonly<{ file: ChatFile }>) {
       </div>
 
       {preview && isPdf && (
-        <PdfPreviewModal file={file} onClose={() => setPreview(false)} />
+        <GeneratedPdfPreview file={file} onClose={() => setPreview(false)} />
       )}
     </>
   );
 }
 
 // ============================================================
-// Visor de PDF (modal embebido)
+// Preview de un PDF GENERADO: pide la signed URL inline y la pasa al visor
+// compartido (PdfViewerModal). Los PDFs generados viven en `claude_files`, así
+// que la URL sale del endpoint con guard de ownership.
 // ============================================================
-
-function PdfPreviewModal({
+function GeneratedPdfPreview({
   file,
   onClose,
 }: Readonly<{ file: ChatFile; onClose: () => void }>) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
-  // Pide la signed URL INLINE (renderiza embebido, no descarga) al abrir.
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch(
-          `/api/tools/claude/files/${file.id}?inline=1`,
-          { cache: "no-store" },
-        );
+        const res = await fetch(`/api/tools/claude/files/${file.id}?inline=1`, {
+          cache: "no-store",
+        });
         const data = (await res.json().catch(() => ({}))) as { url?: string };
         if (!alive) return;
         if (!res.ok || !data.url) {
@@ -110,93 +109,14 @@ function PdfPreviewModal({
     };
   }, [file.id]);
 
-  // Escape cierra.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <div className="modal-bd" onClick={onClose}>
-      <div
-        className="modal"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(940px, 94vw)",
-          maxWidth: "94vw",
-          height: "88vh",
-          display: "flex",
-          flexDirection: "column",
-          padding: 0,
-          overflow: "hidden",
-        }}
-      >
-        <div className="modal-hd" style={{ padding: "12px 16px" }}>
-          <div style={{ minWidth: 0 }}>
-            <div className="t-eyebrow">↳ VISTA PREVIA</div>
-            <div
-              className="artifact-preview-title"
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {file.name}
-            </div>
-          </div>
-          <div className="row" style={{ gap: 6, flexShrink: 0 }}>
-            <button
-              type="button"
-              className="artifact-btn"
-              onClick={() => triggerDownload(file.id)}
-            >
-              ↓ descargar
-            </button>
-            <button type="button" className="btn ghost" onClick={onClose}>
-              esc ✕
-            </button>
-          </div>
-        </div>
-
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            background: "var(--bg, #f4f1ea)",
-            display: "flex",
-          }}
-        >
-          {error ? (
-            <div
-              className="t-meta dim"
-              style={{ margin: "auto", padding: 24, textAlign: "center" }}
-            >
-              No pude cargar la vista previa. Descargá el archivo para verlo.
-            </div>
-          ) : url ? (
-            <iframe
-              src={url}
-              title={file.name}
-              style={{ width: "100%", height: "100%", border: "none" }}
-            />
-          ) : (
-            <div
-              className="t-meta dim pulse"
-              style={{ margin: "auto", padding: 24, textAlign: "center" }}
-            >
-              Cargando vista previa…
-            </div>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body,
+  return (
+    <PdfViewerModal
+      url={url}
+      name={file.name}
+      error={error}
+      onClose={onClose}
+      onDownload={() => triggerDownload(file.id)}
+    />
   );
 }
 

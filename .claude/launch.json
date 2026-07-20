@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "next-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "nqs-ai-hub", "run", "dev", "--", "-p", "3210"],
+      "port": 3210
+    }
+  ]
+}

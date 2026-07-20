@@ -28,6 +28,7 @@ const EXT_BY_MEDIA: Record<string, string> = {
   "image/png": "png",
   "image/gif": "gif",
   "image/webp": "webp",
+  "application/pdf": "pdf",
 };
 
 export type UploadTarget = {
