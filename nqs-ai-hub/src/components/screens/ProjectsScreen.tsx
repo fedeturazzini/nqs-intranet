@@ -53,10 +53,10 @@ export function ProjectsScreen({
   // migration 0016: proyecto privado bloqueado que está pidiendo contraseña.
   const [gateFor, setGateFor] = useState<ProjectCardData | null>(null);
 
-  // Click en una card: si el proyecto está bloqueado (privado sin gate), abrimos
-  // el modal de contraseña; si no, entra directo como siempre.
+  // Click en una card: proyecto privado → siempre pide contraseña al entrar;
+  // proyecto abierto → entra directo.
   function handleOpen(p: ProjectCardData) {
-    if (p.locked) {
+    if (p.isPrivate) {
       setGateFor(p);
       return;
     }

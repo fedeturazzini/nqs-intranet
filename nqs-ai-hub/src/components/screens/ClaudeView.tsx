@@ -47,10 +47,9 @@ export function ClaudeView({
     initialProject,
   );
   const [switching, setSwitching] = useState(false);
-  // migration 0016: proyecto privado esperando contraseña + ids desbloqueados en
-  // esta sesión (para no re-pedir la clave al volver dentro de los 30 min).
+  // migration 0016: proyecto privado esperando contraseña al entrar.
+  // Se pide en cada switch hacia un privado (la cookie se limpia al salir).
   const [gateProject, setGateProject] = useState<ProjectLite | null>(null);
-  const [unlockedIds, setUnlockedIds] = useState<Set<string>>(() => new Set());
 
   const firstName = user.name.split(" ")[0] ?? user.name;
 
@@ -93,19 +92,18 @@ export function ClaudeView({
     [activeProject, chat],
   );
 
-  // Entrada al cambio de proyecto: si el destino es privado y está bloqueado (y
-  // no lo desbloqueó en esta sesión), pide la contraseña ANTES de entrar.
+  // Entrada al cambio de proyecto: destino privado → siempre pide contraseña.
   const switchProject = useCallback(
     (project: ProjectLite) => {
       if (switching) return;
       if (activeProject?.id === project.id) return; // ya activo
-      if (project.isPrivate && project.locked && !unlockedIds.has(project.id)) {
+      if (project.isPrivate) {
         setGateProject(project);
         return;
       }
       void doSwitch(project);
     },
-    [activeProject, switching, unlockedIds, doSwitch],
+    [activeProject, switching, doSwitch],
   );
 
   const onSend = useCallback(
@@ -150,7 +148,6 @@ export function ClaudeView({
       projectName={gateProject.name}
       onUnlocked={() => {
         const p = gateProject;
-        setUnlockedIds((prev) => new Set(prev).add(p.id));
         setGateProject(null);
         void doSwitch(p);
       }}

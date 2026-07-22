@@ -53,8 +53,8 @@ describe("verifyProjectGateToken", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
     const token = mintProjectGateToken(PID, 1);
-    // Avanzamos más de los 30 min de TTL.
-    vi.setSystemTime(new Date("2026-01-01T00:31:00Z"));
+    // Avanzamos más de los 15 min de TTL.
+    vi.setSystemTime(new Date("2026-01-01T00:16:00Z"));
     expect(verifyProjectGateToken(token, PID, 1)).toBe(false);
   });
 
@@ -68,5 +68,41 @@ describe("verifyProjectGateToken", () => {
 describe("projectGateCookieName", () => {
   test("incluye el projectId (una cookie por proyecto)", () => {
     expect(projectGateCookieName(PID)).toBe(`pg_${PID}`);
+  });
+});
+
+describe("projectGateCookieOptions", () => {
+  test("maxAge 0 limpia la cookie con los mismos flags", async () => {
+    const { projectGateCookieOptions } = await import("@/lib/auth/project-gate");
+    const opts = projectGateCookieOptions(0);
+    expect(opts).toMatchObject({
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
+  });
+});
+
+describe("clearAllProjectGateCookies", () => {
+  test("limpia solo cookies con prefijo pg_", async () => {
+    const { clearAllProjectGateCookies, projectGateCookieName } =
+      await import("@/lib/auth/project-gate");
+
+    const set = vi.fn();
+    const res = { cookies: { set } } as unknown as import("next/server").NextResponse;
+    const other = "session_other";
+
+    clearAllProjectGateCookies(res, [
+      { name: projectGateCookieName(PID) },
+      { name: other },
+      { name: `pg_22222222-2222-2222-2222-222222222222` },
+    ]);
+
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(set.mock.calls.every((c) => String(c[0]).startsWith("pg_"))).toBe(
+      true,
+    );
+    expect(set.mock.calls.every((c) => c[2]?.maxAge === 0)).toBe(true);
   });
 });

@@ -3,8 +3,9 @@
  *
  * Gate de un proyecto PRIVADO (migration 0016). Body: { password }.
  * bcrypt.compare contra projects.password_hash. Si coincide, setea la cookie
- * httpOnly de gate (30 min) firmada con { projectId, gateVersion } y devuelve
- * { success: true }.
+ * httpOnly de gate (15 min) firmada con { projectId, gateVersion } y devuelve
+ * { success: true }. Al salir del proyecto o cerrar sesión la cookie se limpia
+ * para que la próxima entrada vuelva a pedir la clave.
  *
  *   - Proyecto abierto o inexistente → 400 (no hay nada que desbloquear).
  *   - Password incorrecta → 401 genérico.
@@ -21,6 +22,7 @@ import {
   PROJECT_GATE_TTL_SECONDS,
   mintProjectGateToken,
   projectGateCookieName,
+  projectGateCookieOptions,
 } from "@/lib/auth/project-gate";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -75,18 +77,11 @@ export async function POST(
     return NextResponse.json({ success: false }, { status: 401 });
   }
 
-  const isProd = process.env.NODE_ENV === "production";
   const res = NextResponse.json({ success: true });
   res.cookies.set(
     projectGateCookieName(project.id),
     mintProjectGateToken(project.id, project.gate_version),
-    {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
-      path: "/",
-      maxAge: PROJECT_GATE_TTL_SECONDS,
-    },
+    projectGateCookieOptions(PROJECT_GATE_TTL_SECONDS),
   );
   return res;
 }

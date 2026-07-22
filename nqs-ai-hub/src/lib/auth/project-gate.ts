@@ -2,22 +2,30 @@
  * Gate de acceso a PROYECTOS PRIVADOS (migration 0016).
  *
  * Mismo patrón que el System Brain (`src/lib/auth/brain.ts`): contraseña bcrypt
- * + cookie httpOnly firmada con HMAC(`ENCRYPTION_KEY`), TTL 30 min. La
+ * + cookie httpOnly firmada con HMAC(`ENCRYPTION_KEY`), TTL 15 min. La
  * diferencia clave: la cookie lleva `{ projectId, gateVersion }` EN LA FIRMA, y
  * el server valida que `gateVersion` coincida con `projects.gate_version`.
  * Cambiar la contraseña o pasar el proyecto a abierto hace `gate_version++` →
  * las cookies viejas dejan de validar solas (una cookie httpOnly no se puede
- * borrar desde el server).
+ * borrar desde el server sin setear maxAge=0).
+ *
+ * Se limpia la cookie al salir del proyecto (POST /api/me/active-project a otro
+ * id) y al cerrar sesión (POST /api/auth/logout), para que la próxima entrada
+ * vuelva a pedir clave.
  *
  * Feature independiente del Brain: sólo calca el patrón, no comparte datos.
  * Server-only.
  */
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import type { NextResponse } from "next/server";
 import { getProjectGateFields } from "@/lib/db/queries/projects";
 
-const TTL_MS = 30 * 60 * 1000; // 30 minutos (igual que el Brain)
+const TTL_MS = 15 * 60 * 1000; // 15 minutos — vigencia mientras se usa el proyecto
 export const PROJECT_GATE_TTL_SECONDS = Math.floor(TTL_MS / 1000);
+
+/** Prefijo de cookies de gate (`pg_{projectId}`). */
+export const PROJECT_GATE_COOKIE_PREFIX = "pg_";
 
 function secret(): string {
   return process.env.ENCRYPTION_KEY ?? "nqs-brain-fallback-secret";
@@ -25,7 +33,24 @@ function secret(): string {
 
 /** Nombre de la cookie del gate de un proyecto (una cookie por proyecto). */
 export function projectGateCookieName(projectId: string): string {
-  return `pg_${projectId}`;
+  return `${PROJECT_GATE_COOKIE_PREFIX}${projectId}`;
+}
+
+/** Flags comunes de la cookie de gate (set / clear). */
+export function projectGateCookieOptions(maxAge: number): {
+  httpOnly: true;
+  secure: boolean;
+  sameSite: "lax";
+  path: "/";
+  maxAge: number;
+} {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge,
+  };
 }
 
 /**
@@ -91,4 +116,26 @@ export async function hasProjectGate(projectId: string): Promise<boolean> {
   const store = await cookies();
   const token = store.get(projectGateCookieName(projectId))?.value;
   return verifyProjectGateToken(token, projectId, fields.gate_version);
+}
+
+/** Invalida la cookie de gate de un proyecto (maxAge=0). */
+export function clearProjectGateCookie(
+  res: NextResponse,
+  projectId: string,
+): void {
+  res.cookies.set(projectGateCookieName(projectId), "", projectGateCookieOptions(0));
+}
+
+/**
+ * Invalida todas las cookies `pg_*` presentes en el request (p.ej. al logout).
+ */
+export function clearAllProjectGateCookies(
+  res: NextResponse,
+  requestCookies: Iterable<{ name: string }>,
+): void {
+  for (const c of requestCookies) {
+    if (c.name.startsWith(PROJECT_GATE_COOKIE_PREFIX)) {
+      res.cookies.set(c.name, "", projectGateCookieOptions(0));
+    }
+  }
 }

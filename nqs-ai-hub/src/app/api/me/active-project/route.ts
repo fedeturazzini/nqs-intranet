@@ -5,10 +5,17 @@
  * POST → cambiar el proyecto activo. Body: { project_id }.
  *
  * Valida que el project exista y esté activo antes de setearlo.
+ * Si el destino es privado, exige cookie de gate válida.
+ * Al salir de un proyecto privado, limpia su cookie de gate para que la
+ * próxima entrada vuelva a pedir la contraseña.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/server";
+import {
+  clearProjectGateCookie,
+  hasProjectGate,
+} from "@/lib/auth/project-gate";
 import {
   getActiveProjectForUser,
   getProjectById,
@@ -54,6 +61,28 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  if (project.is_private && !(await hasProjectGate(project.id))) {
+    return NextResponse.json(
+      {
+        error: "project_locked",
+        message: "Este proyecto es privado. Ingresá la contraseña para usarlo.",
+      },
+      { status: 403 },
+    );
+  }
+
+  const previous = await getActiveProjectForUser(session.userId);
+
   await setActiveProject(session.userId, project.id);
-  return NextResponse.json({ ok: true, project });
+
+  const res = NextResponse.json({ ok: true, project });
+  // Al salir de un privado distinto, invalidar su cookie de gate.
+  if (
+    previous &&
+    previous.is_private &&
+    previous.id !== project.id
+  ) {
+    clearProjectGateCookie(res, previous.id);
+  }
+  return res;
 }
