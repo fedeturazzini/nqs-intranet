@@ -17,16 +17,25 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const PatchSchema = z.object({
-  name: z.string().trim().min(1).max(120).optional(),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Poné un nombre para el proyecto.")
+    .max(120, "El nombre es muy largo (máx. 120 caracteres).")
+    .optional(),
   slug: z
     .string()
     .trim()
-    .min(1)
-    .max(80)
-    .regex(/^[a-z0-9-]+$/, "slug: solo minúsculas, números y guiones")
+    .min(1, "El slug no puede quedar vacío.")
+    .max(80, "El slug es muy largo (máx. 80 caracteres).")
+    .regex(/^[a-z0-9-]+$/, "El slug solo admite minúsculas, números y guiones.")
     .optional(),
-  description: z.string().max(500).nullable().optional(),
-  icon: z.string().max(16).nullable().optional(),
+  description: z
+    .string()
+    .max(500, "La descripción es muy larga (máx. 500 caracteres).")
+    .nullable()
+    .optional(),
+  icon: z.string().max(16, "El ícono es muy largo.").nullable().optional(),
   is_active: z.boolean().optional(),
   // Privacidad (migration 0016). Lógica de transiciones en el handler; un
   // cambio de clave sin tocar is_private va por el endpoint /change-password.

@@ -24,18 +24,31 @@ export async function GET(): Promise<NextResponse> {
 }
 
 const CreateSchema = z.object({
-  name: z.string().trim().min(1).max(120),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Poné un nombre para el proyecto.")
+    .max(120, "El nombre es muy largo (máx. 120 caracteres)."),
   slug: z
     .string()
     .trim()
-    .min(1)
-    .max(80)
-    .regex(/^[a-z0-9-]+$/, "slug: solo minúsculas, números y guiones"),
-  description: z.string().max(500).optional(),
-  icon: z.string().max(16).optional(),
+    .min(1, "El slug no puede quedar vacío.")
+    .max(80, "El slug es muy largo (máx. 80 caracteres).")
+    .regex(/^[a-z0-9-]+$/, "El slug solo admite minúsculas, números y guiones."),
+  // description/icon son opcionales: vacío llega como null desde el modal.
+  description: z
+    .string()
+    .max(500, "La descripción es muy larga (máx. 500 caracteres).")
+    .nullable()
+    .optional(),
+  icon: z.string().max(16, "El ícono es muy largo.").nullable().optional(),
   // Privacidad (migration 0016). Si is_private=true, `password` es obligatorio.
   is_private: z.boolean().optional().default(false),
-  password: z.string().min(8).max(200).optional(),
+  password: z
+    .string()
+    .min(8, "La contraseña necesita al menos 8 caracteres.")
+    .max(200, "La contraseña es demasiado larga.")
+    .optional(),
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
