@@ -12,12 +12,17 @@
  *
  * En Next 16 `params` viene como Promise.
  */
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ClaudeView } from "@/components/screens/ClaudeView";
 import { ProjectPasswordGate } from "@/components/screens/ProjectPasswordGate";
 import { requireAuth } from "@/lib/auth/server";
 import { canUseTool } from "@/lib/middleware/permissions";
-import { hasProjectGate } from "@/lib/auth/project-gate";
+import {
+  hasProjectGate,
+  projectGateCookieName,
+  verifyProjectGateToken,
+} from "@/lib/auth/project-gate";
 import {
   getActiveProjectForUser,
   listActiveProjects,
@@ -62,6 +67,18 @@ export default async function ToolPage({ params }: ToolPageProps) {
     );
   }
 
+  // Cada proyecto privado está "locked" si no hay cookie de gate válida — así el
+  // selector in-chat pide la contraseña ANTES de entrar (usa el gate_version ya
+  // cargado, sin queries extra; no se envía al cliente).
+  const cookieStore = await cookies();
+  const isLocked = (p: (typeof projects)[number]): boolean =>
+    p.is_private &&
+    !verifyProjectGateToken(
+      cookieStore.get(projectGateCookieName(p.id))?.value,
+      p.id,
+      p.gate_version,
+    );
+
   return (
     <ClaudeView
       user={{ name: session.name, initials: session.initials }}
@@ -69,6 +86,8 @@ export default async function ToolPage({ params }: ToolPageProps) {
         id: p.id,
         name: p.name,
         icon: p.icon,
+        isPrivate: p.is_private,
+        locked: isLocked(p),
       }))}
       activeProject={
         activeProject
@@ -76,6 +95,9 @@ export default async function ToolPage({ params }: ToolPageProps) {
               id: activeProject.id,
               name: activeProject.name,
               icon: activeProject.icon,
+              isPrivate: activeProject.is_private,
+              // Si llegamos acá, el proyecto activo ya pasó el gate SSR.
+              locked: false,
             }
           : null
       }

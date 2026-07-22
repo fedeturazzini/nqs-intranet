@@ -10,6 +10,7 @@
  *     bloqueado. Al acertar → onUnlocked(); "cancelar" → onCancel().
  */
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/lib/store/toast";
 
@@ -158,7 +159,24 @@ export function ProjectPasswordGate({
 
   return (
     <div style={{ display: "grid", placeItems: "center", height: "100%", padding: 24 }}>
-      {card}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 14,
+        }}
+      >
+        {card}
+        <Link
+          href="/hub"
+          prefetch={false}
+          className="t-meta dim"
+          style={{ textDecoration: "none" }}
+        >
+          ← volver al hub
+        </Link>
+      </div>
     </div>
   );
 }

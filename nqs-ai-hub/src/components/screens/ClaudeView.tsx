@@ -18,8 +18,17 @@ import type { PdfAttachment } from "@/lib/hooks/useClaudeChat";
 import { ChatInput } from "@/components/tool/ChatInput";
 import { ChatMessages } from "@/components/tool/ChatMessages";
 import { ConversationsSidebar } from "@/components/tool/ConversationsSidebar";
+import { ProjectPasswordGate } from "@/components/screens/ProjectPasswordGate";
 
-type ProjectLite = { id: string; name: string; icon: string | null };
+type ProjectLite = {
+  id: string;
+  name: string;
+  icon: string | null;
+  /** migration 0016: proyecto privado (candado). */
+  isPrivate: boolean;
+  /** privado y sin cookie de gate válida (calculado en el SSR). */
+  locked: boolean;
+};
 
 type ClaudeViewProps = Readonly<{
   user: { name: string; initials: string };
@@ -38,14 +47,17 @@ export function ClaudeView({
     initialProject,
   );
   const [switching, setSwitching] = useState(false);
+  // migration 0016: proyecto privado esperando contraseña + ids desbloqueados en
+  // esta sesión (para no re-pedir la clave al volver dentro de los 30 min).
+  const [gateProject, setGateProject] = useState<ProjectLite | null>(null);
+  const [unlockedIds, setUnlockedIds] = useState<Set<string>>(() => new Set());
 
   const firstName = user.name.split(" ")[0] ?? user.name;
 
-  const switchProject = useCallback(
+  // Cambio efectivo de proyecto (una vez pasado el gate, si hacía falta).
+  const doSwitch = useCallback(
     async (project: ProjectLite) => {
-      if (switching) return;
       const isChange = activeProject !== null && activeProject.id !== project.id;
-      if (activeProject?.id === project.id) return; // ya activo
       setSwitching(true);
       try {
         const res = await fetch("/api/me/active-project", {
@@ -78,7 +90,22 @@ export function ClaudeView({
         setSwitching(false);
       }
     },
-    [activeProject, chat, switching],
+    [activeProject, chat],
+  );
+
+  // Entrada al cambio de proyecto: si el destino es privado y está bloqueado (y
+  // no lo desbloqueó en esta sesión), pide la contraseña ANTES de entrar.
+  const switchProject = useCallback(
+    (project: ProjectLite) => {
+      if (switching) return;
+      if (activeProject?.id === project.id) return; // ya activo
+      if (project.isPrivate && project.locked && !unlockedIds.has(project.id)) {
+        setGateProject(project);
+        return;
+      }
+      void doSwitch(project);
+    },
+    [activeProject, switching, unlockedIds, doSwitch],
   );
 
   const onSend = useCallback(
@@ -114,14 +141,34 @@ export function ClaudeView({
   );
   const onNew = useCallback(() => chat.newConversation(), [chat]);
 
+  // Modal de contraseña al elegir un proyecto privado bloqueado (0016). Se
+  // renderiza en ambas vistas (picker y chat) porque las dos usan switchProject.
+  const gateModal = gateProject ? (
+    <ProjectPasswordGate
+      variant="modal"
+      projectId={gateProject.id}
+      projectName={gateProject.name}
+      onUnlocked={() => {
+        const p = gateProject;
+        setUnlockedIds((prev) => new Set(prev).add(p.id));
+        setGateProject(null);
+        void doSwitch(p);
+      }}
+      onCancel={() => setGateProject(null)}
+    />
+  ) : null;
+
   // Sin proyecto activo → pantalla intermedia de selección.
   if (!activeProject) {
     return (
-      <ClaudeProjectPicker
-        projects={projects}
-        busy={switching}
-        onPick={switchProject}
-      />
+      <>
+        {gateModal}
+        <ClaudeProjectPicker
+          projects={projects}
+          busy={switching}
+          onPick={switchProject}
+        />
+      </>
     );
   }
 
@@ -135,6 +182,7 @@ export function ClaudeView({
         flexDirection: "column",
       }}
     >
+      {gateModal}
       {/* ─── Header ─── */}
       <header
         style={{
@@ -331,7 +379,14 @@ function ProjectSelector({
                 }}
               >
                 <span style={{ fontSize: 16 }}>{p.icon ?? "◇"}</span>
-                <span style={{ flex: 1 }}>{p.name}</span>
+                <span style={{ flex: 1 }}>
+                  {p.isPrivate && (
+                    <span title="Proyecto privado" style={{ marginRight: 4 }}>
+                      🔒
+                    </span>
+                  )}
+                  {p.name}
+                </span>
                 {isActive && (
                   <span className="tag accent" style={{ padding: "1px 6px", fontSize: 9 }}>
                     activo
@@ -423,6 +478,11 @@ function ClaudeProjectPicker({
                   fontSize: 20,
                 }}
               >
+                {p.isPrivate && (
+                  <span title="Proyecto privado" style={{ marginRight: 6 }}>
+                    🔒
+                  </span>
+                )}
                 {p.name}
               </span>
             </button>
