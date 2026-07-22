@@ -20,6 +20,7 @@ export default async function AdminProjectsPage() {
         description: p.description,
         icon: p.icon,
         is_active: p.is_active,
+        is_private: p.is_private,
         updated_at: p.updated_at,
       }))}
     />

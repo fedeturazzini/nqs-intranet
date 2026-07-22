@@ -17,6 +17,7 @@ type ProjectItem = {
   description: string | null;
   icon: string | null;
   is_active: boolean;
+  is_private: boolean;
   updated_at: string | null;
 };
 
@@ -170,6 +171,11 @@ export function ProjectsAdminPanel({
                 <span className="t-meta dim" style={{ fontSize: 10 }}>
                   {p.slug}
                 </span>
+                {p.is_private && (
+                  <span className="tag" style={{ padding: "1px 6px", fontSize: 9 }}>
+                    🔒 privado
+                  </span>
+                )}
                 {!p.is_active && (
                   <span className="tag" style={{ padding: "1px 6px", fontSize: 9 }}>
                     archivado
@@ -340,28 +346,61 @@ type ProjectModalProps = Readonly<{
 
 function ProjectModal({ project, onClose, onSaved }: ProjectModalProps) {
   const isEdit = project !== null;
+  const wasPrivate = project?.is_private ?? false;
   const [name, setName] = useState(project?.name ?? "");
   const [slug, setSlug] = useState(project?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(isEdit);
   const [description, setDescription] = useState(project?.description ?? "");
   const [icon, setIcon] = useState(project?.icon ?? "");
   const [isActive, setIsActive] = useState(project?.is_active ?? true);
+  const [isPrivate, setIsPrivate] = useState(wasPrivate);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  // Sub-form "cambiar contraseña" (solo si el proyecto ya es privado).
+  const [changingPw, setChangingPw] = useState(false);
+  const [newPw, setNewPw] = useState("");
+  const [newPwConfirm, setNewPwConfirm] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const effectiveSlug = slugTouched ? slug : slugify(name);
-  const canSubmit = name.trim().length >= 1 && effectiveSlug.length >= 1 && !submitting;
+
+  // Se pide contraseña nueva en el form principal al crear un proyecto privado o
+  // al pasar uno abierto a privado. Si ya era privado y sigue privado, la clave
+  // se cambia con el botón dedicado (endpoint change-password).
+  const needsNewPassword = isPrivate && !wasPrivate;
+  const passwordOk =
+    !needsNewPassword ||
+    (password.length >= 8 && password === passwordConfirm);
+  const canSubmit =
+    name.trim().length >= 1 &&
+    effectiveSlug.length >= 1 &&
+    passwordOk &&
+    !submitting;
 
   async function submit() {
     setSubmitting(true);
     setError(null);
     try {
+      // Parte de privacidad del payload según la transición.
+      let privacy: Record<string, unknown> = {};
+      if (!isEdit) {
+        privacy = isPrivate
+          ? { is_private: true, password }
+          : { is_private: false };
+      } else if (!wasPrivate && isPrivate) {
+        privacy = { is_private: true, password };
+      } else if (wasPrivate && !isPrivate) {
+        privacy = { is_private: false };
+      }
       const payload = {
         name: name.trim(),
         slug: effectiveSlug,
         description: description.trim() || null,
         icon: icon.trim() || null,
         ...(isEdit ? { is_active: isActive } : {}),
+        ...privacy,
       };
       const res = await fetch(
         isEdit ? `/api/admin/projects/${project.id}` : "/api/admin/projects",
@@ -389,6 +428,46 @@ function ProjectModal({ project, onClose, onSaved }: ProjectModalProps) {
     } catch {
       setError("network_error");
       setSubmitting(false);
+    }
+  }
+
+  // Reset de contraseña de un proyecto ya privado. NO pide la anterior
+  // (mecanismo de recuperación) y hace gate_version++ en el server → invalida
+  // los accesos vigentes.
+  async function submitPasswordChange() {
+    if (!project || newPw.length < 8 || newPw !== newPwConfirm) return;
+    setPwBusy(true);
+    try {
+      const res = await fetch(
+        `/api/admin/projects/${project.id}/change-password`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ new_password: newPw }),
+        },
+      );
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { message?: string };
+        showToast({
+          title: "ERROR",
+          msg: d.message ?? "no se pudo cambiar la contraseña",
+          color: "var(--danger)",
+        });
+        setPwBusy(false);
+        return;
+      }
+      showToast({
+        title: "CONTRASEÑA ACTUALIZADA",
+        msg: "Los accesos vigentes van a pedir la nueva contraseña.",
+        color: "var(--ok)",
+      });
+      setChangingPw(false);
+      setNewPw("");
+      setNewPwConfirm("");
+      setPwBusy(false);
+    } catch {
+      showToast({ title: "ERROR", msg: "error de red", color: "var(--danger)" });
+      setPwBusy(false);
     }
   }
 
@@ -470,6 +549,146 @@ function ProjectModal({ project, onClose, onSaved }: ProjectModalProps) {
               style={{ ...inputStyle, resize: "vertical" }}
             />
           </Field>
+          {/* ── Privacidad (migration 0016) ── */}
+          <div>
+            <span
+              className="t-eyebrow"
+              style={{ display: "block", marginBottom: 6 }}
+            >
+              ACCESO
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className={isPrivate ? "btn sm secondary" : "btn sm"}
+                onClick={() => setIsPrivate(false)}
+              >
+                Abierto
+              </button>
+              <button
+                type="button"
+                className={isPrivate ? "btn sm" : "btn sm secondary"}
+                onClick={() => setIsPrivate(true)}
+              >
+                🔒 Privado
+              </button>
+            </div>
+            <div
+              className="t-meta dim"
+              style={{ fontSize: 11, marginTop: 6, lineHeight: 1.5 }}
+            >
+              {isPrivate
+                ? "Solo quien tenga la contraseña ve el contenido. El nombre sigue visible para todo el estudio."
+                : "Visible para todo el estudio (como hoy)."}
+            </div>
+          </div>
+
+          {needsNewPassword && (
+            <>
+              <Field label="CONTRASEÑA (MÍN. 8)">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="CONFIRMAR CONTRASEÑA">
+                <input
+                  type="password"
+                  value={passwordConfirm}
+                  onChange={(e) => setPasswordConfirm(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+              {password.length > 0 && password.length < 8 && (
+                <div className="t-meta" style={{ color: "var(--warn)" }}>
+                  ↳ mínimo 8 caracteres
+                </div>
+              )}
+              {passwordConfirm.length > 0 && password !== passwordConfirm && (
+                <div className="t-meta" style={{ color: "var(--warn)" }}>
+                  ↳ las contraseñas no coinciden
+                </div>
+              )}
+            </>
+          )}
+
+          {isEdit && wasPrivate && !isPrivate && (
+            <div
+              className="t-meta"
+              style={{ color: "var(--warn)", lineHeight: 1.5 }}
+            >
+              ⚠️ Al guardar, el proyecto va a quedar visible para todo el estudio
+              y se van a invalidar los accesos vigentes.
+            </div>
+          )}
+
+          {isEdit && wasPrivate && isPrivate && (
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+              {!changingPw ? (
+                <button
+                  type="button"
+                  className="btn sm secondary"
+                  onClick={() => setChangingPw(true)}
+                >
+                  cambiar contraseña
+                </button>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <Field label="NUEVA CONTRASEÑA (MÍN. 8)">
+                    <input
+                      type="password"
+                      value={newPw}
+                      onChange={(e) => setNewPw(e.target.value)}
+                      style={inputStyle}
+                      autoFocus
+                    />
+                  </Field>
+                  <Field label="CONFIRMAR">
+                    <input
+                      type="password"
+                      value={newPwConfirm}
+                      onChange={(e) => setNewPwConfirm(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <div
+                    className="t-meta dim"
+                    style={{ fontSize: 11, lineHeight: 1.5 }}
+                  >
+                    Como administrador podés resetear esta contraseña sin conocer
+                    la anterior. Los accesos vigentes van a pedir la nueva.
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn sm secondary"
+                      onClick={() => {
+                        setChangingPw(false);
+                        setNewPw("");
+                        setNewPwConfirm("");
+                      }}
+                      disabled={pwBusy}
+                    >
+                      cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn sm"
+                      disabled={
+                        pwBusy || newPw.length < 8 || newPw !== newPwConfirm
+                      }
+                      onClick={submitPasswordChange}
+                    >
+                      {pwBusy ? "guardando…" : "actualizar contraseña"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {isEdit && (
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <input

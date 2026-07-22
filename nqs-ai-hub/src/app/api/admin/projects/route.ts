@@ -11,6 +11,7 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
 import { createServerClient } from "@/lib/db/supabase";
 import { listAllProjects } from "@/lib/db/queries/projects";
@@ -32,6 +33,9 @@ const CreateSchema = z.object({
     .regex(/^[a-z0-9-]+$/, "slug: solo minúsculas, números y guiones"),
   description: z.string().max(500).optional(),
   icon: z.string().max(16).optional(),
+  // Privacidad (migration 0016). Si is_private=true, `password` es obligatorio.
+  is_private: z.boolean().optional().default(false),
+  password: z.string().min(8).max(200).optional(),
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -52,6 +56,24 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  // Privacidad (migration 0016): si es privado, requiere contraseña (min 8) y
+  // guardamos el bcrypt; si es abierto, password_hash queda null.
+  const isPrivate = parsed.data.is_private;
+  let passwordHash: string | null = null;
+  if (isPrivate) {
+    if (!parsed.data.password) {
+      return NextResponse.json(
+        {
+          error: "password_required",
+          message:
+            "Un proyecto privado necesita una contraseña (mínimo 8 caracteres)",
+        },
+        { status: 400 },
+      );
+    }
+    passwordHash = await bcrypt.hash(parsed.data.password, 10);
+  }
+
   const db = createServerClient();
   const { data, error } = await db
     .from("projects")
@@ -61,9 +83,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       description: parsed.data.description ?? null,
       icon: parsed.data.icon ?? null,
       is_active: true,
+      is_private: isPrivate,
+      password_hash: passwordHash,
       created_by: guard.userId,
     })
-    .select("*")
+    // Nunca devolver password_hash al cliente.
+    .select(
+      "id, name, slug, description, icon, is_active, is_private, gate_version, created_by, created_at, updated_at",
+    )
     .single();
 
   if (error) {

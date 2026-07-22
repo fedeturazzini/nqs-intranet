@@ -505,10 +505,13 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          gate_version: number
           icon: string | null
           id: string
           is_active: boolean
+          is_private: boolean
           name: string
+          password_hash: string | null
           slug: string
           updated_at: string
         }
@@ -516,10 +519,13 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          gate_version?: number
           icon?: string | null
           id?: string
           is_active?: boolean
+          is_private?: boolean
           name: string
+          password_hash?: string | null
           slug: string
           updated_at?: string
         }
@@ -527,10 +533,13 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          gate_version?: number
           icon?: string | null
           id?: string
           is_active?: boolean
+          is_private?: boolean
           name?: string
+          password_hash?: string | null
           slug?: string
           updated_at?: string
         }

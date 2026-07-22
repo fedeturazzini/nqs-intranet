@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/lib/store/toast";
+import { ProjectPasswordGate } from "@/components/screens/ProjectPasswordGate";
 
 type ProjectCardData = {
   id: string;
@@ -18,6 +19,10 @@ type ProjectCardData = {
   description: string | null;
   icon: string | null;
   updatedAt: string | null;
+  /** migration 0016: proyecto privado (candado). */
+  isPrivate: boolean;
+  /** privado y sin cookie de gate válida → al clickear pide contraseña. */
+  locked: boolean;
 };
 
 type ProjectsScreenProps = Readonly<{
@@ -45,6 +50,18 @@ export function ProjectsScreen({
   const [busyId, setBusyId] = useState<string | null>(null);
   // FIX 17.5: volvió el toggle grid/lista.
   const [layout, setLayout] = useState<"grid" | "list">("grid");
+  // migration 0016: proyecto privado bloqueado que está pidiendo contraseña.
+  const [gateFor, setGateFor] = useState<ProjectCardData | null>(null);
+
+  // Click en una card: si el proyecto está bloqueado (privado sin gate), abrimos
+  // el modal de contraseña; si no, entra directo como siempre.
+  function handleOpen(p: ProjectCardData) {
+    if (p.locked) {
+      setGateFor(p);
+      return;
+    }
+    void openProject(p);
+  }
 
   async function openProject(p: ProjectCardData) {
     setBusyId(p.id);
@@ -129,7 +146,7 @@ export function ProjectsScreen({
               <button
                 key={p.id}
                 type="button"
-                onClick={() => openProject(p)}
+                onClick={() => handleOpen(p)}
                 disabled={busy}
                 style={{
                   display: "flex",
@@ -155,6 +172,11 @@ export function ProjectsScreen({
                       fontSize: 18,
                     }}
                   >
+                    {p.isPrivate && (
+                      <span title="Proyecto privado" style={{ marginRight: 6 }}>
+                        🔒
+                      </span>
+                    )}
                     {p.name}{" "}
                     {isActive && (
                       <span
@@ -202,7 +224,7 @@ export function ProjectsScreen({
             <button
               key={p.id}
               type="button"
-              onClick={() => openProject(p)}
+              onClick={() => handleOpen(p)}
               disabled={busy}
               style={{
                 textAlign: "left",
@@ -255,6 +277,11 @@ export function ProjectsScreen({
                     letterSpacing: "-0.01em",
                   }}
                 >
+                  {p.isPrivate && (
+                    <span title="Proyecto privado" style={{ marginRight: 6 }}>
+                      🔒
+                    </span>
+                  )}
                   {p.name}
                 </div>
                 <p
@@ -317,6 +344,20 @@ export function ProjectsScreen({
           </button>
         )}
       </div>
+      )}
+
+      {gateFor && (
+        <ProjectPasswordGate
+          variant="modal"
+          projectId={gateFor.id}
+          projectName={gateFor.name}
+          onUnlocked={() => {
+            const p = gateFor;
+            setGateFor(null);
+            void openProject(p);
+          }}
+          onCancel={() => setGateFor(null)}
+        />
       )}
     </div>
   );

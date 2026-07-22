@@ -14,8 +14,10 @@
  */
 import { redirect } from "next/navigation";
 import { ClaudeView } from "@/components/screens/ClaudeView";
+import { ProjectPasswordGate } from "@/components/screens/ProjectPasswordGate";
 import { requireAuth } from "@/lib/auth/server";
 import { canUseTool } from "@/lib/middleware/permissions";
+import { hasProjectGate } from "@/lib/auth/project-gate";
 import {
   getActiveProjectForUser,
   listActiveProjects,
@@ -47,6 +49,18 @@ export default async function ToolPage({ params }: ToolPageProps) {
     listActiveProjects(),
     getActiveProjectForUser(session.userId),
   ]);
+
+  // Gate de proyecto privado (migration 0016): si el proyecto activo es privado
+  // y no hay cookie de gate válida, mostramos el gate en vez del chat — no se
+  // carga NADA del proyecto (ni cerebro ni conversaciones).
+  if (activeProject?.is_private && !(await hasProjectGate(activeProject.id))) {
+    return (
+      <ProjectPasswordGate
+        projectId={activeProject.id}
+        projectName={activeProject.name}
+      />
+    );
+  }
 
   return (
     <ClaudeView

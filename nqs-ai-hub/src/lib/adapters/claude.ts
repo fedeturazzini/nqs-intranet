@@ -36,6 +36,7 @@ import { createServerClient } from "@/lib/db/supabase";
 import { getToolAccess } from "@/lib/db/queries/tools";
 import { getActiveSystemAndMemoryForProject } from "@/lib/db/queries/system-prompts";
 import { getActiveProjectId } from "@/lib/db/queries/projects";
+import { hasProjectGate } from "@/lib/auth/project-gate";
 import {
   pathBelongsToUser,
   signDownloadUrls,
@@ -180,6 +181,19 @@ export const claudeAdapter: ToolAdapter = {
         return {
           ok: false,
           error: new Error("Seleccioná un proyecto antes de usar Claude"),
+        };
+      }
+
+      // Gate de proyecto privado (migration 0016). El backend usa service_role
+      // (saltea RLS) → este chequeo explícito es la única defensa: si el
+      // proyecto activo es privado y no hay cookie de gate válida, NO cargamos
+      // su cerebro ni persistimos nada.
+      if (!(await hasProjectGate(projectId))) {
+        return {
+          ok: false,
+          error: new Error(
+            "Este proyecto es privado. Ingresá la contraseña para usarlo.",
+          ),
         };
       }
 

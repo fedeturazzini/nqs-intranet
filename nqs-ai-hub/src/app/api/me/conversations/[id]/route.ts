@@ -12,6 +12,7 @@ import { getSession } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
 import { signDownloadUrls } from "@/lib/storage/claude-uploads";
 import { getActiveProjectId } from "@/lib/db/queries/projects";
+import { hasProjectGate } from "@/lib/auth/project-gate";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -55,6 +56,12 @@ export async function GET(
   const activeProjectId = await getActiveProjectId(session.userId);
   if (conv.project_id !== activeProjectId) {
     return NextResponse.json({ error: "wrong_project" }, { status: 404 });
+  }
+
+  // Gate de proyecto privado (migration 0016): si el proyecto activo es privado
+  // y no hay cookie de gate válida, no devolvemos los mensajes.
+  if (activeProjectId && !(await hasProjectGate(activeProjectId))) {
+    return NextResponse.json({ error: "project_locked" }, { status: 403 });
   }
 
   const { data: messages, error: msgErr } = await db

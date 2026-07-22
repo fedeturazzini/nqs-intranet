@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
 import { getActiveProjectId } from "@/lib/db/queries/projects";
+import { hasProjectGate } from "@/lib/auth/project-gate";
 
 const LIMIT = 20;
 
@@ -22,6 +23,12 @@ export async function GET(): Promise<NextResponse> {
   // proyecto activo, no hay conversaciones que mostrar.
   const activeProjectId = await getActiveProjectId(session.userId);
   if (!activeProjectId) {
+    return NextResponse.json({ conversations: [] });
+  }
+
+  // Gate de proyecto privado (migration 0016): sin cookie de gate válida no
+  // listamos las conversaciones del proyecto (defensa server-side, no solo UI).
+  if (!(await hasProjectGate(activeProjectId))) {
     return NextResponse.json({ conversations: [] });
   }
 

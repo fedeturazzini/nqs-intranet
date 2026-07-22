@@ -6,8 +6,10 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
 import { createServerClient } from "@/lib/db/supabase";
+import { getProjectGateFields } from "@/lib/db/queries/projects";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -26,6 +28,10 @@ const PatchSchema = z.object({
   description: z.string().max(500).nullable().optional(),
   icon: z.string().max(16).nullable().optional(),
   is_active: z.boolean().optional(),
+  // Privacidad (migration 0016). Lógica de transiciones en el handler; un
+  // cambio de clave sin tocar is_private va por el endpoint /change-password.
+  is_private: z.boolean().optional(),
+  password: z.string().min(8).max(200).optional(),
 });
 
 export async function PATCH(
@@ -54,14 +60,68 @@ export async function PATCH(
     );
   }
 
-  const patch = { ...parsed.data, updated_at: new Date().toISOString() };
+  // Patch explícito (no spread de parsed.data — `password` no es columna y va
+  // procesada aparte).
+  const patch: {
+    name?: string;
+    slug?: string;
+    description?: string | null;
+    icon?: string | null;
+    is_active?: boolean;
+    is_private?: boolean;
+    password_hash?: string | null;
+    gate_version?: number;
+    updated_at: string;
+  } = { updated_at: new Date().toISOString() };
+  if (parsed.data.name !== undefined) patch.name = parsed.data.name;
+  if (parsed.data.slug !== undefined) patch.slug = parsed.data.slug;
+  if (parsed.data.description !== undefined)
+    patch.description = parsed.data.description;
+  if (parsed.data.icon !== undefined) patch.icon = parsed.data.icon;
+  if (parsed.data.is_active !== undefined) patch.is_active = parsed.data.is_active;
+
+  // Transiciones de privacidad (migration 0016).
+  if (parsed.data.is_private !== undefined) {
+    const current = await getProjectGateFields(id);
+    if (!current) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    if (parsed.data.is_private) {
+      if (parsed.data.password) {
+        // abierto→privado (o re-setear clave al pasar a privado): hash + bump.
+        patch.is_private = true;
+        patch.password_hash = await bcrypt.hash(parsed.data.password, 10);
+        patch.gate_version = current.gate_version + 1;
+      } else if (current.is_private) {
+        // ya era privado y no mandan clave → no tocamos hash ni gate.
+        patch.is_private = true;
+      } else {
+        return NextResponse.json(
+          {
+            error: "password_required",
+            message:
+              "Un proyecto privado necesita una contraseña (mínimo 8 caracteres)",
+          },
+          { status: 400 },
+        );
+      }
+    } else {
+      // privado→abierto: limpiar el hash e invalidar todos los gates vigentes.
+      patch.is_private = false;
+      patch.password_hash = null;
+      patch.gate_version = current.gate_version + 1;
+    }
+  }
 
   const db = createServerClient();
   const { data, error } = await db
     .from("projects")
     .update(patch)
     .eq("id", id)
-    .select("*")
+    // Nunca devolver password_hash al cliente.
+    .select(
+      "id, name, slug, description, icon, is_active, is_private, gate_version, created_by, created_at, updated_at",
+    )
     .single();
 
   if (error) {
