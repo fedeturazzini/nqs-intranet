@@ -8,7 +8,8 @@
  *   - /api/me/exceptional-access          → tiene acceso, fuera de horario
  *   - este                                → NO tiene acceso, pide habilitar
  *
- * Body: { toolId, reason: string(10-500) }
+ * Body: { toolId, reason?: string(0-500) } — el motivo es OPCIONAL: si no
+ * escriben nada, la solicitud se crea igual (sin mínimo de caracteres).
  *
  * Validaciones server-side:
  *   - tool existe y está operativa (is_active=true; rechaza coming_soon)
@@ -28,7 +29,9 @@ import { notifySlack } from "@/lib/notifications/slack";
 
 const BodySchema = z.object({
   toolId: z.string().min(1),
-  reason: z.string().trim().min(10).max(500),
+  // Motivo OPCIONAL: sin mínimo de caracteres. Si el user no escribe nada, la
+  // solicitud se manda igual. El max queda como guardarraíl de payload.
+  reason: z.string().trim().max(500).optional().default(""),
 });
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -142,7 +145,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       user_id: session.userId,
       tool_id: toolId,
       request_type: "access",
-      reason,
+      // Motivo vacío → null (la columna es nullable), no string vacío.
+      reason: reason || null,
       status: "pending",
     })
     .select("id")

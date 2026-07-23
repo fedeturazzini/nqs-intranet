@@ -10,14 +10,13 @@
  * El server valida duplicados (request pendiente, acceso ya activo,
  * tool coming_soon). Si devuelve `already_pending`, mostramos el mensaje
  * y deshabilitamos el submit.
+ *
+ * El MOTIVO es opcional: no hay mínimo de caracteres y se puede enviar vacío
+ * (el endpoint también lo acepta así). El botón solo se deshabilita mientras
+ * se está enviando o si ya hay una solicitud pendiente.
  */
 import { useEffect, useRef, useState } from "react";
-import { z } from "zod";
 import { showToast } from "@/lib/store/toast";
-
-const FormSchema = z.object({
-  reason: z.string().trim().min(10).max(500),
-});
 
 type RequestAccessModalProps = Readonly<{
   open: boolean;
@@ -84,14 +83,9 @@ export function RequestAccessModal({
 
   if (!open) return null;
 
-  const parsed = FormSchema.safeParse({ reason });
-  const canSubmit = parsed.success && !submitting && !alreadyPending;
-
   async function handleSubmit() {
-    if (!parsed.success) {
-      setError("El motivo necesita al menos 10 caracteres.");
-      return;
-    }
+    // Sin validación de longitud: el motivo puede ir vacío.
+    if (submitting || alreadyPending) return;
     setSubmitting(true);
     setError(null);
 
@@ -104,7 +98,7 @@ export function RequestAccessModal({
         method: "POST",
         headers: { "content-type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({ toolId, reason: parsed.data.reason }),
+        body: JSON.stringify({ toolId, reason: reason.trim() }),
       });
       const data = (await res.json()) as ApiResponse;
       if (!res.ok || "error" in data) {
@@ -176,7 +170,7 @@ export function RequestAccessModal({
             className="t-eyebrow"
             style={{ display: "block", marginBottom: 6 }}
           >
-            ¿PARA QUÉ LA NECESITÁS?
+            ¿PARA QUÉ LA NECESITÁS? (OPCIONAL)
           </span>
           <textarea
             ref={textareaRef}
@@ -228,7 +222,7 @@ export function RequestAccessModal({
             type="button"
             className="btn"
             onClick={handleSubmit}
-            disabled={!canSubmit}
+            disabled={submitting || alreadyPending}
           >
             {submitting
               ? "enviando…"

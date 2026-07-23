@@ -1,8 +1,13 @@
 # Auditoría — Sesión única por usuario (+ aprobación de dispositivos)
 
-**Fecha:** 2026-07-16 · **Branch:** `develop` · **Read-only** (único archivo nuevo: este).
+**Fecha:** 2026-07-16 · **Re-verificado:** 2026-07-22 · **Branch:** `develop` · **Read-only** (único archivo nuevo: este).
 Objetivo: entender la auth/sesión actual para dimensionar "una sola compu/sesión a la
 vez" y, opcionalmente, "el admin aprueba dispositivos nuevos".
+
+> **Update 2026-07-22.** Re-verificado contra el código actual: el flujo de auth, el proxy,
+> `getSession()`, el modelo de usuario y el reuso siguen **igual**. Único cambio material:
+> **ahora `supabase/config.toml` está en el repo** (antes no) → el JWT expiry y la config de
+> Sessions son visibles y se corrigen abajo (§1 "Duración / config" y Nivel 1).
 
 > **TL;DR.** La auth es **custom sobre Supabase Auth** (cookies httpOnly propias, NO
 > `@supabase/ssr`). Todo request pasa por UN único cuello: `getSession()` — ese es el
@@ -77,9 +82,10 @@ de enganche.
 | Cosa | Valor | Dónde |
 |---|---|---|
 | Cookies (ambas) | **7 días** (`maxAge`) | `login/route.ts` y `refresh/route.ts` (`ONE_WEEK_SECONDS`) |
-| JWT (access token) | **~1 hora** (default de Supabase; no visible en el repo — se configura en el dashboard: Authentication → Settings → JWT expiry) | dashboard Supabase |
-| Refresh token | rota en cada uso (Supabase); vive mientras la sesión exista | Supabase |
-| Config de "Sessions" de Supabase (single session / time-box / inactividad) | **no configurada** (no hay `supabase/config.toml` en el repo; es dashboard) | dashboard Supabase |
+| JWT (access token) | **1 hora** (`jwt_expiry = 3600`) — **ahora visible en el repo** | `supabase/config.toml:160` |
+| Refresh token | rota en cada uso (`enable_refresh_token_rotation = true`, `refresh_token_reuse_interval = 10`) | `supabase/config.toml:165-169` |
+| Config de "Sessions" (single session / time-box / inactividad) | **`[auth.sessions]` presente pero COMENTADO** (`timebox`, `inactivity_timeout`) → apagado. **No** hay `single_per_user` en el config → el toggle nativo de sesión única sigue dependiendo del **dashboard/plan** de Supabase | `supabase/config.toml:~266` |
+| Hook `custom_access_token` | disponible (comentado) → permitiría meter un `session_id`/`device_id` como claim del JWT (útil en Nivel 2 para chequear en el edge sin DB) | `supabase/config.toml` |
 
 ---
 
@@ -122,9 +128,12 @@ session per user / time-box / inactivity timeout). Al loguearse en la compu B, S
 revoca la sesión (refresh token) de la compu A.
 
 **Qué tocar:**
-- Dashboard: activar single session + **bajar el JWT expiry** (ej. 5-10 min). Nada de
-  esto vive en el repo. ⚠️ **Confirmar que el plan de Supabase del proyecto incluya los
-  settings de Sessions** (suelen ser de plan Pro) — no verificable desde el código.
+- **`supabase/config.toml`** (ya en el repo): bajar `jwt_expiry` (hoy `3600` → ej. 300-600s).
+  Pero el **single-session nativo NO está en este config** (`[auth.sessions]` solo expone
+  `timebox` / `inactivity_timeout`, ambos comentados) → ese toggle hay que activarlo en el
+  **dashboard** de Supabase. ⚠️ **Confirmar que el plan incluya "single session per user"**
+  (suele ser de plan Pro) — no está en el config.toml. `timebox`/`inactivity_timeout` sí se
+  pueden activar desde el config, pero solo dan *time-box*, no "gana el último".
 
 **El problema fino (por qué no es "gratis"):**
 1. **El kick NO es instantáneo.** Revocar la sesión mata el *refresh*, pero el access
