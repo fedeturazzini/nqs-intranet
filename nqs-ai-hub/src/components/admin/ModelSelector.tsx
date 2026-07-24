@@ -16,7 +16,9 @@ import { useState } from "react";
 export type ClaudeModel =
   | "claude-haiku-4-5"
   | "claude-sonnet-4-6"
-  | "claude-opus-4-7";
+  | "claude-opus-4-7"
+  | "claude-opus-4-8"
+  | "claude-opus-5";
 
 type ModelOption = {
   id: ClaudeModel;
@@ -46,11 +48,27 @@ const OPTIONS: readonly ModelOption[] = [
   },
   {
     id: "claude-opus-4-7",
-    shortName: "Opus",
+    shortName: "Opus 4.7",
     fullName: "Claude Opus 4.7",
-    pricingIn: "$15",
-    pricingOut: "$75",
-    tagline: "Top capacidad. Para tareas complejas o razonamiento profundo.",
+    pricingIn: "$5",
+    pricingOut: "$25",
+    tagline: "Alta capacidad (generación Opus previa). Tareas complejas.",
+  },
+  {
+    id: "claude-opus-4-8",
+    shortName: "Opus 4.8",
+    fullName: "Claude Opus 4.8",
+    pricingIn: "$5",
+    pricingOut: "$25",
+    tagline: "Opus más reciente de la línea 4.x. Razonamiento profundo.",
+  },
+  {
+    id: "claude-opus-5",
+    shortName: "Opus 5",
+    fullName: "Claude Opus 5",
+    pricingIn: "$5",
+    pricingOut: "$25",
+    tagline: "Última generación Opus — lo más capaz disponible.",
   },
 ];
 

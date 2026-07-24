@@ -27,6 +27,8 @@ const ALLOWED_MODELS: readonly ClaudeModel[] = [
   "claude-haiku-4-5",
   "claude-sonnet-4-6",
   "claude-opus-4-7",
+  "claude-opus-4-8",
+  "claude-opus-5",
 ] as const;
 
 type VersionRow = {
@@ -238,12 +240,20 @@ export function PromptManager({
           body: JSON.stringify({ model }),
         },
       );
-      if (!res.ok) {
-        showToast({
-          title: "ERROR",
-          msg: "no pude cambiar el modelo",
-          color: "var(--danger)",
-        });
+      const data = (await res.json().catch(() => null)) as
+        | { ok: true }
+        | { error: string; message?: string }
+        | null;
+      if (!res.ok || (data != null && "error" in data)) {
+        // Mostramos el mensaje REAL del server (ej. violación del CHECK
+        // constraint si el modelo no está permitido en la DB) en vez de un
+        // texto genérico. Antes el error se veía como un "revirtió al modelo
+        // anterior" sin explicación.
+        const msg =
+          data != null && "message" in data && data.message
+            ? data.message
+            : "no pude cambiar el modelo";
+        showToast({ title: "ERROR", msg, color: "var(--danger)" });
         setBusy(false);
         return;
       }

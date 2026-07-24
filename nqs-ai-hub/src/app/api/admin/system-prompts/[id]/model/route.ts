@@ -5,7 +5,8 @@
  * sin crear una nueva. Útil cuando el admin quiere abaratar/encarecer
  * sin tener que duplicar el contenido del prompt.
  *
- * Body: { model: "claude-haiku-4-5" | "claude-sonnet-4-6" | "claude-opus-4-7" }
+ * Body: { model } — uno de los modelos vigentes (Haiku 4.5 / Sonnet 4.6 /
+ * Opus 4.7 · 4.8 · 5). Debe coincidir con el CHECK de la migration 0017.
  *
  * El CHECK constraint en DB también valida; acá hacemos validación
  * temprana con Zod para devolver error claro.
@@ -24,6 +25,8 @@ const BodySchema = z.object({
     "claude-haiku-4-5",
     "claude-sonnet-4-6",
     "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-opus-5",
   ]),
 });
 
