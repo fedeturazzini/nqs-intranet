@@ -15,7 +15,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ClaudeView } from "@/components/screens/ClaudeView";
-import { ProjectPasswordGate } from "@/components/screens/ProjectPasswordGate";
 import { requireAuth } from "@/lib/auth/server";
 import { canUseTool } from "@/lib/middleware/permissions";
 import {
@@ -55,21 +54,18 @@ export default async function ToolPage({ params }: ToolPageProps) {
     getActiveProjectForUser(session.userId),
   ]);
 
-  // Gate de proyecto privado (migration 0016): si el proyecto activo es privado
-  // y no hay cookie de gate válida, mostramos el gate en vez del chat — no se
-  // carga NADA del proyecto (ni cerebro ni conversaciones).
-  if (activeProject?.is_private && !(await hasProjectGate(activeProject.id))) {
-    return (
-      <ProjectPasswordGate
-        projectId={activeProject.id}
-        projectName={activeProject.name}
-      />
-    );
-  }
+  // Gate de proyecto privado (migration 0016): NO forzamos el gate al entrar a
+  // Claude. Si el proyecto activo es privado y está bloqueado, lo tratamos como
+  // "sin proyecto activo" → ClaudeView muestra el picker y la contraseña se pide
+  // (modal) SOLO si el user elige ese proyecto. Así apretar Claude no obliga a
+  // desbloquear un privado que quizás no querés abrir. El backend (adapter) igual
+  // revalida el gate en cada execute, así que no cargar el cerebro sigue protegido.
+  const activeLocked =
+    !!activeProject?.is_private && !(await hasProjectGate(activeProject.id));
 
   // Cada proyecto privado está "locked" si no hay cookie de gate válida — así el
-  // selector in-chat pide la contraseña ANTES de entrar (usa el gate_version ya
-  // cargado, sin queries extra; no se envía al cliente).
+  // selector/picker pide la contraseña (modal) recién cuando el user elige uno
+  // (usa el gate_version ya cargado, sin queries extra; no se envía al cliente).
   const cookieStore = await cookies();
   const isLocked = (p: (typeof projects)[number]): boolean =>
     p.is_private &&
@@ -90,13 +86,13 @@ export default async function ToolPage({ params }: ToolPageProps) {
         locked: isLocked(p),
       }))}
       activeProject={
-        activeProject
+        activeProject && !activeLocked
           ? {
               id: activeProject.id,
               name: activeProject.name,
               icon: activeProject.icon,
               isPrivate: activeProject.is_private,
-              // Si llegamos acá, el proyecto activo ya pasó el gate SSR.
+              // Llegamos acá solo si NO está bloqueado (público o gate ya pasado).
               locked: false,
             }
           : null
