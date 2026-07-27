@@ -34,7 +34,7 @@ beforeEach(() => {
   process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
 });
 
-const { callClaude, buildUserContent } = await import(
+const { callClaude, buildUserContent, maxTokensFor } = await import(
   "@/lib/anthropic/client"
 );
 
@@ -89,6 +89,35 @@ describe("callClaude", () => {
     expect(opts).toBeDefined();
     expect(opts.maxRetries).toBe(3);
     expect(typeof opts.timeout).toBe("number");
+  });
+});
+
+describe("maxTokensFor", () => {
+  test("Opus (4.6/4.7/4.8/5) → 64000", () => {
+    for (const m of [
+      "claude-opus-4-6",
+      "claude-opus-4-7",
+      "claude-opus-4-8",
+      "claude-opus-5",
+    ]) {
+      expect(maxTokensFor(m)).toBe(64_000);
+    }
+  });
+
+  test("Sonnet 4.6 y Haiku 4.5 → 32000", () => {
+    expect(maxTokensFor("claude-sonnet-4-6")).toBe(32_000);
+    expect(maxTokensFor("claude-haiku-4-5")).toBe(32_000);
+  });
+
+  test("modelo desconocido → fallback (16000 haiku-like / 32000 resto)", () => {
+    expect(maxTokensFor("claude-haiku-9-9")).toBe(16_000);
+    expect(maxTokensFor("modelo-raro")).toBe(32_000);
+  });
+
+  test("nunca supera el techo real del modelo", () => {
+    // Haiku 4.5 topa en 64K; el resto en 128K. El target (32K/64K) siempre entra.
+    expect(maxTokensFor("claude-haiku-4-5")).toBeLessThanOrEqual(64_000);
+    expect(maxTokensFor("claude-opus-5")).toBeLessThanOrEqual(128_000);
   });
 });
 

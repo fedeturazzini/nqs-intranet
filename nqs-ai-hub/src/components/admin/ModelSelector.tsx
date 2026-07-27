@@ -16,6 +16,7 @@ import { useState } from "react";
 export type ClaudeModel =
   | "claude-haiku-4-5"
   | "claude-sonnet-4-6"
+  | "claude-opus-4-6"
   | "claude-opus-4-7"
   | "claude-opus-4-8"
   | "claude-opus-5";
@@ -45,6 +46,14 @@ const OPTIONS: readonly ModelOption[] = [
     pricingIn: "$3",
     pricingOut: "$15",
     tagline: "Balanceado. Recomendado para uso general.",
+  },
+  {
+    id: "claude-opus-4-6",
+    shortName: "Opus 4.6",
+    fullName: "Claude Opus 4.6",
+    pricingIn: "$5",
+    pricingOut: "$25",
+    tagline: "Opus 4.6 (la más antigua vigente). Alta capacidad.",
   },
   {
     id: "claude-opus-4-7",

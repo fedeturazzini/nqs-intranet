@@ -21,15 +21,45 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
-// Sonnet/Opus soportan hasta 8192 tokens de salida; Haiku hasta 4096. Subido
-// de 4096 → 8192 para que las respuestas/artifacts largos no se corten (el
-// header mostraba "OUT 4096" exacto = respuesta cortada por el techo).
-export const DEFAULT_MAX_TOKENS = 8192;
+// max_tokens es un TECHO de salida por request (se paga solo lo realmente
+// generado). Tiene que ser POR MODELO: cada uno soporta un máximo de output
+// distinto y pedir más de lo que soporta = 400 de la API.
+//   - target:  lo que PEDIMOS (alto pero razonable, no el máximo absoluto).
+//   - ceiling: el máximo REAL de output del modelo (catálogo oficial Anthropic,
+//     claude-api/shared/models.md → "Max Output" = campo max_tokens de la Models
+//     API). Haiku 4.5 = 64K · Sonnet 4.6 y Opus 4.6/4.7/4.8/5 = 128K.
+// Targets: 32K general, 64K para Opus (tier premium). Clampeamos al ceiling por
+// las dudas (subir el target por encima del techo real haría rechazar el request).
+const MAX_TOKENS_BY_MODEL: Record<
+  string,
+  { target: number; ceiling: number }
+> = {
+  "claude-haiku-4-5": { target: 32_000, ceiling: 64_000 },
+  "claude-sonnet-4-6": { target: 32_000, ceiling: 128_000 },
+  "claude-opus-4-6": { target: 64_000, ceiling: 128_000 },
+  "claude-opus-4-7": { target: 64_000, ceiling: 128_000 },
+  "claude-opus-4-8": { target: 64_000, ceiling: 128_000 },
+  "claude-opus-5": { target: 64_000, ceiling: 128_000 },
+};
 
-/** Techo de tokens de salida según el modelo (Haiku tope 4096). */
+/**
+ * Techo de tokens de salida a pedir para un modelo, clampeado a su máximo real.
+ * Lo usan los 3 call sites (callClaude / streamTextOnly / streamWithFileGeneration).
+ */
 export function maxTokensFor(model: string): number {
-  return /haiku/i.test(model) ? 4096 : DEFAULT_MAX_TOKENS;
+  const cfg = MAX_TOKENS_BY_MODEL[model];
+  if (cfg) return Math.min(cfg.target, cfg.ceiling);
+  // Modelo no mapeado (no debería pasar: el selector está whitelisted). Fallback
+  // conservador, por debajo del techo real de cualquier modelo vigente.
+  return /haiku/i.test(model) ? 16_000 : 32_000;
 }
+
+// El SDK RECHAZA messages.create() NO-streaming si max_tokens supera ~21333
+// (estima >10 min: expectedTime = 60min * maxTokens / 128000 > 10min). callClaude
+// es no-streaming (solo lo usan tests/scripts; el chat usa streamClaude), así que
+// clampeamos su techo a un valor seguro para que nunca tire "Streaming is required…".
+// Las respuestas largas del chat van por streaming, que no tiene este límite.
+const NONSTREAMING_MAX_TOKENS = 16_000;
 
 /**
  * La code execution (server tool de Anthropic que corre Python en un sandbox y
@@ -117,7 +147,7 @@ export type ClaudeMessage = Anthropic.Messages.MessageParam;
 export type CallClaudeOptions = {
   /** Override del modelo. Default: `claude-sonnet-4-6`. */
   model?: string;
-  /** Default: 8192 (Haiku: 4096). */
+  /** Override del techo de salida. Default: `maxTokensFor(model)` (por modelo). */
   maxTokens?: number;
   /**
    * Si true, la llamada usa el path beta con code execution + skills para
@@ -150,7 +180,12 @@ export async function callClaude(
 
   const response = await client.messages.create({
     model: options.model ?? DEFAULT_MODEL,
-    max_tokens: options.maxTokens ?? maxTokensFor(options.model ?? DEFAULT_MODEL),
+    // callClaude es NO-streaming → clampeamos al techo seguro del SDK
+    // (NONSTREAMING_MAX_TOKENS). El path largo del chat usa streamClaude.
+    max_tokens: Math.min(
+      options.maxTokens ?? maxTokensFor(options.model ?? DEFAULT_MODEL),
+      NONSTREAMING_MAX_TOKENS,
+    ),
     system: systemPrompt,
     messages,
   });
