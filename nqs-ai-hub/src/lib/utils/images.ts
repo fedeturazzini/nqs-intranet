@@ -87,15 +87,30 @@ export async function uploadImages(
     throw new Error(`máximo ${MAX_ATTACHMENTS} adjuntos por mensaje`);
   }
 
-  // 1) pedir signed upload URLs (una por file, en orden)
-  const res = await fetch("/api/tools/claude/upload-url", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      mediaTypes: files.map((f) => f.type),
-      conversationId: conversationId ?? undefined,
-    }),
-  });
+  // 1) pedir signed upload URLs (una por file, en orden). Si el access token
+  // (~1h) venció, upload-url devuelve 401: refrescamos la sesión y reintentamos
+  // UNA vez (mismo patrón que useClaudeChat con el execute). Así el 401 por
+  // token vencido deja de mostrarse — antes tiraba el error crudo sin refrescar.
+  const callUploadUrl = () =>
+    fetch("/api/tools/claude/upload-url", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mediaTypes: files.map((f) => f.type),
+        conversationId: conversationId ?? undefined,
+      }),
+    });
+
+  let res = await callUploadUrl();
+  if (res.status === 401) {
+    const refreshed = await fetch("/api/auth/refresh", { method: "POST" });
+    if (refreshed.ok) {
+      res = await callUploadUrl();
+    } else {
+      // El refresh token también murió (cookie de 7 días vencida) → re-login.
+      throw new Error("Tu sesión expiró. Volvé a entrar para adjuntar archivos.");
+    }
+  }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { message?: string };
     throw new Error(body.message ?? `no se pudieron preparar las subidas (${res.status})`);
