@@ -75,11 +75,24 @@ export async function listToolsWithAccess(
     const access = accessByToolId.get(tool.id);
     const alloc = allocByToolId.get(tool.id);
 
+    // `expires_at` vencido con `status` todavía "active": un acceso temporal
+    // (quick access / excepcional) venció, pero NINGÚN job flipea la columna
+    // `status` a "expired" — se queda congelada en "active". `canUseTool` (server)
+    // ya trata este caso como expired en runtime (middleware/permissions.ts).
+    // Si el hub siguiera mostrándolo "active", la card sería clickeable → el user
+    // entra a /tool/<id>, el server lo rebota a /hub, y como la card sigue
+    // "active" reintenta → loop hub↔tool. Espejamos el criterio del server acá
+    // para que la card muestre el estado real. Ver rebote-claude-audit.md.
+    const accessExpired =
+      !!access?.expires_at && new Date(access.expires_at) < new Date();
+
     let status: AccessStatus | "coming_soon";
     if (!tool.is_active) {
       status = "coming_soon";
     } else if (!access) {
       status = "locked";
+    } else if (access.status === "active" && accessExpired) {
+      status = "expired";
     } else {
       status = access.status;
     }
@@ -105,6 +118,11 @@ export async function listToolsWithAccess(
       access: {
         status,
         ...creditsInfo,
+        // Fecha de vencimiento para el pill "expired" (tanto si el status ya
+        // venía "expired" en DB como si lo derivamos por `expires_at` vencido).
+        ...(status === "expired" && access?.expires_at
+          ? { expiredAt: formatExpiredAt(access.expires_at) }
+          : {}),
         schedule: (access?.schedule ?? null) as ToolSchedule | null,
       },
     };
@@ -126,4 +144,14 @@ export async function listToolsWithAccess(
   });
 
   return bucket;
+}
+
+/** Fecha de vencimiento en formato corto (TZ del estudio) para el pill "expired". */
+function formatExpiredAt(expiresAt: string): string {
+  return new Date(expiresAt).toLocaleDateString("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
