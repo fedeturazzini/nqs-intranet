@@ -20,6 +20,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "@/lib/auth/server";
 import type { Database } from "@/types/db";
+import { logWarn } from "@/lib/log";
 
 // Mismo maxAge que /api/auth/login (la cookie vive 7 días; el JWT adentro ~1h).
 // TODO: dedupe de las opciones de cookie con login en un helper compartido.
@@ -39,6 +40,11 @@ export async function POST(): Promise<NextResponse> {
 
   // Sin refresh token no hay nada que canjear → sesión muerta.
   if (!refreshToken) {
+    logWarn("refresh: sin refresh token", {
+      route: "auth/refresh",
+      status: 401,
+      reason: "no_refresh_token",
+    });
     return clearedSession("no_refresh_token");
   }
 
@@ -58,6 +64,12 @@ export async function POST(): Promise<NextResponse> {
 
   // Refresh token inválido/vencido/ya rotado → limpiar y forzar re-login.
   if (error || !data.session) {
+    logWarn("refresh falló (token muerto/rotado)", {
+      route: "auth/refresh",
+      status: 401,
+      reason: "refresh_failed",
+      err: error ?? undefined,
+    });
     return clearedSession("refresh_failed");
   }
 

@@ -17,6 +17,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/server";
 import { getAdapter } from "@/lib/adapters";
 import { requireToolAccess } from "@/lib/middleware/permissions";
+import { logWarn, logError, requestIdFrom } from "@/lib/log";
 
 // La respuesta se STREAMEA (puede tardar varios MINUTOS con prompts grandes).
 // Con el techo anterior (60s, el cap del plan Hobby) Vercel mataba la función
@@ -47,6 +48,12 @@ export async function POST(request: Request): Promise<Response> {
   // 1) sesión
   const session = await getSession();
   if (!session) {
+    logWarn("execute: sin sesión válida", {
+      route: "tools/claude/execute",
+      status: 401,
+      reason: "session_invalid",
+      requestId: requestIdFrom(request),
+    });
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -122,7 +129,12 @@ export async function POST(request: Request): Promise<Response> {
             files: result.value.files,
           });
         }
-      } catch {
+      } catch (err) {
+        logError("execute: error inesperado en el stream", {
+          route: "tools/claude/execute",
+          userId,
+          err,
+        });
         send({ type: "error", message: "error inesperado" });
       } finally {
         controller.close();

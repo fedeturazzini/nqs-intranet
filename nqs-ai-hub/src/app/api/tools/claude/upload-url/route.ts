@@ -17,6 +17,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/server";
 import { requireToolAccess } from "@/lib/middleware/permissions";
 import { createUploadTargets } from "@/lib/storage/claude-uploads";
+import { logWarn, logError, requestIdFrom } from "@/lib/log";
 
 const ACCEPTED = [
   "image/jpeg",
@@ -34,6 +35,14 @@ const BodySchema = z.object({
 export async function POST(request: Request): Promise<NextResponse> {
   const session = await getSession();
   if (!session) {
+    // Rama 401 más común: JWT vencido (getSession no refresca). El cliente
+    // (uploadImages) hoy NO refresca+reintenta. Ver logging-y-401-audit.md.
+    logWarn("upload-url: sin sesión válida", {
+      route: "tools/claude/upload-url",
+      status: 401,
+      reason: "session_invalid",
+      requestId: requestIdFrom(request),
+    });
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -62,6 +71,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
     return NextResponse.json({ targets });
   } catch (err) {
+    logError("upload-url: fallo generando signed URLs", {
+      route: "tools/claude/upload-url",
+      userId: session.userId,
+      status: 500,
+      reason: "storage_error",
+      err,
+      requestId: requestIdFrom(request),
+    });
     return NextResponse.json(
       {
         error: "storage_error",

@@ -13,6 +13,7 @@ import { createServerClient } from "@/lib/db/supabase";
 import { checkSchedule } from "@/lib/utils/schedule";
 import type { ToolId } from "@/lib/adapters/types";
 import type { ToolSchedule } from "@/types/db-aliases";
+import { logWarn } from "@/lib/log";
 
 export type PermissionReason =
   | "not_authenticated"
@@ -131,6 +132,12 @@ export async function requireToolAccess(
   if (result.allowed) return null;
 
   const status = result.reason === "not_authenticated" ? 401 : 403;
+  logWarn("acceso a tool denegado", {
+    route: `tools/${toolId}`,
+    userId,
+    status,
+    reason: result.reason,
+  });
   return NextResponse.json(
     { error: result.reason, message: result.message ?? null },
     { status },

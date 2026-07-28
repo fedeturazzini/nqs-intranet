@@ -20,6 +20,7 @@ import {
 } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
 import type { Database } from "@/types/db";
+import { logInfo, logWarn, logError } from "@/lib/log";
 
 const ONE_WEEK_SECONDS = 60 * 60 * 24 * 7;
 const GENERIC_ERROR = "credenciales inválidas";
@@ -70,6 +71,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   });
 
   if (error || !data.session || !data.user) {
+    logWarn("login fallido: credenciales inválidas", {
+      route: "auth/login",
+      status: 401,
+      reason: "invalid_credentials",
+      email: parsed.email,
+    });
     return NextResponse.json(
       { ok: false, error: GENERIC_ERROR },
       { status: 401 },
@@ -86,6 +93,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   if (profErr || !profile) {
     // El user existe en auth pero no en public.users — estado inconsistente.
+    logError("login: auth OK pero sin perfil en users", {
+      route: "auth/login",
+      userId: data.user.id,
+      status: 403,
+      reason: "profile_missing",
+      err: profErr ?? undefined,
+    });
     return NextResponse.json(
       { ok: false, error: "perfil no encontrado, contactá al admin" },
       { status: 403 },
@@ -93,6 +107,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   if (!profile.is_active) {
+    logWarn("login rechazado: usuario deshabilitado", {
+      route: "auth/login",
+      userId: data.user.id,
+      status: 403,
+      reason: "user_inactive",
+    });
     return NextResponse.json(
       { ok: false, error: "usuario deshabilitado" },
       { status: 403 },
@@ -101,6 +121,12 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const redirectTo = profile.role === "admin" ? "/admin" : "/hub";
   const isProd = process.env.NODE_ENV === "production";
+
+  logInfo("login OK", {
+    route: "auth/login",
+    userId: data.user.id,
+    role: profile.role,
+  });
 
   const response = NextResponse.json({
     ok: true,
