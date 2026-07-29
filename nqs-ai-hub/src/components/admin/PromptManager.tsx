@@ -26,6 +26,7 @@ import { ModelSelector, type ClaudeModel } from "./ModelSelector";
 const ALLOWED_MODELS: readonly ClaudeModel[] = [
   "claude-haiku-4-5",
   "claude-sonnet-4-6",
+  "claude-sonnet-5",
   "claude-opus-4-6",
   "claude-opus-4-7",
   "claude-opus-4-8",

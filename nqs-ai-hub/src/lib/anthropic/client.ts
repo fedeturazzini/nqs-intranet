@@ -36,6 +36,7 @@ const MAX_TOKENS_BY_MODEL: Record<
 > = {
   "claude-haiku-4-5": { target: 32_000, ceiling: 64_000 },
   "claude-sonnet-4-6": { target: 32_000, ceiling: 128_000 },
+  "claude-sonnet-5": { target: 32_000, ceiling: 128_000 },
   "claude-opus-4-6": { target: 64_000, ceiling: 128_000 },
   "claude-opus-4-7": { target: 64_000, ceiling: 128_000 },
   "claude-opus-4-8": { target: 64_000, ceiling: 128_000 },

@@ -16,6 +16,7 @@ import { useState } from "react";
 export type ClaudeModel =
   | "claude-haiku-4-5"
   | "claude-sonnet-4-6"
+  | "claude-sonnet-5"
   | "claude-opus-4-6"
   | "claude-opus-4-7"
   | "claude-opus-4-8"
@@ -41,11 +42,19 @@ const OPTIONS: readonly ModelOption[] = [
   },
   {
     id: "claude-sonnet-4-6",
-    shortName: "Sonnet",
+    shortName: "Sonnet 4.6",
     fullName: "Claude Sonnet 4.6",
     pricingIn: "$3",
     pricingOut: "$15",
     tagline: "Balanceado. Recomendado para uso general.",
+  },
+  {
+    id: "claude-sonnet-5",
+    shortName: "Sonnet 5",
+    fullName: "Claude Sonnet 5",
+    pricingIn: "$3",
+    pricingOut: "$15",
+    tagline: "Sonnet más nuevo — casi Opus en calidad, a precio Sonnet.",
   },
   {
     id: "claude-opus-4-6",
