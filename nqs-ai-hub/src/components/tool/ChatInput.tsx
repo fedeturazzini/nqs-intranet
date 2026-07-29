@@ -20,6 +20,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
 } from "react";
@@ -223,6 +224,17 @@ export function ChatInput({
     }
   }
 
+  // Pegar (Ctrl+V / Cmd+V): si el portapapeles trae archivos (una imagen copiada,
+  // una captura), los adjuntamos por el MISMO camino que el drag-drop —addFiles
+  // valida, comprime y capea dimensiones. Si es texto, no interceptamos → pega normal.
+  function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = e.clipboardData?.files;
+    if (files && files.length > 0) {
+      e.preventDefault();
+      void addFiles(files);
+    }
+  }
+
   function onFileInputChange(e: ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (files && files.length > 0) {
@@ -401,6 +413,7 @@ export function ChatInput({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           placeholder={
             isDragging
               ? "soltá los archivos acá…"
