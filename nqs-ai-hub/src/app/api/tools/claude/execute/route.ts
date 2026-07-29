@@ -134,6 +134,8 @@ export async function POST(request: Request): Promise<Response> {
             // ETAPA 2: archivos generados ya en Storage + claude_files (sin URL;
             // se firma en la etapa 3). undefined si no hubo.
             files: result.value.files,
+            // Parte 3.2: >0 si se generó un archivo que no se pudo adjuntar.
+            filesFailed: result.value.filesFailed,
           });
         }
       } catch (err) {

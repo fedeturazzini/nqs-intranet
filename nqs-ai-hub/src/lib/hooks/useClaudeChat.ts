@@ -60,6 +60,10 @@ export type ChatMessage = {
   pdfAttachments?: PdfAttachment[];
   /** Archivos generados por Claude adjuntos a este mensaje (assistant). */
   files?: ChatFile[];
+  /** True si Claude generó un archivo que NO se pudo adjuntar (falló la etapa 2
+   *  de persistencia). La UI muestra un aviso para que el user pueda reintentar
+   *  en vez de creer que no se generó nada. */
+  filesPartialError?: boolean;
   tokensInput?: number;
   tokensOutput?: number;
   /** Cuando true, en lugar de content se muestra el "Claude está pensando…". */
@@ -207,6 +211,53 @@ export function useClaudeChat() {
           ),
         );
 
+      // Parte 1: red de seguridad. Si el mensaje del assistant quedó SIN
+      // archivos (el `done` no trajo `files`, o el stream se cortó antes del
+      // `done`), re-fetcheamos los claude_files de la conversación y los
+      // reconciliamos contra el mensaje. Idempotente: solo aplica si encuentra
+      // archivos Y el mensaje todavía no los tiene, así no duplica cuando el
+      // `done` ya los entregó. Silenciosa: es una red, nunca rompe el flujo.
+      const reconcileFilesFromServer = async (
+        convId: string,
+        stateMsgId: string,
+        serverMsgId: string | null,
+      ): Promise<void> => {
+        if (!convId) return;
+        try {
+          const res = await fetch(`/api/me/conversations/${convId}`, {
+            cache: "no-store",
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as ConversationDetailResponse;
+          // Preferimos el match por el id REAL del server; si no lo tenemos (el
+          // `done` se perdió), caemos al último mensaje del assistant con files.
+          let found: ChatFile[] | undefined;
+          if (serverMsgId) {
+            found = data.messages.find((m) => m.id === serverMsgId)?.files;
+          }
+          if (!found || found.length === 0) {
+            for (let i = data.messages.length - 1; i >= 0; i--) {
+              const m = data.messages[i];
+              if (m.role === "assistant" && m.files && m.files.length > 0) {
+                found = m.files;
+                break;
+              }
+            }
+          }
+          if (!found || found.length === 0) return;
+          const files = found;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === stateMsgId && (!m.files || m.files.length === 0)
+                ? { ...m, files }
+                : m,
+            ),
+          );
+        } catch {
+          // Silencioso: red de seguridad, no interrumpe la respuesta.
+        }
+      };
+
       // Declarados afuera del try para que el handler de AbortError (botón
       // "Detener") conserve el texto que llegó hasta ese momento.
       let acc = "";
@@ -294,6 +345,7 @@ export function useClaudeChat() {
               message?: string;
               code?: string;
               files?: ChatFile[];
+              filesFailed?: number;
             };
             try {
               ev = JSON.parse(line);
@@ -340,32 +392,57 @@ export function useClaudeChat() {
               const convId = ev.conversationId ?? "";
               setConversationId(convId);
               const finalText = acc || ev.text || "";
+              // messageId "" (la persistencia del mensaje falló) se trata como
+              // AUSENTE: `??` no atrapa el string vacío, así que no pisamos el id
+              // local con "".
+              const serverMsgId =
+                ev.messageId && ev.messageId.length > 0 ? ev.messageId : null;
+              const stateMsgId = serverMsgId ?? pendingMsgId;
+              const doneFiles =
+                ev.files && ev.files.length > 0 ? ev.files : undefined;
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === pendingMsgId
                     ? {
-                        id: ev.messageId ?? pendingMsgId,
+                        id: stateMsgId,
                         role: "assistant",
                         content: finalText,
                         tokensInput: ev.tokensInput,
                         tokensOutput: ev.tokensOutput,
                         streaming: false,
                         stopReason: ev.stopReason ?? null,
-                        files:
-                          ev.files && ev.files.length > 0
-                            ? ev.files
+                        files: doneFiles,
+                        // Parte 3.2: se generó un archivo que no se pudo adjuntar.
+                        filesPartialError:
+                          ev.filesFailed != null && ev.filesFailed > 0
+                            ? true
                             : undefined,
                       }
                     : m,
                 ),
               );
+              // Parte 1: si el `done` NO trajo archivos, reconciliamos desde el
+              // server (cubre "se persistió pero el done se cortó/vino sin files").
+              if (!doneFiles) {
+                await reconcileFilesFromServer(convId, stateMsgId, serverMsgId);
+              }
               return { ok: true, conversationId: convId };
             }
           }
         }
 
         // Stream terminó sin 'done' explícito.
-        if (started) return { ok: true, conversationId: conversationId ?? "" };
+        if (started) {
+          // Parte 1: red de seguridad para el corte de stream. Si teníamos
+          // conversationId (conv existente), reconciliamos por si se generó un
+          // archivo que nunca llegó a la UI. (Conv NUEVA sin `done` todavía no
+          // tiene conversationId → gap conocido, baja frecuencia.)
+          const convId = conversationId ?? "";
+          if (convId) {
+            await reconcileFilesFromServer(convId, pendingMsgId, null);
+          }
+          return { ok: true, conversationId: convId };
+        }
         setErrorOnPending("respuesta incompleta, probá de nuevo");
         return { ok: false, error: "respuesta incompleta" };
       } catch (err) {

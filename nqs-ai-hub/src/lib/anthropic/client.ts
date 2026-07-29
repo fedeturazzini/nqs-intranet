@@ -430,6 +430,7 @@ async function streamWithFileGeneration(
 
     // Recorremos TODOS los bloques (no solo texto): juntamos el texto y, además,
     // capturamos los file_id de los resultados de code execution.
+    const capturedBefore = generatedFiles.length;
     for (const block of final.content) {
       if (block.type === "text") {
         text += block.text;
@@ -443,6 +444,32 @@ async function streamWithFileGeneration(
           }
         }
       }
+    }
+
+    // Parte 4.2: instrumentación shape-agnóstica. Las skills (pdf/docx/xlsx/pptx)
+    // pueden devolver el archivo con OTRA forma de bloque que la rama de arriba no
+    // maneja. Contamos cuántos "file_id" hay en el contenido crudo del turno; si
+    // superan a los capturados, alguna variante quedó sin manejar (mecanismo 2c
+    // del filecard-audit) → lo logueamos para poder medir cuán seguido pasa antes
+    // de escribir ramas de captura especulativas.
+    try {
+      const capturedThisTurn = generatedFiles.length - capturedBefore;
+      const rawFileIds = (
+        JSON.stringify(final.content).match(/"file_id"/g) ?? []
+      ).length;
+      if (rawFileIds > capturedThisTurn) {
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            msg: "code exec: file_id en el contenido NO capturado (shape de bloque no reconocido)",
+            rawFileIds,
+            captured: capturedThisTurn,
+            blockTypes: final.content.map((b) => b.type),
+          }),
+        );
+      }
+    } catch {
+      // Instrumentación best-effort: nunca rompe la generación.
     }
 
     tokensInput += final.usage.input_tokens;

@@ -434,6 +434,20 @@ export const claudeAdapter: ToolAdapter = {
 
         const assistantRow = inserted?.find((r) => r.role === "assistant");
         messageId = assistantRow?.id ?? "";
+        // Parte 2.2: si NO recuperamos el id del mensaje del assistant, los
+        // archivos de la etapa 2 quedarían con `message_id = null` (huérfanos).
+        // No es fatal (el reload los adjunta al último mensaje del assistant como
+        // fallback), pero lo logueamos fuerte para poder detectarlo.
+        if (!messageId) {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              msg: "claude.execute: assistant messageId vacío tras el insert (archivos quedarían huérfanos)",
+              userId,
+              conversationId,
+            }),
+          );
+        }
 
         // Bump updated_at de la conversación (para el listado por
         // recientes). Es no-bloqueante.
@@ -534,7 +548,7 @@ export const claudeAdapter: ToolAdapter = {
             console.error(
               JSON.stringify({
                 level: "error",
-                msg: "code exec: falló bajar/subir/registrar un archivo generado",
+                msg: "code exec: archivo GENERADO pero NO persistido (falló bajar/subir/registrar)",
                 userId,
                 conversationId,
                 fileId,
@@ -544,6 +558,27 @@ export const claudeAdapter: ToolAdapter = {
             );
           }
         }
+      }
+
+      // Parte 3.2: cuántos archivos se capturaron pero NO se pudieron persistir.
+      // Se propaga al cliente en el `done` para avisar (no quedar mudo) y así el
+      // user sabe que puede reintentar en vez de creer que no se generó nada.
+      const filesFailed =
+        fileGenEnabled && fileIds.length > 0
+          ? fileIds.length - (persistedFiles?.length ?? 0)
+          : 0;
+      if (filesFailed > 0) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            msg: "code exec: se generaron archivos que no se pudieron adjuntar",
+            userId,
+            conversationId,
+            captured: fileIds.length,
+            persisted: persistedFiles?.length ?? 0,
+            filesFailed,
+          }),
+        );
       }
 
       // 5. Log de uso (también best-effort). Incluimos `model` en metadata
@@ -583,6 +618,9 @@ export const claudeAdapter: ToolAdapter = {
           generatedFiles: response.generatedFiles,
           // ETAPA 2: ya en Storage + claude_files (viajan en el `done` del NDJSON).
           files: persistedFiles,
+          // Parte 3.2: archivos capturados que no se pudieron adjuntar (>0 → la
+          // UI avisa). 0 en el caso normal.
+          filesFailed,
         },
       };
     } catch (error) {

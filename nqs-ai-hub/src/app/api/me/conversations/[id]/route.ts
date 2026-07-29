@@ -106,11 +106,32 @@ export async function GET(
     string,
     Array<{ id: string; name: string; mediaType: string }>
   >();
+  // Parte 2.1: los archivos con `message_id` null (el mensaje del assistant no
+  // se guardó bien en la etapa 2) NO se descartan: se juntan como huérfanos y se
+  // adjuntan como fallback al ÚLTIMO mensaje del assistant de la conversación,
+  // así aparecen igual al recargar en vez de perderse.
+  const orphanFiles: Array<{ id: string; name: string; mediaType: string }> = [];
   for (const f of files ?? []) {
-    if (!f.message_id) continue;
+    if (!f.message_id) {
+      orphanFiles.push({ id: f.id, name: f.name, mediaType: f.media_type });
+      continue;
+    }
     const arr = filesByMessage.get(f.message_id) ?? [];
     arr.push({ id: f.id, name: f.name, mediaType: f.media_type });
     filesByMessage.set(f.message_id, arr);
+  }
+  if (orphanFiles.length > 0) {
+    // `messages` viene ordenado ascendente por created_at → el último assistant
+    // que veamos en el recorrido es el más reciente.
+    let lastAssistantId: string | null = null;
+    for (const m of messages ?? []) {
+      if (m.role === "assistant") lastAssistantId = m.id;
+    }
+    if (lastAssistantId) {
+      const arr = filesByMessage.get(lastAssistantId) ?? [];
+      arr.push(...orphanFiles);
+      filesByMessage.set(lastAssistantId, arr);
+    }
   }
 
   const messagesWithUrls = (messages ?? []).map((m) => {
