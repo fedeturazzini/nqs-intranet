@@ -28,17 +28,19 @@ import { basename } from "node:path";
 import {
   buildUserContent,
   downloadGeneratedFile,
+  maxTokensFor,
   modelSupportsCodeExecution,
   streamClaude,
   type ClaudeMessage,
 } from "@/lib/anthropic/client";
 import { isNoCreditsError, NO_CREDITS_CODE } from "@/lib/anthropic/errors";
-import { logInfo } from "@/lib/log";
+import { logInfo, logWarn } from "@/lib/log";
 import { analyzeArtifactAttempt } from "@/lib/utils/parse-artifacts";
+import { shortHash, previewText } from "@/lib/utils/log-preview";
 import { createServerClient } from "@/lib/db/supabase";
 import { getToolAccess } from "@/lib/db/queries/tools";
 import { getActiveSystemAndMemoryForProject } from "@/lib/db/queries/system-prompts";
-import { getActiveProjectId } from "@/lib/db/queries/projects";
+import { getActiveProjectId, getProjectSummary } from "@/lib/db/queries/projects";
 import { hasProjectGate } from "@/lib/auth/project-gate";
 import {
   pathBelongsToUser,
@@ -294,6 +296,46 @@ export const claudeAdapter: ToolAdapter = {
       const imagesReceived = userContent.filter(
         (b) => b.type === "image" || b.type === "document",
       ).length;
+
+      // Log de diagnóstico: qué se está por mandar a Anthropic — projectId +
+      // nombre + de qué fila salió el cerebro (para el bug de "pestañas
+      // mezcladas": si el cerebro que usa un execute NO corresponde al
+      // proyecto activo de esa pestaña), modelo, tamaño/hash/preview del
+      // system prompt (confirma que no viene cortado ni vacío, sin loguear el
+      // contenido entero), y el contexto (mensajes, imágenes, max_tokens).
+      // Detrás de DEBUG_BRAIN_VERBOSE (default off) suma el cerebro COMPLETO.
+      // Best-effort: hace una query extra (nombre del proyecto) — si ESO falla,
+      // no puede tirar abajo el chat real por un log de diagnóstico.
+      try {
+        const project = await getProjectSummary(projectId);
+        const brainVerbose = process.env.DEBUG_BRAIN_VERBOSE === "true";
+        logInfo("execute.context", {
+          userId,
+          projectId,
+          projectName: project?.name ?? null,
+          systemPromptId: systemPrompt.id,
+          systemPromptSource: `system_prompts:${systemPrompt.id} (project:${projectId})`,
+          systemPromptVersion: systemPrompt.version,
+          systemPromptChars: fullSystem.length,
+          systemPromptHash: shortHash(fullSystem),
+          systemPromptPreview: previewText(fullSystem, 200, 100),
+          // Si el proyecto es privado, llegar hasta acá YA implica que el gate
+          // pasó (hasProjectGate cortó antes si no) — se loguea explícito para
+          // no tener que inferirlo de "no hubo error".
+          brainPasswordGated: project?.isPrivate ?? false,
+          model: systemPrompt.model,
+          messagesSent: messages.length, // incluye el turno actual
+          imagesReceived,
+          maxTokens: maxTokensFor(systemPrompt.model),
+          ...(brainVerbose ? { fullSystemPrompt: fullSystem } : {}),
+        });
+      } catch (contextLogError) {
+        logWarn("execute.context: no se pudo armar (no bloquea el execute)", {
+          userId,
+          projectId,
+          err: contextLogError,
+        });
+      }
 
       // 3. Anthropic.
       // El modelo viene de DB (system_prompts.model del type='system').

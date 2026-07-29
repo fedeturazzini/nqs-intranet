@@ -119,6 +119,24 @@ export async function getActiveProjectForUser(
   return project;
 }
 
+/**
+ * Nombre + privacidad de un proyecto, liviano (sin `select *`). Para el log de
+ * diagnóstico `execute.context` (aux-log-system-brain): confirma qué proyecto se
+ * usó realmente en cada llamada a Anthropic (bug de "pestañas mezcladas").
+ */
+export async function getProjectSummary(
+  id: string,
+): Promise<{ name: string; isPrivate: boolean } | null> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("projects")
+    .select("name, is_private")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? { name: data.name, isPrivate: data.is_private } : null;
+}
+
 /** Setea/actualiza el proyecto activo del user (upsert por user_id). */
 export async function setActiveProject(
   userId: string,
