@@ -14,7 +14,7 @@
  *
  * Reusa las clases `artifact-card*` para verse igual que la card de artifacts.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PdfViewerModal } from "@/components/chat/PdfViewerModal";
 import { showToast } from "@/lib/store/toast";
@@ -31,6 +31,33 @@ export function FileCard({ file }: Readonly<{ file: ChatFile }>) {
   // no solo descargar — igual que las cards de artifacts de texto.
   const isText = isTextFile(file);
 
+  // Cache del contenido de texto: lo bajamos UNA sola vez (el archivo es
+  // inmutable) y lo reusamos para "ver" y "copiar". Sin esto, cada click repetía
+  // los dos round-trips (API → signed URL → Storage) = 3-4s cada vez.
+  const textCache = useRef<{
+    value: string | null;
+    promise: Promise<string | null> | null;
+  }>({ value: null, promise: null });
+
+  const loadText = useCallback((): Promise<string | null> => {
+    const c = textCache.current;
+    if (c.value != null) return Promise.resolve(c.value);
+    if (c.promise) return c.promise;
+    const p = fetchFileText(file.id).then((t) => {
+      c.value = t;
+      c.promise = null;
+      return t;
+    });
+    c.promise = p;
+    return p;
+  }, [file.id]);
+
+  // Prefetch al pasar el mouse por la card: cuando el user llega al botón, el
+  // texto ya suele estar listo → "ver"/"copiar" se sienten instantáneos.
+  const prefetchText = useCallback(() => {
+    if (isText) void loadText();
+  }, [isText, loadText]);
+
   async function handleDownload() {
     if (downloading) return;
     setDownloading(true);
@@ -45,7 +72,7 @@ export function FileCard({ file }: Readonly<{ file: ChatFile }>) {
     if (copying) return;
     setCopying(true);
     try {
-      const text = await fetchFileText(file.id);
+      const text = await loadText();
       if (text == null) {
         showToast({
           title: "ERROR",
@@ -65,7 +92,7 @@ export function FileCard({ file }: Readonly<{ file: ChatFile }>) {
 
   return (
     <>
-      <div className="artifact-card">
+      <div className="artifact-card" onMouseEnter={prefetchText}>
         <div className="artifact-card-icon">
           <FileTypeIcon />
         </div>
@@ -124,6 +151,7 @@ export function FileCard({ file }: Readonly<{ file: ChatFile }>) {
       {textPreview && isText && (
         <GeneratedTextPreview
           file={file}
+          loadText={loadText}
           copied={copied}
           copying={copying}
           onCopy={handleCopy}
@@ -188,6 +216,7 @@ function GeneratedPdfPreview({
 // ============================================================
 function GeneratedTextPreview({
   file,
+  loadText,
   copied,
   copying,
   onCopy,
@@ -195,6 +224,7 @@ function GeneratedTextPreview({
   onClose,
 }: Readonly<{
   file: ChatFile;
+  loadText: () => Promise<string | null>;
   copied: boolean;
   copying: boolean;
   onCopy: () => void;
@@ -206,16 +236,17 @@ function GeneratedTextPreview({
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const text = await fetchFileText(file.id);
+    // Reusa el cache del FileCard: si ya se prefetcheó (hover) o se copió antes,
+    // resuelve al instante; si no, baja una vez y queda cacheado.
+    loadText().then((text) => {
       if (!alive) return;
       if (text == null) setError(true);
       else setContent(text);
-    })();
+    });
     return () => {
       alive = false;
     };
-  }, [file.id]);
+  }, [loadText]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
