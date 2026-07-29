@@ -8,7 +8,7 @@
  * esa config y que los errores se PROPAGAN (el adapter los envuelve
  * en Result).
  */
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 type CreateFn = (...args: unknown[]) => Promise<unknown>;
 let mockCreate: CreateFn = async () => ({
@@ -118,6 +118,84 @@ describe("maxTokensFor", () => {
     // Haiku 4.5 topa en 64K; el resto en 128K. El target (32K/64K) siempre entra.
     expect(maxTokensFor("claude-haiku-4-5")).toBeLessThanOrEqual(64_000);
     expect(maxTokensFor("claude-opus-5")).toBeLessThanOrEqual(128_000);
+  });
+});
+
+describe("callClaude — contentBlocks / anthropicMessageId (para execute.summary)", () => {
+  afterEach(() => {
+    delete process.env.DEBUG_EXECUTE_VERBOSE;
+  });
+
+  test("resume el bloque de texto (chars, sin contenido) y toma el id del mensaje", async () => {
+    mockCreate = async () => ({
+      id: "msg_test123",
+      content: [{ type: "text", text: "hola desde claude" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      stop_reason: "end_turn",
+    });
+    const r = await callClaude("sys", [{ role: "user", content: "x" }]);
+    expect(r.anthropicMessageId).toBe("msg_test123");
+    expect(r.contentBlocks).toEqual([
+      { type: "text", chars: "hola desde claude".length },
+    ]);
+  });
+
+  test("sin id en la respuesta → anthropicMessageId null (no rompe)", async () => {
+    mockCreate = async () => ({
+      content: [{ type: "text", text: "x" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      stop_reason: "end_turn",
+    });
+    const r = await callClaude("sys", [{ role: "user", content: "x" }]);
+    expect(r.anthropicMessageId).toBeNull();
+  });
+
+  test("resume bloques de code execution (cuenta archivos, no expone contenido)", async () => {
+    mockCreate = async () => ({
+      content: [
+        { type: "server_tool_use", id: "t1", name: "code_execution", input: {} },
+        {
+          type: "bash_code_execution_tool_result",
+          tool_use_id: "t1",
+          content: {
+            type: "bash_code_execution_result",
+            content: [
+              { type: "bash_code_execution_output", file_id: "f1" },
+              { type: "bash_code_execution_output", file_id: "f2" },
+            ],
+          },
+        },
+      ],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      stop_reason: "end_turn",
+    });
+    const r = await callClaude("sys", [{ role: "user", content: "x" }]);
+    expect(r.contentBlocks).toEqual([
+      { type: "server_tool_use" },
+      { type: "bash_code_execution_tool_result", files: 2 },
+    ]);
+  });
+
+  test("sin DEBUG_EXECUTE_VERBOSE, NO incluye snippet (nunca el contenido crudo por default)", async () => {
+    mockCreate = async () => ({
+      content: [{ type: "text", text: "contenido sensible del usuario" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      stop_reason: "end_turn",
+    });
+    const r = await callClaude("sys", [{ role: "user", content: "x" }]);
+    expect(r.contentBlocks[0]).not.toHaveProperty("snippet");
+  });
+
+  test("con DEBUG_EXECUTE_VERBOSE=true, incluye un recorte de hasta 500 chars", async () => {
+    process.env.DEBUG_EXECUTE_VERBOSE = "true";
+    mockCreate = async () => ({
+      content: [{ type: "text", text: "a".repeat(600) }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      stop_reason: "end_turn",
+    });
+    const r = await callClaude("sys", [{ role: "user", content: "x" }]);
+    expect(r.contentBlocks[0]).toMatchObject({ type: "text", chars: 600 });
+    expect((r.contentBlocks[0] as { snippet?: string }).snippet).toHaveLength(500);
   });
 });
 

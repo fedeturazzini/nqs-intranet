@@ -33,6 +33,8 @@ import {
   type ClaudeMessage,
 } from "@/lib/anthropic/client";
 import { isNoCreditsError, NO_CREDITS_CODE } from "@/lib/anthropic/errors";
+import { logInfo } from "@/lib/log";
+import { analyzeArtifactAttempt } from "@/lib/utils/parse-artifacts";
 import { createServerClient } from "@/lib/db/supabase";
 import { getToolAccess } from "@/lib/db/queries/tools";
 import { getActiveSystemAndMemoryForProject } from "@/lib/db/queries/system-prompts";
@@ -282,10 +284,16 @@ export const claudeAdapter: ToolAdapter = {
       // Mensaje del user actual (texto + adjuntos). `signed` son pares
       // { path, url }: buildUserContent decide image vs document por la
       // extensión del path (.pdf → document).
-      messages.push({
-        role: "user",
-        content: buildUserContent(params.prompt, signed),
-      });
+      const userContent = buildUserContent(params.prompt, signed);
+      messages.push({ role: "user", content: userContent });
+      // Cuántos bloques image/document quedaron REALMENTE en el request (vs
+      // imagePaths.length, lo que el user adjuntó) — para el bug "no me llegan
+      // las imágenes al sandbox": distingue si el problema es que no se mandan,
+      // o que se mandan y el sandbox no las procesa. El source siempre es "url"
+      // (signed URL de Storage); si algún día cambia a base64 esto lo muestra.
+      const imagesReceived = userContent.filter(
+        (b) => b.type === "image" || b.type === "document",
+      ).length;
 
       // 3. Anthropic.
       // El modelo viene de DB (system_prompts.model del type='system').
@@ -294,6 +302,7 @@ export const claudeAdapter: ToolAdapter = {
       // Streaming: si el caller pasó `onText`, los deltas se emiten a
       // medida que se generan (la respuesta no se corta por timeout aunque
       // el prompt sea grande). Igual acumulamos el texto completo.
+      const callStartedAt = Date.now();
       const response = await streamClaude(
         fullSystem,
         messages,
@@ -301,6 +310,7 @@ export const claudeAdapter: ToolAdapter = {
         onText,
         onStatus,
       );
+      const durationMs = Date.now() - callStartedAt;
 
       // ETAPA 1: si Claude generó archivos en el sandbox, logueamos los file_id
       // para confirmar que anda. Todavía NO se bajan ni se guardan (etapa 2).
@@ -383,6 +393,32 @@ export const claudeAdapter: ToolAdapter = {
         );
         // Seguimos: el user recibe su texto. La conv queda inconsistente.
       }
+
+      // Resumen ESTRUCTURADO de esta ejecución — compara casos que andan vs
+      // los que fallan (prompt que no se muestra, imágenes que no llegan al
+      // sandbox) sin loguear el contenido crudo (respuestas de 20k tokens →
+      // logs gigantes + datos de usuarios). Detrás de DEBUG_EXECUTE_VERBOSE
+      // (default off), contentBlocks trae además un recorte de hasta 500 chars
+      // por bloque de texto — nunca el contenido entero (ver client.ts).
+      const artifactAttempt = analyzeArtifactAttempt(response.text);
+      logInfo("execute.summary", {
+        requestId: response.anthropicMessageId ?? undefined,
+        userId,
+        conversationId,
+        messageId,
+        model: systemPrompt.model,
+        stopReason: response.stopReason,
+        tokensInput: response.tokensInput,
+        tokensOutput: response.tokensOutput,
+        contentBlocks: response.contentBlocks,
+        artifactAttempted: artifactAttempt.attempted,
+        artifactDetected: artifactAttempt.detected,
+        artifactFailReason: artifactAttempt.reason,
+        fileIds: response.generatedFiles?.length ?? 0,
+        imagesReceived,
+        attachmentsSource: imagesReceived > 0 ? "url" : undefined,
+        durationMs,
+      });
 
       // 4.5 ETAPA 2: bajar cada archivo generado de la Files API, subirlo a
       // Storage y registrarlo en claude_files. Best-effort POR ARCHIVO: si uno

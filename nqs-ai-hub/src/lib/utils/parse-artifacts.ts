@@ -152,3 +152,42 @@ function extractParam(body: string, name: string): string {
   const m = body.match(re);
   return m ? m[1].trim() : "";
 }
+
+/**
+ * Analiza si el mensaje INTENTÓ emitir un artifact y si se pudo parsear bien —
+ * para el log de diagnóstico `execute.summary` (adapters/claude.ts, aux-audit
+ * prompt-no-visible). Reusa `parseMessageWithArtifacts` / `hasIncompleteArtifact`,
+ * no duplica el regex.
+ */
+export type ArtifactAttempt = {
+  /** Hubo un `<function_calls>` en el texto (intentó emitir un artifact). */
+  attempted: boolean;
+  /** El parser encontró un artifact VÁLIDO (type + content parseables). */
+  detected: boolean;
+  /**
+   * Solo si attempted && !detected — por qué falló:
+   *   - "unclosed": el bloque nunca cerró (cortado por max_tokens u otro corte).
+   *   - "missing_type_or_content": cerró pero sin `type`/`content` parseables
+   *     (el bug de "prompt no visible": nombre de parámetro raro, comillas
+   *     simples, contenido con las propias etiquetas, etc. — ver
+   *     prompt-no-visible-audit.md).
+   */
+  reason?: "unclosed" | "missing_type_or_content";
+};
+
+export function analyzeArtifactAttempt(content: string): ArtifactAttempt {
+  const attempted = /<function_calls>/i.test(content);
+  if (!attempted) return { attempted: false, detected: false };
+
+  const { segments } = parseMessageWithArtifacts(content);
+  if (segments.some((s) => s.kind === "artifact")) {
+    return { attempted: true, detected: true };
+  }
+  return {
+    attempted: true,
+    detected: false,
+    reason: hasIncompleteArtifact(content)
+      ? "unclosed"
+      : "missing_type_or_content",
+  };
+}

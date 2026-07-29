@@ -7,6 +7,7 @@ import {
   hasIncompleteArtifact,
   hasIncompleteThinking,
   extractPartialArtifact,
+  analyzeArtifactAttempt,
 } from "@/lib/utils/parse-artifacts";
 
 const artifactBlock = (
@@ -164,5 +165,50 @@ describe("extractPartialArtifact (artifact cortado por max_tokens)", () => {
 
   test("devuelve null si no hay artifact", () => {
     expect(extractPartialArtifact("texto normal sin artifact")).toBeNull();
+  });
+});
+
+describe("analyzeArtifactAttempt (para el log execute.summary)", () => {
+  test("sin <function_calls> → no intentó (attempted false)", () => {
+    expect(analyzeArtifactAttempt("hola, ¿cómo va?")).toEqual({
+      attempted: false,
+      detected: false,
+    });
+  });
+
+  test("artifact bien formado → detected true, sin reason", () => {
+    const msg = artifactBlock(
+      `<parameter name="type">text/plain</parameter>\n` +
+        `<parameter name="title">t</parameter>\n` +
+        `<parameter name="content">ok</parameter>`,
+    );
+    expect(analyzeArtifactAttempt(msg)).toEqual({
+      attempted: true,
+      detected: true,
+    });
+  });
+
+  test("cerrado pero sin content → missing_type_or_content (el bug de prompt no visible)", () => {
+    const msg = artifactBlock(
+      `<parameter name="type">text/plain</parameter>\n` +
+        `<parameter name="title">vacío</parameter>`,
+    );
+    expect(analyzeArtifactAttempt(msg)).toEqual({
+      attempted: true,
+      detected: false,
+      reason: "missing_type_or_content",
+    });
+  });
+
+  test("cortado sin cerrar (max_tokens) → unclosed", () => {
+    const cut =
+      `Listo:\n<function_calls>\n<invoke name="artifacts">\n` +
+      `<parameter name="type">text/plain</parameter>\n` +
+      `<parameter name="content">a med`;
+    expect(analyzeArtifactAttempt(cut)).toEqual({
+      attempted: true,
+      detected: false,
+      reason: "unclosed",
+    });
   });
 });

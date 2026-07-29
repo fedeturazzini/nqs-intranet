@@ -159,6 +159,72 @@ export type CallClaudeOptions = {
   enableFileGeneration?: boolean;
 };
 
+/**
+ * Resumen de UN bloque de la respuesta de Anthropic: tipo + tamaño, SIN el
+ * contenido completo. Sirve para comparar ejecuciones que fallan vs las que
+ * andan (log `execute.summary` en adapters/claude.ts) sin loguear texto crudo
+ * (respuestas de 20k tokens → logs gigantes + datos de usuarios).
+ */
+export type ContentBlockSummary = {
+  type: string;
+  /** Caracteres del bloque — solo bloques de texto. */
+  chars?: number;
+  /** Archivos generados — solo resultados de code execution. */
+  files?: number;
+  /** Recorte del contenido (primeros 500 chars). SOLO si DEBUG_EXECUTE_VERBOSE=true
+   *  (default off) — nunca el contenido entero. */
+  snippet?: string;
+};
+
+const VERBOSE_SNIPPET_CHARS = 500;
+
+/** DEBUG_EXECUTE_VERBOSE=true habilita el recorte de contenido en los logs. */
+function isVerboseLoggingEnabled(): boolean {
+  return process.env.DEBUG_EXECUTE_VERBOSE === "true";
+}
+
+/**
+ * Resume los content blocks de la respuesta FINAL de Anthropic (tipo + tamaño de
+ * cada uno) para el log de diagnóstico. Duck-typing sobre `unknown`: sirve tanto
+ * para el path normal (`Anthropic.Messages.ContentBlock[]`) como para el beta con
+ * code execution (`Anthropic.Beta.BetaContentBlock[]`) sin acoplar a un tipo
+ * concreto del SDK.
+ */
+function summarizeContentBlocks(
+  blocks: readonly unknown[],
+): ContentBlockSummary[] {
+  const verbose = isVerboseLoggingEnabled();
+  return blocks.map((raw) => {
+    const b = raw as { type: string; text?: unknown; content?: unknown };
+    if (b.type === "text" && typeof b.text === "string") {
+      const summary: ContentBlockSummary = { type: b.type, chars: b.text.length };
+      if (verbose) summary.snippet = b.text.slice(0, VERBOSE_SNIPPET_CHARS);
+      return summary;
+    }
+    if (b.type === "bash_code_execution_tool_result") {
+      return { type: b.type, files: countFileOutputs(b.content) };
+    }
+    return { type: b.type };
+  });
+}
+
+/** Cuenta los `bash_code_execution_output` (archivos) dentro de un tool_result. */
+function countFileOutputs(content: unknown): number {
+  const result = content as
+    | { type?: string; content?: unknown[] }
+    | undefined;
+  if (
+    !result ||
+    result.type !== "bash_code_execution_result" ||
+    !Array.isArray(result.content)
+  ) {
+    return 0;
+  }
+  return result.content.filter(
+    (out) => (out as { type?: string }).type === "bash_code_execution_output",
+  ).length;
+}
+
 export type ClaudeResponse = {
   text: string;
   tokensInput: number;
@@ -166,6 +232,12 @@ export type ClaudeResponse = {
   stopReason: string | null;
   /** Archivos generados en el sandbox (solo con `enableFileGeneration`). */
   generatedFiles?: GeneratedFile[];
+  /** Tipo + tamaño de cada bloque de la respuesta, para `execute.summary`. */
+  contentBlocks: ContentBlockSummary[];
+  /** Id del mensaje de Anthropic ("msg_…"). Identificador único de ESTA
+   *  respuesta para correlacionar en los logs (no es el HTTP request-id, pero
+   *  cumple el mismo rol si hiciera falta soporte de Anthropic). */
+  anthropicMessageId: string | null;
 };
 
 /**
@@ -203,6 +275,8 @@ export async function callClaude(
     tokensInput: response.usage.input_tokens,
     tokensOutput: response.usage.output_tokens,
     stopReason: response.stop_reason,
+    contentBlocks: summarizeContentBlocks(response.content),
+    anthropicMessageId: response.id ?? null,
   };
 }
 
@@ -283,6 +357,8 @@ async function streamTextOnly(
     tokensInput: final.usage.input_tokens,
     tokensOutput: final.usage.output_tokens,
     stopReason: final.stop_reason,
+    contentBlocks: summarizeContentBlocks(final.content),
+    anthropicMessageId: final.id ?? null,
   };
 }
 
@@ -316,7 +392,11 @@ async function streamWithFileGeneration(
   let tokensInput = 0;
   let tokensOutput = 0;
   let stopReason: string | null = null;
+  let anthropicMessageId: string | null = null;
   const generatedFiles: GeneratedFile[] = [];
+  // Con pause_turn puede haber varias vueltas — acumulamos los bloques de TODAS
+  // (no solo la última), así el resumen refleja la respuesta completa.
+  const contentBlocks: ContentBlockSummary[] = [];
 
   for (let turn = 0; turn < MAX_FILE_GEN_TURNS; turn++) {
     const stream = client.beta.messages.stream({
@@ -368,6 +448,8 @@ async function streamWithFileGeneration(
     tokensInput += final.usage.input_tokens;
     tokensOutput += final.usage.output_tokens;
     stopReason = final.stop_reason;
+    anthropicMessageId = final.id ?? anthropicMessageId;
+    contentBlocks.push(...summarizeContentBlocks(final.content));
 
     // Si no pausó, terminamos. Si pausó, appendeamos el turno del assistant y
     // volvemos a llamar (la API detecta el server_tool_use final y resume).
@@ -378,7 +460,15 @@ async function streamWithFileGeneration(
     } as Anthropic.Beta.BetaMessageParam);
   }
 
-  return { text, tokensInput, tokensOutput, stopReason, generatedFiles };
+  return {
+    text,
+    tokensInput,
+    tokensOutput,
+    stopReason,
+    generatedFiles,
+    contentBlocks,
+    anthropicMessageId,
+  };
 }
 
 // ============================================================
