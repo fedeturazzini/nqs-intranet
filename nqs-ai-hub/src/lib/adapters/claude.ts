@@ -32,6 +32,7 @@ import {
   streamClaude,
   type ClaudeMessage,
 } from "@/lib/anthropic/client";
+import { isNoCreditsError, NO_CREDITS_CODE } from "@/lib/anthropic/errors";
 import { createServerClient } from "@/lib/db/supabase";
 import { getToolAccess } from "@/lib/db/queries/tools";
 import { getActiveSystemAndMemoryForProject } from "@/lib/db/queries/system-prompts";
@@ -484,20 +485,29 @@ export const claudeAdapter: ToolAdapter = {
         },
       };
     } catch (error) {
-      // Errores ANTES del API call (config, DB previa, network al SDK).
-      // Logueamos el real para debug interno, pero devolvemos un Error
-      // genérico para no leakear detalles de Anthropic al caller.
+      // Caso especial: saldo de la API de Anthropic agotado (400 no reintentable).
+      // Lo marcamos como NO_CREDITS para encontrarlo fácil en los logs y devolvemos
+      // un código propio; la ruta lo mapea a un mensaje claro (sin exponerle al
+      // empleado el texto de billing ni el request_id — es info del admin).
+      const noCredits = isNoCreditsError(error);
       console.error(
         JSON.stringify({
           level: "error",
-          msg: "claude.execute failed",
+          msg: noCredits
+            ? "claude.execute failed: NO_CREDITS (saldo de la API agotado)"
+            : "claude.execute failed",
+          code: noCredits ? NO_CREDITS_CODE : undefined,
           userId,
           error: error instanceof Error ? error.message : String(error),
         }),
       );
       return {
         ok: false,
-        error: new Error("no pudimos procesar tu pedido, intentá de nuevo"),
+        error: new Error(
+          noCredits
+            ? NO_CREDITS_CODE
+            : "no pudimos procesar tu pedido, intentá de nuevo",
+        ),
       };
     }
   },

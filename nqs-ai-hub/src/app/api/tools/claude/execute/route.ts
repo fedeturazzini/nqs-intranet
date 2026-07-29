@@ -18,6 +18,7 @@ import { getSession } from "@/lib/auth/server";
 import { getAdapter } from "@/lib/adapters";
 import { requireToolAccess } from "@/lib/middleware/permissions";
 import { logWarn, logError, requestIdFrom } from "@/lib/log";
+import { NO_CREDITS_CODE } from "@/lib/anthropic/errors";
 
 // La respuesta se STREAMEA (puede tardar varios MINUTOS con prompts grandes).
 // Con el techo anterior (60s, el cap del plan Hobby) Vercel mataba la función
@@ -114,7 +115,13 @@ export async function POST(request: Request): Promise<Response> {
           (status) => send({ type: "status", status }),
         );
         if (!result.ok) {
-          send({ type: "error", message: result.error.message });
+          if (result.error.message === NO_CREDITS_CODE) {
+            // Saldo de la API agotado → mandamos un CÓDIGO propio, sin el texto de
+            // billing de Anthropic. El chat lo muestra como mensaje claro.
+            send({ type: "error", code: NO_CREDITS_CODE });
+          } else {
+            send({ type: "error", message: result.error.message });
+          }
         } else {
           send({
             type: "done",

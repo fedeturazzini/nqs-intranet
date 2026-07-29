@@ -19,6 +19,13 @@
  * al store.
  */
 import { useCallback, useRef, useState } from "react";
+import { NO_CREDITS_CODE } from "@/lib/anthropic/errors";
+
+/** Mensaje al usuario cuando la API se quedó sin saldo (NO_CREDITS). NO le
+ *  mostramos el texto de billing ni el request_id de Anthropic — es info del
+ *  admin; el empleado no puede recargar, solo avisar. */
+const NO_CREDITS_MESSAGE =
+  "El servicio de IA no está disponible en este momento. Avisá al administrador.";
 
 // ============================================================
 // Tipos del chat (UI-side)
@@ -285,6 +292,7 @@ export function useClaudeChat() {
               tokensOutput?: number;
               stopReason?: string | null;
               message?: string;
+              code?: string;
               files?: ChatFile[];
             };
             try {
@@ -322,8 +330,12 @@ export function useClaudeChat() {
                 ),
               );
             } else if (ev.type === "error") {
-              setErrorOnPending(ev.message || "no pudimos procesar tu pedido");
-              return { ok: false, error: ev.message || "error" };
+              const msg =
+                ev.code === NO_CREDITS_CODE
+                  ? NO_CREDITS_MESSAGE
+                  : ev.message || "no pudimos procesar tu pedido";
+              setErrorOnPending(msg);
+              return { ok: false, error: ev.code ?? msg };
             } else if (ev.type === "done") {
               const convId = ev.conversationId ?? "";
               setConversationId(convId);
