@@ -152,10 +152,17 @@ export function ChatInput({
                 previewUrl,
               });
             }
-          } catch {
+          } catch (err) {
+            // Mostramos el motivo REAL (ej. "no pude procesar la imagen (12.4MB).
+            // Probá con una más liviana.") en vez de un genérico. Además `file.name`
+            // viene vacío en las imágenes pegadas del portapapeles, así que el
+            // fallback no puede depender solo de él.
             showToast({
               title: "ERROR",
-              msg: `No pude procesar ${file.name}.`,
+              msg:
+                err instanceof Error && err.message
+                  ? err.message
+                  : `No pude procesar ${file.name || "la imagen"}.`,
               color: "var(--danger, #ff5c5c)",
             });
           }
