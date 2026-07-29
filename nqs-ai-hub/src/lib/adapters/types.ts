@@ -84,6 +84,14 @@ export type ExecuteResult = {
     mediaType: string;
     storagePath: string;
   }>;
+  /**
+   * Cantidad de archivos que se CAPTURARON (file_id) pero NO se pudieron bajar/
+   * subir/registrar en la etapa 2 (fallo transitorio de Files API / Storage /
+   * DB). >0 significa "Claude generó un archivo pero no se pudo adjuntar" → la
+   * UI lo avisa para que el user pueda reintentar en vez de creer que no se
+   * generó nada. 0/undefined cuando no falló ninguno.
+   */
+  filesFailed?: number;
 };
 
 // ============================================================

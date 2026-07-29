@@ -215,6 +215,18 @@ function MessageBubble({
           </div>
         )}
 
+        {/* Parte 3.2: Claude generó un archivo pero no se pudo adjuntar (falló
+            la persistencia). Avisamos para que el user pueda reintentar en vez
+            de creer que no se generó nada. */}
+        {isAi &&
+          msg.filesPartialError &&
+          (!msg.files || msg.files.length === 0) && (
+            <div className="message-truncated-warning">
+              ⚠ Claude generó un archivo pero no se pudo adjuntar. Pedile que lo
+              genere de nuevo.
+            </div>
+          )}
+
         {isAi && msg.stopReason === "max_tokens" && (
           <div className="message-truncated-warning">
             ⚠ Respuesta cortada por el límite de longitud. Pedile a Claude que
