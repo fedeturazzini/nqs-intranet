@@ -20,6 +20,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "@/lib/auth/server";
 import type { Database } from "@/types/db";
+import { decodeJwtExpMs } from "@/lib/auth/jwt";
 import { logWarn } from "@/lib/log";
 
 // Mismo maxAge que /api/auth/login (la cookie vive 7 días; el JWT adentro ~1h).
@@ -74,7 +75,12 @@ export async function POST(): Promise<NextResponse> {
   }
 
   const isProd = process.env.NODE_ENV === "production";
-  const res = NextResponse.json({ ok: true });
+  // expiresAt del NUEVO token → el cliente (SessionKeepAlive) reprograma el
+  // próximo refresh con el exp real, sin hardcodear la 1h.
+  const res = NextResponse.json({
+    ok: true,
+    expiresAt: decodeJwtExpMs(data.session.access_token),
+  });
 
   // Re-seteamos AMBAS con los tokens NUEVOS, mismas opciones que el login.
   const cookieOpts = {

@@ -13,10 +13,13 @@
  *     <Toast />                 ← portal global (Zustand)
  *   </div>
  */
+import { cookies } from "next/headers";
 import { Marquee } from "@/components/ui/Marquee";
 import { Toast } from "@/components/ui/Toast";
 import { Topbar } from "@/components/ui/Topbar";
-import { requireAuth } from "@/lib/auth/server";
+import { SessionKeepAlive } from "@/components/auth/SessionKeepAlive";
+import { requireAuth, ACCESS_TOKEN_COOKIE } from "@/lib/auth/server";
+import { decodeJwtExpMs } from "@/lib/auth/jwt";
 
 const MARQUEE_ITEMS = [
   "ONE KEY · EVERY TOOL",
@@ -40,6 +43,12 @@ export default async function DashboardLayout({
 }: DashboardLayoutProps) {
   const session = await requireAuth();
 
+  // Semilla para el refresh proactivo: cuándo vence el JWT actual. Si no se puede
+  // leer, fallback a ~1h (SessionKeepAlive igual reprograma con cada refresh).
+  const token = (await cookies()).get(ACCESS_TOKEN_COOKIE)?.value;
+  const expiresAtMs =
+    (token ? decodeJwtExpMs(token) : null) ?? Date.now() + 55 * 60 * 1000;
+
   return (
     <div className="app">
       <Topbar
@@ -54,6 +63,8 @@ export default async function DashboardLayout({
       <Marquee items={MARQUEE_ITEMS} />
       {children}
       <Toast />
+      {/* Refresh proactivo del token en TODA la app autenticada (fix NQS 3/7). */}
+      <SessionKeepAlive expiresAtMs={expiresAtMs} />
     </div>
   );
 }
