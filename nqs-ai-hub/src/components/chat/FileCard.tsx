@@ -15,6 +15,7 @@
  * Reusa las clases `artifact-card*` para verse igual que la card de artifacts.
  */
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { PdfViewerModal } from "@/components/chat/PdfViewerModal";
 import { showToast } from "@/lib/store/toast";
 import type { ChatFile } from "@/lib/hooks/useClaudeChat";
@@ -22,7 +23,13 @@ import type { ChatFile } from "@/lib/hooks/useClaudeChat";
 export function FileCard({ file }: Readonly<{ file: ChatFile }>) {
   const [downloading, setDownloading] = useState(false);
   const [preview, setPreview] = useState(false);
+  const [textPreview, setTextPreview] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
   const isPdf = file.mediaType === "application/pdf";
+  // Los archivos de TEXTO (.txt/.md/csv/…) también se pueden ver inline y copiar,
+  // no solo descargar — igual que las cards de artifacts de texto.
+  const isText = isTextFile(file);
 
   async function handleDownload() {
     if (downloading) return;
@@ -31,6 +38,28 @@ export function FileCard({ file }: Readonly<{ file: ChatFile }>) {
       await triggerDownload(file.id);
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function handleCopy() {
+    if (copying) return;
+    setCopying(true);
+    try {
+      const text = await fetchFileText(file.id);
+      if (text == null) {
+        showToast({
+          title: "ERROR",
+          msg: "No pude leer el archivo para copiar.",
+          color: "var(--danger, #ff5c5c)",
+        });
+        return;
+      }
+      if (await copyToClipboard(text)) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } finally {
+      setCopying(false);
     }
   }
 
@@ -55,6 +84,27 @@ export function FileCard({ file }: Readonly<{ file: ChatFile }>) {
               ⊙ ver
             </button>
           )}
+          {isText && (
+            <button
+              type="button"
+              className="artifact-btn"
+              onClick={() => setTextPreview(true)}
+              title="Ver el contenido sin descargar"
+            >
+              ⊙ ver
+            </button>
+          )}
+          {isText && (
+            <button
+              type="button"
+              className="artifact-btn"
+              onClick={handleCopy}
+              disabled={copying}
+              title="Copiar el contenido"
+            >
+              {copied ? "✓ copiado" : "⧉ copiar"}
+            </button>
+          )}
           <button
             type="button"
             className="artifact-btn"
@@ -69,6 +119,17 @@ export function FileCard({ file }: Readonly<{ file: ChatFile }>) {
 
       {preview && isPdf && (
         <GeneratedPdfPreview file={file} onClose={() => setPreview(false)} />
+      )}
+
+      {textPreview && isText && (
+        <GeneratedTextPreview
+          file={file}
+          copied={copied}
+          copying={copying}
+          onCopy={handleCopy}
+          onDownload={handleDownload}
+          onClose={() => setTextPreview(false)}
+        />
       )}
     </>
   );
@@ -121,8 +182,137 @@ function GeneratedPdfPreview({
 }
 
 // ============================================================
+// Preview de un archivo de TEXTO generado (.txt/.md/…): baja el contenido por la
+// signed URL inline (guard de ownership) y lo muestra en un modal, con copiar +
+// descargar. Reusa las clases del modal de artifacts para verse igual.
+// ============================================================
+function GeneratedTextPreview({
+  file,
+  copied,
+  copying,
+  onCopy,
+  onDownload,
+  onClose,
+}: Readonly<{
+  file: ChatFile;
+  copied: boolean;
+  copying: boolean;
+  onCopy: () => void;
+  onDownload: () => void;
+  onClose: () => void;
+}>) {
+  const [content, setContent] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const text = await fetchFileText(file.id);
+      if (!alive) return;
+      if (text == null) setError(true);
+      else setContent(text);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [file.id]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="modal-bd" onClick={onClose}>
+      <div
+        className="modal artifact-preview-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-hd">
+          <div style={{ minWidth: 0 }}>
+            <div className="t-eyebrow">↳ ARCHIVO</div>
+            <div className="artifact-preview-title">{file.name}</div>
+          </div>
+          <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+            <button
+              type="button"
+              className="artifact-btn"
+              onClick={onCopy}
+              disabled={copying}
+            >
+              {copied ? "✓ copiado" : "⧉ copiar"}
+            </button>
+            <button type="button" className="artifact-btn" onClick={onDownload}>
+              ↓ descargar
+            </button>
+            <button type="button" className="btn ghost" onClick={onClose}>
+              esc ✕
+            </button>
+          </div>
+        </div>
+        <div className="artifact-preview-body">
+          {error ? (
+            <div className="t-meta dim">No pude cargar el contenido.</div>
+          ) : content == null ? (
+            <div className="t-meta dim">Cargando…</div>
+          ) : (
+            <pre className="artifact-text-preview">{content}</pre>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ============================================================
 // Helpers
 // ============================================================
+
+/** True si el archivo es de texto (se puede ver inline y copiar, no solo bajar). */
+function isTextFile(file: ChatFile): boolean {
+  if (file.mediaType.toLowerCase().startsWith("text/")) return true;
+  return /\.(txt|md|markdown|csv|json|log|xml|ya?ml|html?)$/i.test(file.name);
+}
+
+/**
+ * Baja el contenido de texto de un archivo generado: pide la signed URL inline
+ * (valida ownership) y después el archivo. Devuelve el texto o null si falla.
+ */
+async function fetchFileText(fileId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/tools/claude/files/${fileId}?inline=1`, {
+      cache: "no-store",
+    });
+    const data = (await res.json().catch(() => ({}))) as { url?: string };
+    if (!res.ok || !data.url) return null;
+    const fileRes = await fetch(data.url, { cache: "no-store" });
+    if (!fileRes.ok) return null;
+    return await fileRes.text();
+  } catch {
+    return null;
+  }
+}
+
+/** Copia texto al portapapeles; muestra toast si el browser lo bloquea. */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    showToast({
+      title: "ERROR",
+      msg: "No pude copiar al portapapeles.",
+      color: "var(--danger, #ff5c5c)",
+    });
+    return false;
+  }
+}
 
 /**
  * Pide la signed URL de DESCARGA al endpoint (valida ownership) y dispara la
