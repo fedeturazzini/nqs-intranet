@@ -128,6 +128,7 @@ export async function POST(request: Request): Promise<Response> {
             text: result.value.text,
             conversationId: result.value.conversationId,
             messageId: result.value.messageId,
+            createdAt: result.value.createdAt,
             tokensInput: result.value.tokensInput,
             tokensOutput: result.value.tokensOutput,
             stopReason: result.value.stopReason,

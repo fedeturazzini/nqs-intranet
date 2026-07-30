@@ -406,6 +406,10 @@ export const claudeAdapter: ToolAdapter = {
       // 4. Persistencia. Best-effort: si falla algo acá, igual devolvemos
       // la respuesta al user porque ya pagamos los tokens.
       let messageId = "";
+      // Timestamp REAL del mensaje (para el horario en la UI). Si la
+      // persistencia falla, queda null y el cliente cae a "ahora" (ver
+      // useClaudeChat) — no hay un created_at real que mostrar en ese caso.
+      let messageCreatedAt: string | null = null;
       try {
         if (!conversationId) {
           const title = params.prompt.slice(0, 80);
@@ -441,11 +445,12 @@ export const claudeAdapter: ToolAdapter = {
               tokens_output: response.tokensOutput,
             },
           ])
-          .select("id, role");
+          .select("id, role, created_at");
         if (msgErr) throw msgErr;
 
         const assistantRow = inserted?.find((r) => r.role === "assistant");
         messageId = assistantRow?.id ?? "";
+        messageCreatedAt = assistantRow?.created_at ?? null;
         // Parte 2.2: si NO recuperamos el id del mensaje del assistant, los
         // archivos de la etapa 2 quedarían con `message_id = null` (huérfanos).
         // No es fatal — al recargar, el reload los recupera asociándolos por
@@ -659,6 +664,7 @@ export const claudeAdapter: ToolAdapter = {
           tokensOutput: response.tokensOutput,
           conversationId: conversationId ?? "",
           messageId,
+          createdAt: messageCreatedAt,
           stopReason: response.stopReason,
           // ETAPA 1: capturados, todavía sin bajar ni guardar (la etapa 2 los consume).
           generatedFiles: response.generatedFiles,

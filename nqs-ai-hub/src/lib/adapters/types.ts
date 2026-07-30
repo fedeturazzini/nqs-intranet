@@ -64,6 +64,9 @@ export type ExecuteResult = {
   tokensOutput: number;
   conversationId: string;
   messageId: string;
+  /** Timestamp real (`created_at` de la DB) del mensaje del assistant, para el
+   *  horario en la UI. Null si la persistencia falló — el cliente cae a "ahora". */
+  createdAt: string | null;
   /** Por qué terminó la respuesta: "end_turn" (normal), "max_tokens"
    *  (cortada por el techo), etc. Lo usa la UI para avisar si se cortó. */
   stopReason?: string | null;

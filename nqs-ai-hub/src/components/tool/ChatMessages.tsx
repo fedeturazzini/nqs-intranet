@@ -34,6 +34,22 @@ type ChatMessagesProps = Readonly<{
   userFirstName: string;
 }>;
 
+// Forzamos hora Argentina: sin timeZone explícito, SSR en Vercel = UTC = +3hs
+// (mismo patrón que PromptManager.tsx / LogsBoard.tsx / etc.). Acá el render es
+// client-side, pero forzarlo igual evita que dependa del reloj/TZ del navegador.
+const TIME_FMT = new Intl.DateTimeFormat("es-AR", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "America/Argentina/Buenos_Aires",
+});
+
+/** "14:32", o null si no hay horario (mensajes viejos sin migrar, por ej.). */
+function formatTime(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : TIME_FMT.format(d);
+}
+
 /** Busca el ancestro scrolleable (overflow-y auto/scroll) más cercano. */
 function getScrollParent(node: HTMLElement | null): HTMLElement | null {
   let el = node?.parentElement ?? null;
@@ -133,6 +149,7 @@ function MessageBubble({
   const whoLabel = isAi ? "CLAUDE" : userFirstName.toUpperCase();
   const avatarText = isAi ? "C" : userInitials;
   const cssClass = `chat-msg ${isAi ? "ai" : "user"}`;
+  const timeLabel = formatTime(msg.createdAt);
 
   // FEEDBACK NQS v2.0 (Part 6): visor de imágenes en grande.
   const images = msg.imagePreviews ?? [];
@@ -157,14 +174,24 @@ function MessageBubble({
           }}
         >
           <span>{whoLabel}</span>
-          {isAi && msg.tokensInput != null && msg.tokensOutput != null && (
-            <span
-              className="t-meta dim"
-              style={{ fontSize: 9, letterSpacing: "0.08em" }}
-            >
-              in {msg.tokensInput} · out {msg.tokensOutput}
-            </span>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {isAi && msg.tokensInput != null && msg.tokensOutput != null && (
+              <span
+                className="t-meta dim"
+                style={{ fontSize: 9, letterSpacing: "0.08em" }}
+              >
+                in {msg.tokensInput} · out {msg.tokensOutput}
+              </span>
+            )}
+            {timeLabel && (
+              <span
+                className="t-meta dim"
+                style={{ fontSize: 9, letterSpacing: "0.08em" }}
+              >
+                {timeLabel}
+              </span>
+            )}
+          </div>
         </div>
 
         {msg.isPending ? (

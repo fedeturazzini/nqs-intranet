@@ -54,6 +54,10 @@ export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  /** Horario del mensaje (ISO). Real (`created_at` de la DB) en el historial y en
+   *  el mensaje del assistant recién llegado; aproximado (momento del envío) en
+   *  el mensaje optimista del user y como fallback si la persistencia falló. */
+  createdAt?: string;
   /** Solo en mensajes del user que adjuntaron imágenes (data URLs para preview). */
   imagePreviews?: string[];
   /** PDFs que adjuntó el user a este mensaje (se muestran como card). */
@@ -103,6 +107,7 @@ type ConversationDetailResponse = {
     id: string;
     role: "user" | "assistant";
     content: string;
+    created_at: string | null;
     tokens_input: number | null;
     tokens_output: number | null;
     /** Signed download URLs (1h) de las IMÁGENES del mensaje. */
@@ -151,6 +156,7 @@ export function useClaudeChat() {
           id: m.id,
           role: m.role,
           content: m.content,
+          createdAt: m.created_at ?? undefined,
           tokensInput: m.tokens_input ?? undefined,
           tokensOutput: m.tokens_output ?? undefined,
           imagePreviews:
@@ -190,6 +196,9 @@ export function useClaudeChat() {
           id: userMsgId,
           role: "user",
           content: prompt,
+          // Aproximado (no hay round-trip al server todavía): es el propio envío
+          // del user, pasando AHORA, así que la diferencia es milisegundos.
+          createdAt: new Date().toISOString(),
           imagePreviews: imagePreviews.length > 0 ? imagePreviews : undefined,
           pdfAttachments: pdfPreviews.length > 0 ? pdfPreviews : undefined,
         },
@@ -356,6 +365,7 @@ export function useClaudeChat() {
               status?: string;
               conversationId?: string;
               messageId?: string;
+              createdAt?: string | null;
               tokensInput?: number;
               tokensOutput?: number;
               stopReason?: string | null;
@@ -425,6 +435,10 @@ export function useClaudeChat() {
                         id: stateMsgId,
                         role: "assistant",
                         content: finalText,
+                        // Real si la persistencia dejó un created_at; si no
+                        // (falló, o el done nunca trajo el campo), "ahora" —
+                        // más preciso que dejarlo sin horario.
+                        createdAt: ev.createdAt ?? new Date().toISOString(),
                         tokensInput: ev.tokensInput,
                         tokensOutput: ev.tokensOutput,
                         streaming: false,
