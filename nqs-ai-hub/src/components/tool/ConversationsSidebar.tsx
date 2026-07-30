@@ -319,7 +319,10 @@ function ConvRow({ conv, active, onSelect, onRename }: ConvRowProps) {
         style={{
           ...iconBtnStyle,
           marginRight: 4,
-          opacity: hovered ? 0.8 : 0,
+          fontSize: 16,
+          // Visible siempre que la conv esté seleccionada (o al pasar el mouse).
+          color: active ? "var(--fg)" : "var(--fg-mute)",
+          opacity: active ? 1 : hovered ? 0.8 : 0,
           transition: "opacity 0.12s",
         }}
       >
