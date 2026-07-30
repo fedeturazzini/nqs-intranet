@@ -215,15 +215,18 @@ function MessageBubble({
           </div>
         )}
 
-        {/* Parte 3.2: Claude generó un archivo pero no se pudo adjuntar (falló
-            la persistencia). Avisamos para que el user pueda reintentar en vez
-            de creer que no se generó nada. */}
+        {/* Se esperaba un archivo y el user no lo va a ver. Cubre dos casos con
+            el mismo aviso (la acción es la misma: pedirlo de nuevo): se generó y
+            no se pudo adjuntar, o el sandbox corrió y no salió ningún archivo.
+            Este aviso es el que evita que un turno sin archivo quede MUDO — el
+            silencio era lo que antes se rellenaba con el archivo de otro mensaje
+            (ver archivo-equivocado-audit.md). */}
         {isAi &&
           msg.filesPartialError &&
           (!msg.files || msg.files.length === 0) && (
             <div className="message-truncated-warning">
-              ⚠ Claude generó un archivo pero no se pudo adjuntar. Pedile que lo
-              genere de nuevo.
+              ⚠ Claude intentó generar un archivo y no llegó ninguno. Pedile que
+              lo genere de nuevo.
             </div>
           )}
 

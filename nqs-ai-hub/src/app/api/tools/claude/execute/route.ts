@@ -136,6 +136,8 @@ export async function POST(request: Request): Promise<Response> {
             files: result.value.files,
             // Parte 3.2: >0 si se generó un archivo que no se pudo adjuntar.
             filesFailed: result.value.filesFailed,
+            // Se esperaba archivo y no vino (el sandbox corrió sin producir nada).
+            filesMissing: result.value.filesMissing,
           });
         }
       } catch (err) {

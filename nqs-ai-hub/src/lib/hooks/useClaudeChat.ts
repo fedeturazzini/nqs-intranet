@@ -363,6 +363,7 @@ export function useClaudeChat() {
               code?: string;
               files?: ChatFile[];
               filesFailed?: number;
+              filesMissing?: boolean;
             };
             try {
               ev = JSON.parse(line);
@@ -429,9 +430,14 @@ export function useClaudeChat() {
                         streaming: false,
                         stopReason: ev.stopReason ?? null,
                         files: doneFiles,
-                        // Parte 3.2: se generó un archivo que no se pudo adjuntar.
+                        // Se esperaba un archivo y el user no lo va a ver. Dos
+                        // causas, mismo aviso (la acción del user es la misma:
+                        // pedirlo de nuevo): `filesFailed` = se capturó pero no
+                        // se pudo persistir; `filesMissing` = corrió el sandbox y
+                        // no salió ningún archivo (antes este caso quedaba mudo).
                         filesPartialError:
-                          ev.filesFailed != null && ev.filesFailed > 0
+                          (ev.filesFailed != null && ev.filesFailed > 0) ||
+                          ev.filesMissing === true
                             ? true
                             : undefined,
                       }
