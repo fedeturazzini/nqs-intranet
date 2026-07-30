@@ -41,11 +41,11 @@ export function ClaudeView({
   projects,
   activeProject: initialProject,
 }: ClaudeViewProps) {
-  const chat = useClaudeChat();
-  const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const [activeProject, setActiveProject] = useState<ProjectLite | null>(
     initialProject,
   );
+  const chat = useClaudeChat(activeProject?.id ?? null);
+  const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const [switching, setSwitching] = useState(false);
   // migration 0016: proyecto privado esperando contraseña al entrar.
   // Se pide en cada switch hacia un privado (la cookie se limpia al salir).
@@ -132,6 +132,17 @@ export function ClaudeView({
     },
     [chat],
   );
+
+  const previousConversationIdRef = useRef(chat.conversationId);
+  useEffect(() => {
+    const previous = previousConversationIdRef.current;
+    previousConversationIdRef.current = chat.conversationId;
+    // Cubre también el caso donde el send empezó en un mount anterior: cuando
+    // el draft recibe su id real, el sidebar nuevo debe listar la conversación.
+    if (!previous && chat.conversationId) {
+      setSidebarRefresh((n) => n + 1);
+    }
+  }, [chat.conversationId]);
 
   const onSelectConversation = useCallback(
     (id: string) => void chat.loadConversation(id),

@@ -13,12 +13,11 @@
  *   - `newConversation()` → resetea todo a vacío.
  *   - Estados de loading + error para que la UI los renderee.
  *
- * No es global (no Zustand) — cada `<ClaudeView />` tiene su propia
- * instancia. Si en el futuro hace falta compartir entre múltiples
- * componentes (ej. notif global de "Claude está pensando"), se mueve
- * al store.
+ * Las sesiones en curso viven en un store efímero de este módulo para
+ * sobrevivir mounts de `<ClaudeView />` dentro de la SPA. No se persisten al
+ * cerrar/recargar la pestaña: esa durabilidad requiere diseño server-side.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NO_CREDITS_CODE } from "@/lib/anthropic/errors";
 
 /** Mensaje al usuario cuando la API se quedó sin saldo (NO_CREDITS). NO le
@@ -52,6 +51,9 @@ export type PdfAttachment = {
 export type ChatMessage = {
   /** ID DB cuando existe, o "local-…" para optimistic. */
   id: string;
+  /** Une el user optimista + placeholder de una ejecución cliente. No se
+   * persiste; permite conservarlos en su conversación al navegar. */
+  clientExecutionId?: string;
   role: "user" | "assistant";
   content: string;
   /** Horario del mensaje (ISO). Real (`created_at` de la DB) en el historial y en
@@ -119,59 +121,317 @@ type ConversationDetailResponse = {
   }>;
 };
 
+type ChatSessionState = {
+  key: string;
+  projectId: string | null;
+  conversationId: string | null;
+  messages: ChatMessage[];
+  isSending: boolean;
+  loadError: string | null;
+  loadRequest: number;
+};
+
+type SessionLoad = {
+  key: string;
+  request: number;
+  selection: number;
+};
+
+/**
+ * Estado efímero compartido entre mounts de ClaudeView.
+ *
+ * Vive solo mientras la SPA está abierta: conserva conversaciones/generaciones
+ * al navegar hub ↔ Claude, pero deliberadamente NO intenta sobrevivir un cierre
+ * de pestaña o una recarga completa (ese alcance requiere persistencia server).
+ */
+export function createClaudeChatSessionStore() {
+  const sessions = new Map<string, ChatSessionState>();
+  const listeners = new Set<(session: ChatSessionState) => void>();
+  let activeKey: string | null = null;
+  let sequence = 0;
+  let selection = 0;
+
+  const newKey = () => `draft-${Date.now()}-${++sequence}`;
+  const conversationKey = (id: string) => `conversation-${id}`;
+
+  function createSession(
+    projectId: string | null,
+    conversationId: string | null = null,
+  ): ChatSessionState {
+    return {
+      key: conversationId ? conversationKey(conversationId) : newKey(),
+      projectId,
+      conversationId,
+      messages: [],
+      isSending: false,
+      loadError: null,
+      loadRequest: 0,
+    };
+  }
+
+  function active(): ChatSessionState {
+    const found = activeKey ? sessions.get(activeKey) : null;
+    if (found) return found;
+    const created = createSession(null);
+    sessions.set(created.key, created);
+    activeKey = created.key;
+    return created;
+  }
+
+  function emit(): void {
+    const current = active();
+    for (const listener of listeners) listener(current);
+  }
+
+  function activate(session: ChatSessionState): ChatSessionState {
+    sessions.set(session.key, session);
+    activeKey = session.key;
+    selection += 1;
+    emit();
+    return session;
+  }
+
+  function ensureProject(projectId: string | null): ChatSessionState {
+    const current = active();
+    if (current.projectId === projectId) return current;
+    return activate(createSession(projectId));
+  }
+
+  function startNew(projectId: string | null): ChatSessionState {
+    return activate(createSession(projectId));
+  }
+
+  function selectConversation(
+    projectId: string | null,
+    conversationId: string,
+  ): ChatSessionState {
+    const key = conversationKey(conversationId);
+    const existing = sessions.get(key);
+    return activate(
+      existing?.projectId === projectId
+        ? existing
+        : createSession(projectId, conversationId),
+    );
+  }
+
+  function update(
+    key: string,
+    updater: (session: ChatSessionState) => ChatSessionState,
+  ): ChatSessionState | null {
+    const current = sessions.get(key);
+    if (!current) return null;
+    const next = updater(current);
+    sessions.set(key, next);
+    if (activeKey === key) emit();
+    return next;
+  }
+
+  function migrateToConversation(key: string, conversationId: string): string {
+    const current = sessions.get(key);
+    if (!current || current.conversationId === conversationId) return key;
+    const nextKey = conversationKey(conversationId);
+    const migrated = { ...current, key: nextKey, conversationId };
+    sessions.delete(key);
+    sessions.set(nextKey, migrated);
+    if (activeKey === key) {
+      activeKey = nextKey;
+      emit();
+    }
+    return nextKey;
+  }
+
+  function beginLoad(
+    projectId: string | null,
+    conversationId: string,
+  ): SessionLoad {
+    const selected = selectConversation(projectId, conversationId);
+    const request = selected.loadRequest + 1;
+    sessions.set(selected.key, {
+      ...selected,
+      loadRequest: request,
+      loadError: null,
+    });
+    emit();
+    return { key: selected.key, request, selection };
+  }
+
+  function isCurrentLoad(load: SessionLoad): boolean {
+    return (
+      activeKey === load.key &&
+      selection === load.selection &&
+      sessions.get(load.key)?.loadRequest === load.request
+    );
+  }
+
+  function applyLoad(load: SessionLoad, messages: ChatMessage[]): boolean {
+    if (!isCurrentLoad(load)) return false;
+    update(load.key, (session) => ({
+      ...session,
+      messages: reconcileMessages(messages, session.messages),
+      loadError: null,
+    }));
+    return true;
+  }
+
+  function failLoad(load: SessionLoad, message: string): boolean {
+    if (!isCurrentLoad(load)) return false;
+    update(load.key, (session) => ({ ...session, loadError: message }));
+    return true;
+  }
+
+  function reconcile(key: string, messages: ChatMessage[]): void {
+    update(key, (session) => ({
+      ...session,
+      messages: reconcileMessages(messages, session.messages),
+    }));
+  }
+
+  return {
+    subscribe(listener: (session: ChatSessionState) => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    active,
+    ensureProject,
+    startNew,
+    beginLoad,
+    applyLoad,
+    failLoad,
+    isCurrentLoad,
+    update,
+    migrateToConversation,
+    reconcile,
+  };
+}
+
+/**
+ * El server es autoritativo para mensajes persistidos y files por message_id.
+ * Solo conservamos grupos optimistas que todavía tengan un assistant en vuelo.
+ * Nunca buscamos "el último assistant con archivos" (regresión 73e2153).
+ */
+export function reconcileMessages(
+  serverMessages: ChatMessage[],
+  localMessages: ChatMessage[],
+): ChatMessage[] {
+  const pendingExecutions = new Set(
+    localMessages
+      .filter(
+        (message) =>
+          message.role === "assistant" &&
+          message.clientExecutionId &&
+          (message.isPending ||
+            message.streaming ||
+            message.generatingFile),
+      )
+      .map((message) => message.clientExecutionId as string),
+  );
+  const pendingLocal = localMessages.filter(
+    (message) =>
+      message.clientExecutionId &&
+      pendingExecutions.has(message.clientExecutionId),
+  );
+  const serverIds = new Set(serverMessages.map((message) => message.id));
+  return [
+    ...serverMessages,
+    ...pendingLocal.filter((message) => !serverIds.has(message.id)),
+  ];
+}
+
+const chatSessions = createClaudeChatSessionStore();
+const executionControllers = new Map<string, AbortController>();
+
+function mapConversationMessages(
+  data: ConversationDetailResponse,
+): ChatMessage[] {
+  return data.messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    createdAt: message.created_at ?? undefined,
+    tokensInput: message.tokens_input ?? undefined,
+    tokensOutput: message.tokens_output ?? undefined,
+    imagePreviews:
+      message.imageUrls && message.imageUrls.length > 0
+        ? message.imageUrls
+        : undefined,
+    pdfAttachments:
+      message.pdfAttachments && message.pdfAttachments.length > 0
+        ? message.pdfAttachments
+        : undefined,
+    // Asociación exacta resuelta por el endpoint según message_id. No usamos
+    // ningún fallback de "último archivo de la conversación".
+    files:
+      message.files && message.files.length > 0 ? message.files : undefined,
+  }));
+}
+
+async function fetchConversation(
+  conversationId: string,
+): Promise<ConversationDetailResponse | null> {
+  const res = await fetch(`/api/me/conversations/${conversationId}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as ConversationDetailResponse;
+}
+
 // ============================================================
 // Hook
 // ============================================================
 
 export type UseClaudeChat = ReturnType<typeof useClaudeChat>;
 
-export function useClaudeChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [isSending, setIsSending] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  // AbortController de la request en curso (para el botón "Detener").
-  const abortRef = useRef<AbortController | null>(null);
+export function useClaudeChat(projectId: string | null = null) {
+  const [session, setSession] = useState<ChatSessionState>(() =>
+    chatSessions.ensureProject(projectId),
+  );
+  const mountedProjectRef = useRef(projectId);
+
+  const loadConversation = useCallback(
+    async (id: string) => {
+      const load = chatSessions.beginLoad(projectId, id);
+      try {
+        const data = await fetchConversation(id);
+        if (!data) {
+          chatSessions.failLoad(
+            load,
+            "no pude cargar la conversación",
+          );
+          return;
+        }
+        chatSessions.applyLoad(load, mapConversationMessages(data));
+      } catch (err) {
+        chatSessions.failLoad(
+          load,
+          err instanceof Error ? err.message : "error desconocido",
+        );
+      }
+    },
+    [projectId],
+  );
+
+  useEffect(() => chatSessions.subscribe(setSession), []);
+
+  useEffect(() => {
+    // Primer mount con el mismo proyecto: restaurar la sesión en memoria y
+    // re-fetchear la DB. Cambio de proyecto dentro de Claude: empezar limpio,
+    // igual que el comportamiento previo.
+    const projectChanged = mountedProjectRef.current !== projectId;
+    mountedProjectRef.current = projectId;
+    const current = projectChanged
+      ? chatSessions.startNew(projectId)
+      : chatSessions.ensureProject(projectId);
+    setSession(current);
+    if (current.conversationId) {
+      void loadConversation(current.conversationId);
+    }
+  }, [projectId, loadConversation]);
 
   const newConversation = useCallback(() => {
-    setMessages([]);
-    setConversationId(null);
-    setLoadError(null);
-  }, []);
-
-  const loadConversation = useCallback(async (id: string) => {
-    setLoadError(null);
-    try {
-      const res = await fetch(`/api/me/conversations/${id}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) {
-        setLoadError(`no pude cargar la conversación (${res.status})`);
-        return;
-      }
-      const data = (await res.json()) as ConversationDetailResponse;
-      setConversationId(data.conversation.id);
-      setMessages(
-        data.messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          createdAt: m.created_at ?? undefined,
-          tokensInput: m.tokens_input ?? undefined,
-          tokensOutput: m.tokens_output ?? undefined,
-          imagePreviews:
-            m.imageUrls && m.imageUrls.length > 0 ? m.imageUrls : undefined,
-          pdfAttachments:
-            m.pdfAttachments && m.pdfAttachments.length > 0
-              ? m.pdfAttachments
-              : undefined,
-          files: m.files && m.files.length > 0 ? m.files : undefined,
-        })),
-      );
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "error desconocido");
-    }
-  }, []);
+    chatSessions.startNew(projectId);
+  }, [projectId]);
 
   /**
    * Envía un mensaje. Las imágenes ya fueron subidas a Storage por el
@@ -186,99 +446,72 @@ export function useClaudeChat() {
       imagePreviews: string[],
       pdfPreviews: PdfAttachment[] = [],
     ): Promise<{ ok: true; conversationId: string } | { ok: false; error: string }> => {
+      const source = chatSessions.ensureProject(projectId);
+      let sessionKey = source.key;
+      const sourceConversationId = source.conversationId;
+      const executionId = crypto.randomUUID();
       const userMsgId = `local-${crypto.randomUUID()}`;
       const pendingMsgId = `local-${crypto.randomUUID()}`;
 
       // Optimistic: agregamos user + placeholder "pensando…" al toque.
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: userMsgId,
-          role: "user",
-          content: prompt,
-          // Aproximado (no hay round-trip al server todavía): es el propio envío
-          // del user, pasando AHORA, así que la diferencia es milisegundos.
-          createdAt: new Date().toISOString(),
-          imagePreviews: imagePreviews.length > 0 ? imagePreviews : undefined,
-          pdfAttachments: pdfPreviews.length > 0 ? pdfPreviews : undefined,
-        },
-        {
-          id: pendingMsgId,
-          role: "assistant",
-          content: "",
-          isPending: true,
-        },
-      ]);
-      setIsSending(true);
+      chatSessions.update(sessionKey, (current) => ({
+        ...current,
+        isSending: true,
+        messages: [
+          ...current.messages,
+          {
+            id: userMsgId,
+            clientExecutionId: executionId,
+            role: "user",
+            content: prompt,
+            // Aproximado (no hay round-trip al server todavía): es el propio envío
+            // del user, pasando AHORA, así que la diferencia es milisegundos.
+            createdAt: new Date().toISOString(),
+            imagePreviews:
+              imagePreviews.length > 0 ? imagePreviews : undefined,
+            pdfAttachments:
+              pdfPreviews.length > 0 ? pdfPreviews : undefined,
+          },
+          {
+            id: pendingMsgId,
+            clientExecutionId: executionId,
+            role: "assistant",
+            content: "",
+            isPending: true,
+          },
+        ],
+      }));
 
       const setErrorOnPending = (errMsg: string) =>
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === pendingMsgId
-              ? { ...m, isPending: false, streaming: false, errorMsg: errMsg, content: "" }
-              : m,
+        chatSessions.update(sessionKey, (current) => ({
+          ...current,
+          messages: current.messages.map((message) =>
+            message.clientExecutionId === executionId &&
+            message.role === "assistant"
+              ? {
+                  ...message,
+                  isPending: false,
+                  streaming: false,
+                  errorMsg: errMsg,
+                  content: "",
+                }
+              : message,
           ),
-        );
+        }));
 
-      // Red de seguridad. Si el mensaje del assistant quedó SIN archivos (el
-      // `done` no trajo `files`, o el stream se cortó antes del `done`),
-      // re-fetcheamos los claude_files de la conversación y los reconciliamos
-      // contra el mensaje. Idempotente y silenciosa: nunca rompe el flujo.
-      //
-      // REGLA DURA (fix del "archivo equivocado", ver archivo-equivocado-audit.md):
-      // un mensaje muestra EXCLUSIVAMENTE su propio archivo. La versión anterior
-      // caía a "el último mensaje del assistant con archivos" cuando no encontraba
-      // nada, y en una conversación con varias generaciones eso pegaba el archivo
-      // de un turno ANTERIOR al mensaje nuevo (el user pedía los reframes y le
-      // llegaba el .txt del edit anterior). "Este mensaje no tiene archivo" es un
-      // resultado VÁLIDO, no una señal para ir a buscar el de otro.
-      const reconcileFilesFromServer = async (
+      // Generaliza la red de seguridad de 73e2153: re-fetchea la conversación
+      // completa y reconcilia mensajes + files por el message_id que ya resolvió
+      // el endpoint. Nunca adopta archivos de "otro/último" turno.
+      const reconcileFromServer = async (
         convId: string,
-        stateMsgId: string,
-        serverMsgId: string | null,
+        key: string,
       ): Promise<void> => {
         if (!convId) return;
         try {
-          const res = await fetch(`/api/me/conversations/${convId}`, {
-            cache: "no-store",
-          });
-          if (!res.ok) return;
-          const data = (await res.json()) as ConversationDetailResponse;
-
-          // La selección va DENTRO del setMessages para poder mirar el estado
-          // actual (`prev`) y no adoptar archivos que ya se muestran en otro
-          // mensaje.
-          setMessages((prev) => {
-            const target = prev.find((m) => m.id === stateMsgId);
-            // Idempotente: si el `done` ya trajo los archivos, no tocamos nada.
-            if (!target || (target.files && target.files.length > 0)) return prev;
-
-            let found: ChatFile[] | undefined;
-            if (serverMsgId) {
-              // Tenemos el id REAL → match exacto y punto. Si ese mensaje no
-              // tiene archivos, no hay nada que adjuntar.
-              found = data.messages.find((m) => m.id === serverMsgId)?.files;
-            } else {
-              // No tenemos el id real (el stream se cortó antes del `done`). El
-              // mensaje de ESTE turno es el único assistant que el server ya
-              // tiene y el cliente todavía no conoce. Miramos ese y solo ese:
-              // cortamos en el primer assistant desconocido, así nunca caminamos
-              // hacia atrás hasta un turno anterior.
-              const knownIds = new Set(prev.map((m) => m.id));
-              for (let i = data.messages.length - 1; i >= 0; i--) {
-                const m = data.messages[i];
-                if (m.role !== "assistant" || knownIds.has(m.id)) continue;
-                if (m.files && m.files.length > 0) found = m.files;
-                break;
-              }
-            }
-
-            if (!found || found.length === 0) return prev;
-            const files = found;
-            return prev.map((m) =>
-              m.id === stateMsgId ? { ...m, files } : m,
-            );
-          });
+          const data = await fetchConversation(convId);
+          if (data) {
+            chatSessions.reconcile(key, mapConversationMessages(data));
+          }
         } catch {
           // Silencioso: red de seguridad, no interrumpe la respuesta.
         }
@@ -289,7 +522,7 @@ export function useClaudeChat() {
       let acc = "";
       let started = false;
       const controller = new AbortController();
-      abortRef.current = controller;
+      executionControllers.set(executionId, controller);
 
       try {
         // El POST al execute, envuelto para poder reintentarlo UNA vez tras
@@ -302,7 +535,7 @@ export function useClaudeChat() {
             body: JSON.stringify({
               prompt,
               imagePaths: imagePaths.length > 0 ? imagePaths : undefined,
-              conversationId: conversationId ?? undefined,
+              conversationId: sourceConversationId ?? undefined,
             }),
           });
 
@@ -384,31 +617,40 @@ export function useClaudeChat() {
             if (ev.type === "delta" && ev.text) {
               started = true;
               acc += ev.text;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === pendingMsgId
-                    ? { ...m, isPending: false, streaming: true, content: acc }
-                    : m,
+              chatSessions.update(sessionKey, (current) => ({
+                ...current,
+                messages: current.messages.map((message) =>
+                  message.clientExecutionId === executionId &&
+                  message.role === "assistant"
+                    ? {
+                        ...message,
+                        isPending: false,
+                        streaming: true,
+                        content: acc,
+                      }
+                    : message,
                 ),
-              );
+              }));
             } else if (
               ev.type === "status" &&
               ev.status === "generating_file"
             ) {
               // Claude arrancó a generar un archivo → indicador "generando…".
               started = true;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === pendingMsgId
+              chatSessions.update(sessionKey, (current) => ({
+                ...current,
+                messages: current.messages.map((message) =>
+                  message.clientExecutionId === executionId &&
+                  message.role === "assistant"
                     ? {
-                        ...m,
+                        ...message,
                         isPending: false,
                         streaming: true,
                         generatingFile: true,
                       }
-                    : m,
+                    : message,
                 ),
-              );
+              }));
             } else if (ev.type === "error") {
               const msg =
                 ev.code === NO_CREDITS_CODE
@@ -418,7 +660,6 @@ export function useClaudeChat() {
               return { ok: false, error: ev.code ?? msg };
             } else if (ev.type === "done") {
               const convId = ev.conversationId ?? "";
-              setConversationId(convId);
               const finalText = acc || ev.text || "";
               // messageId "" (la persistencia del mensaje falló) se trata como
               // AUSENTE: `??` no atrapa el string vacío, así que no pisamos el id
@@ -428,9 +669,11 @@ export function useClaudeChat() {
               const stateMsgId = serverMsgId ?? pendingMsgId;
               const doneFiles =
                 ev.files && ev.files.length > 0 ? ev.files : undefined;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === pendingMsgId
+              chatSessions.update(sessionKey, (current) => ({
+                ...current,
+                messages: current.messages.map((message) =>
+                  message.clientExecutionId === executionId &&
+                  message.role === "assistant"
                     ? {
                         id: stateMsgId,
                         role: "assistant",
@@ -455,13 +698,21 @@ export function useClaudeChat() {
                             ? true
                             : undefined,
                       }
-                    : m,
+                    : message,
                 ),
-              );
-              // Parte 1: si el `done` NO trajo archivos, reconciliamos desde el
-              // server (cubre "se persistió pero el done se cortó/vino sin files").
-              if (!doneFiles) {
-                await reconcileFilesFromServer(convId, stateMsgId, serverMsgId);
+              }));
+              if (convId && !sourceConversationId) {
+                // Migra el draft a su id real. Solo cambia la selección visible
+                // si este draft sigue activo; un done viejo jamás roba el foco.
+                sessionKey = chatSessions.migrateToConversation(
+                  sessionKey,
+                  convId,
+                );
+              }
+              if (convId) {
+                // Siempre reconciliamos el mensaje final, no solo files: cubre
+                // placeholder desmontado/done tardío y mantiene files exactos.
+                await reconcileFromServer(convId, sessionKey);
               }
               return { ok: true, conversationId: convId };
             }
@@ -470,13 +721,11 @@ export function useClaudeChat() {
 
         // Stream terminó sin 'done' explícito.
         if (started) {
-          // Parte 1: red de seguridad para el corte de stream. Si teníamos
-          // conversationId (conv existente), reconciliamos por si se generó un
-          // archivo que nunca llegó a la UI. (Conv NUEVA sin `done` todavía no
-          // tiene conversationId → gap conocido, baja frecuencia.)
-          const convId = conversationId ?? "";
+          // Red de seguridad para el corte del canal: si la conversación ya
+          // existía, traemos la verdad persistida sin tocar otra selección.
+          const convId = sourceConversationId ?? "";
           if (convId) {
-            await reconcileFilesFromServer(convId, pendingMsgId, null);
+            await reconcileFromServer(convId, sessionKey);
           }
           return { ok: true, conversationId: convId };
         }
@@ -485,47 +734,55 @@ export function useClaudeChat() {
       } catch (err) {
         // "Detener generación": no es un error — conservamos lo que llegó.
         if (err instanceof DOMException && err.name === "AbortError") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === pendingMsgId
+          chatSessions.update(sessionKey, (current) => ({
+            ...current,
+            messages: current.messages.map((message) =>
+              message.clientExecutionId === executionId &&
+              message.role === "assistant"
                 ? {
-                    ...m,
+                    ...message,
                     isPending: false,
                     streaming: false,
                     content: acc || "_(generación detenida)_",
                   }
-                : m,
+                : message,
             ),
-          );
-          return { ok: true, conversationId: conversationId ?? "" };
+          }));
+          return { ok: true, conversationId: sourceConversationId ?? "" };
         }
         const msg = err instanceof Error ? err.message : "error de red";
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === pendingMsgId
-              ? { ...m, isPending: false, streaming: false, errorMsg: msg, content: "" }
-              : m,
-          ),
-        );
+        setErrorOnPending(msg);
         return { ok: false, error: msg };
       } finally {
-        abortRef.current = null;
-        setIsSending(false);
+        executionControllers.delete(executionId);
+        chatSessions.update(sessionKey, (current) => ({
+          ...current,
+          isSending: false,
+        }));
       }
     },
-    [conversationId],
+    [projectId],
   );
 
   /** Aborta la generación en curso (botón "Detener"). */
   const stop = useCallback(() => {
-    abortRef.current?.abort();
+    const active = chatSessions.active();
+    const executionId = [...active.messages]
+      .reverse()
+      .find(
+        (message) =>
+          message.role === "assistant" &&
+          message.clientExecutionId &&
+          (message.isPending || message.streaming),
+      )?.clientExecutionId;
+    if (executionId) executionControllers.get(executionId)?.abort();
   }, []);
 
   return {
-    messages,
-    conversationId,
-    isSending,
-    loadError,
+    messages: session.messages,
+    conversationId: session.conversationId,
+    isSending: session.isSending,
+    loadError: session.loadError,
     stop,
     sendMessage,
     loadConversation,
