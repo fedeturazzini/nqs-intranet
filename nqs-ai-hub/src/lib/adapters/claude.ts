@@ -466,6 +466,11 @@ export const claudeAdapter: ToolAdapter = {
         stopReason: response.stopReason,
         tokensInput: response.tokensInput,
         tokensOutput: response.tokensOutput,
+        // Prompt caching: >0 en cacheCreation la 1ª llamada de la conversación
+        // (se escribe el cerebro al cache); >0 en cacheRead en los siguientes
+        // (se lee barato). Sirve para confirmar en logs que el cache pega.
+        cacheCreationTokens: response.cacheCreationTokens,
+        cacheReadTokens: response.cacheReadTokens,
         contentBlocks: response.contentBlocks,
         artifactAttempted: artifactAttempt.attempted,
         artifactDetected: artifactAttempt.detected,
