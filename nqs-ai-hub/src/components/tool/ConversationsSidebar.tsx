@@ -7,8 +7,14 @@
  * al padre para que la levante con `loadConversation(id)`.
  *
  * Botón "nueva" arriba resetea el chat actual.
+ *
+ * Renombrar: ícono de lápiz (on-hover) o doble-click en el título → input
+ * inline. Enter/✓ guarda (PATCH), Escape/blur cancela. El título se actualiza
+ * en la lista al instante (sin recargar); si el PATCH falla, se avisa y se
+ * mantiene el título viejo.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { showToast } from "@/lib/store/toast";
 
 type ConversationRow = {
   id: string;
@@ -62,6 +68,44 @@ export function ConversationsSidebar({
     void fetchList();
   }, [fetchList, refreshSignal]);
 
+  // Renombra vía PATCH y refleja el nuevo título en la lista al instante. Si
+  // falla, avisa y NO toca el estado (queda el título viejo). Devuelve si andó.
+  const handleRename = useCallback(
+    async (id: string, rawTitle: string): Promise<boolean> => {
+      const title = rawTitle.trim();
+      if (!title) return false;
+      try {
+        const res = await fetch(`/api/me/conversations/${id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title }),
+        });
+        if (!res.ok) {
+          showToast({
+            title: "ERROR",
+            msg: "No pude renombrar la conversación.",
+            color: "var(--danger, #ff5c5c)",
+          });
+          return false;
+        }
+        const data = (await res.json().catch(() => ({}))) as { title?: string };
+        const finalTitle = data.title ?? title;
+        setItems((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, title: finalTitle } : c)),
+        );
+        return true;
+      } catch {
+        showToast({
+          title: "ERROR",
+          msg: "Error de red al renombrar.",
+          color: "var(--danger, #ff5c5c)",
+        });
+        return false;
+      }
+    },
+    [],
+  );
+
   return (
     <aside
       style={{
@@ -110,11 +154,12 @@ export function ConversationsSidebar({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {items.map((c) => (
-          <ConvButton
+          <ConvRow
             key={c.id}
             conv={c}
             active={c.id === activeId}
-            onClick={() => onSelect(c.id)}
+            onSelect={() => onSelect(c.id)}
+            onRename={handleRename}
           />
         ))}
       </div>
@@ -122,42 +167,176 @@ export function ConversationsSidebar({
   );
 }
 
-type ConvButtonProps = Readonly<{
+type ConvRowProps = Readonly<{
   conv: ConversationRow;
   active: boolean;
-  onClick: () => void;
+  onSelect: () => void;
+  /** Renombra en el server + lista. Devuelve true si guardó. */
+  onRename: (id: string, title: string) => Promise<boolean>;
 }>;
 
-function ConvButton({ conv, active, onClick }: ConvButtonProps) {
+function ConvRow({ conv, active, onSelect, onRename }: ConvRowProps) {
+  const [hovered, setHovered] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
   const title = conv.title?.trim() || "(sin título)";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        appearance: "none",
-        textAlign: "left",
-        background: active ? "var(--bg-elev)" : "transparent",
-        border: 0,
-        borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
-        padding: "8px 10px",
-        cursor: "pointer",
-        color: active ? "var(--fg)" : "var(--fg-mute)",
-        fontSize: 12,
-        lineHeight: 1.35,
-        borderRadius: 0,
-        fontFamily: "var(--sans)",
-      }}
-    >
+
+  const startEdit = useCallback(() => {
+    setDraft(conv.title ?? "");
+    setEditing(true);
+  }, [conv.title]);
+
+  const cancel = useCallback(() => setEditing(false), []);
+
+  const confirm = useCallback(async () => {
+    if (saving) return;
+    const clean = draft.trim();
+    // Sin cambios o vacío → salir sin pegarle al server.
+    if (!clean || clean === (conv.title ?? "").trim()) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    await onRename(conv.id, clean);
+    // Éxito: el padre ya actualizó el título. Fallo: se mostró el toast y queda
+    // el viejo. En ambos casos salimos del modo edición.
+    setSaving(false);
+    setEditing(false);
+  }, [saving, draft, conv.id, conv.title, onRename]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  if (editing) {
+    return (
       <div
         style={{
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "4px 6px",
         }}
       >
-        {title}
+        <input
+          ref={inputRef}
+          value={draft}
+          maxLength={100}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void confirm();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancel();
+            }
+          }}
+          onBlur={cancel}
+          disabled={saving}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            background: "var(--bg)",
+            border: "1px solid var(--line-strong)",
+            borderRadius: 6,
+            padding: "6px 8px",
+            color: "var(--fg)",
+            fontSize: 12,
+            fontFamily: "var(--sans)",
+          }}
+        />
+        <button
+          type="button"
+          title="guardar"
+          // onMouseDown (no onClick) para actuar ANTES de que el blur del input
+          // dispare el cancel.
+          onMouseDown={(e) => {
+            e.preventDefault();
+            void confirm();
+          }}
+          style={iconBtnStyle}
+        >
+          ✓
+        </button>
       </div>
-    </button>
+    );
+  }
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        background: active ? "var(--bg-elev)" : "transparent",
+        borderLeft: active
+          ? "2px solid var(--accent)"
+          : "2px solid transparent",
+        borderRadius: 0,
+      }}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        onDoubleClick={startEdit}
+        style={{
+          appearance: "none",
+          flex: 1,
+          minWidth: 0,
+          textAlign: "left",
+          background: "transparent",
+          border: 0,
+          padding: "8px 4px 8px 10px",
+          cursor: "pointer",
+          color: active ? "var(--fg)" : "var(--fg-mute)",
+          fontSize: 12,
+          lineHeight: 1.35,
+          fontFamily: "var(--sans)",
+        }}
+      >
+        <div
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {title}
+        </div>
+      </button>
+      <button
+        type="button"
+        title="renombrar"
+        onClick={(e) => {
+          e.stopPropagation();
+          startEdit();
+        }}
+        style={{
+          ...iconBtnStyle,
+          marginRight: 4,
+          opacity: hovered ? 0.8 : 0,
+          transition: "opacity 0.12s",
+        }}
+      >
+        ✎
+      </button>
+    </div>
   );
 }
+
+const iconBtnStyle: React.CSSProperties = {
+  appearance: "none",
+  background: "transparent",
+  border: 0,
+  cursor: "pointer",
+  color: "var(--fg-mute)",
+  fontSize: 12,
+  lineHeight: 1,
+  padding: "4px 6px",
+  flexShrink: 0,
+};
