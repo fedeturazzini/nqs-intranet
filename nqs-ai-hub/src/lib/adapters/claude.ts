@@ -142,7 +142,19 @@ GENERALO DE VERDAD ejecutando código en el sandbox (tenés python-docx, openpyx
 python-pptx, matplotlib, etc. disponibles). Producí el archivo real como salida.
 - NO devuelvas un script de Python para que lo corra el user.
 - NO metas el contenido en un artifact de código ni en el pseudo-XML de artifacts.
-- Una frase breve alcanza ("Listo, te armé el PDF."); el archivo es la entrega.
+- Una frase breve alcanza ("Listo, te armé el PDF."), PERO solo DESPUÉS de haber
+  ejecutado el código y generado el archivo en ESTE mensaje.
+
+CÓMO FUNCIONA LA ENTREGA (no es opcional, es mecánico):
+El user solo recibe los archivos que generás ejecutando código EN ESTE MISMO mensaje.
+Los archivos de mensajes anteriores NO se re-adjuntan. Si en este mensaje no ejecutás
+código, el user NO recibe NINGÚN archivo — por más que digas que se lo mandaste.
+- Cada pedido de archivo (una versión nueva, otra variante, otro ángulo, "hacelo de
+  nuevo", "cambiá esto") requiere ejecutar código y producir un archivo NUEVO.
+- NUNCA presentes un archivo que entregaste antes como si fuera la entrega de ahora
+  ("es el mismo", "ya te lo mandé", "usá el anterior"): generalo de nuevo.
+- Si por algún motivo no podés generarlo, DECILO explícitamente en vez de dar por
+  hecho que llegó.
 Para TEXTO o Markdown (no binario), seguí usando el artifact de texto de siempre.`;
 
 export const claudeAdapter: ToolAdapter = {
@@ -436,8 +448,10 @@ export const claudeAdapter: ToolAdapter = {
         messageId = assistantRow?.id ?? "";
         // Parte 2.2: si NO recuperamos el id del mensaje del assistant, los
         // archivos de la etapa 2 quedarían con `message_id = null` (huérfanos).
-        // No es fatal (el reload los adjunta al último mensaje del assistant como
-        // fallback), pero lo logueamos fuerte para poder detectarlo.
+        // No es fatal — al recargar, el reload los recupera asociándolos por
+        // `created_at` al mensaje de SU turno (ya NO "al último assistant": eso
+        // servía el archivo equivocado, ver archivo-equivocado-audit.md) — pero
+        // lo logueamos fuerte para poder detectarlo.
         if (!messageId) {
           console.error(
             JSON.stringify({
@@ -586,6 +600,33 @@ export const claudeAdapter: ToolAdapter = {
         );
       }
 
+      // Capa 1 del archivo-equivocado-audit.md: SE ESPERABA archivo y no vino.
+      // El sandbox corrió (hay un bloque `server_tool_use`) pero no se capturó
+      // ningún file_id. Dos causas posibles, que la instrumentación de client.ts
+      // distingue por prod: el modelo no produjo el archivo, o llegó en una forma
+      // de bloque que no capturamos.
+      //
+      // Por qué importa: este turno quedaba MUDO — `filesFailed` es 0 porque no
+      // había nada capturado que pudiera "fallar" —, y ese hueco sin señal era
+      // justo el que el fallback de la card rellenaba con el archivo de un turno
+      // ANTERIOR. Avisar acá es lo que evita que el silencio se vuelva engaño.
+      const usedCodeTool = response.contentBlocks.some(
+        (b) => b.type === "server_tool_use",
+      );
+      const filesMissing =
+        fileGenEnabled && usedCodeTool && fileIds.length === 0;
+      if (filesMissing) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            msg: "code exec: corrió el sandbox y NO salió ningún archivo",
+            userId,
+            conversationId,
+            contentBlockTypes: response.contentBlocks.map((b) => b.type),
+          }),
+        );
+      }
+
       // 5. Log de uso (también best-effort). Incluimos `model` en metadata
       // para que el admin pueda filtrar logs por modelo usado (ej. ver
       // si un cambio a Haiku bajó la calidad).
@@ -626,6 +667,8 @@ export const claudeAdapter: ToolAdapter = {
           // Parte 3.2: archivos capturados que no se pudieron adjuntar (>0 → la
           // UI avisa). 0 en el caso normal.
           filesFailed,
+          // Capa 1: se esperaba archivo (corrió el sandbox) y no vino ninguno.
+          filesMissing,
         },
       };
     } catch (error) {

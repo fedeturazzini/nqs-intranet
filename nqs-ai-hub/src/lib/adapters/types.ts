@@ -92,6 +92,13 @@ export type ExecuteResult = {
    * generó nada. 0/undefined cuando no falló ninguno.
    */
   filesFailed?: number;
+  /**
+   * True si SE ESPERABA un archivo y no vino: el sandbox de code execution corrió
+   * (hubo un bloque `server_tool_use`) pero no se capturó ningún `file_id`.
+   * Distinto de `filesFailed`, que cuenta archivos capturados que no se pudieron
+   * persistir. Este caso antes quedaba MUDO (ver archivo-equivocado-audit.md).
+   */
+  filesMissing?: boolean;
 };
 
 // ============================================================

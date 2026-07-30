@@ -48,7 +48,18 @@ export function parseMessageWithArtifacts(content: string): ParsedMessage {
       if (before) segments.push({ kind: "text", content: before });
     }
     const artifact = parseArtifactBody(match[1]);
-    if (artifact) segments.push({ kind: "artifact", artifact });
+    if (artifact) {
+      segments.push({ kind: "artifact", artifact });
+    } else {
+      // FALLBACK anti silent-drop (prompt-no-visible-audit.md). El bloque matcheó
+      // el wrapper pero no rinde un artifact válido (falta type/content, nombre de
+      // parámetro raro, comillas simples, el contenido incluye las propias
+      // etiquetas…). ANTES se descartaba EN SILENCIO: el user veía la respuesta
+      // conversacional y el prompt no aparecía en ningún lado. Mejor mostrarlo
+      // como texto que perderlo.
+      const salvaged = salvageArtifactText(match[1]);
+      if (salvaged) segments.push({ kind: "text", content: salvaged });
+    }
     lastIndex = idx + match[0].length;
   }
 
@@ -58,7 +69,13 @@ export function parseMessageWithArtifacts(content: string): ParsedMessage {
   }
 
   if (segments.length === 0) {
-    segments.push({ kind: "text", content: cleanResidualTags(content) });
+    // Última red: nunca renderizar un mensaje vacío. Pelamos también la metadata
+    // del artifact para no mostrar "text/plain" ni el título como si fueran el
+    // contenido (pasa cuando el mensaje ES sólo un bloque sin `content` usable).
+    segments.push({
+      kind: "text",
+      content: cleanResidualTags(stripMetaParams(content)),
+    });
   }
   return { segments };
 }
@@ -101,6 +118,41 @@ function cleanResidualTags(text: string): string {
     .replace(/<\/?parameter[^>]*>/gi, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * Rescata el texto de un bloque de artifact que NO se pudo parsear como artifact
+ * válido, para NO descartarlo en silencio (ver prompt-no-visible-audit.md): el
+ * user prefiere ver el prompt como texto plano antes que no verlo.
+ *
+ * Va de lo más específico a lo más tolerante:
+ *   1. el `content` aceptando prefijo de namespace (`antml:parameter`), comillas
+ *      simples/dobles/ninguna, y SIN exigir el `</parameter>` de cierre (un corte
+ *      por max_tokens lo deja abierto);
+ *   2. si nada de eso matchea, el cuerpo entero del bloque con los tags pelados.
+ */
+function salvageArtifactText(body: string): string {
+  const tolerant = body.match(
+    /<[\w:]*parameter\s+name=['"]?content['"]?\s*>([\s\S]*?)(?:<\/[\w:]*parameter>|$)/i,
+  );
+  if (tolerant) return cleanResidualTags(tolerant[1]);
+  // Sin un `content` reconocible, lo que quede después de pelar la metadata es
+  // contenido real con un nombre de parámetro inesperado (ej. `contenido`) — eso
+  // es justo lo que no queremos perder.
+  return cleanResidualTags(stripMetaParams(body));
+}
+
+/**
+ * Pela los parámetros de METADATA de un artifact (command/type/title/language)
+ * con su valor. Sirve para no mostrar "text/plain" o el título como si fueran el
+ * contenido cuando caemos a un camino de rescate. Tolerante a namespace y a
+ * comillas simples/dobles/ninguna, y al cierre faltante.
+ */
+function stripMetaParams(text: string): string {
+  return text.replace(
+    /<[\w:]*parameter\s+name=['"]?(?:command|type|title|language)['"]?\s*>[\s\S]*?(?:<\/[\w:]*parameter>|$)/gi,
+    "",
+  );
 }
 
 /**

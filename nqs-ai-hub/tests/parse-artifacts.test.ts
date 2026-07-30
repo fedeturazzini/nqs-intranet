@@ -113,6 +113,74 @@ describe("parseMessageWithArtifacts", () => {
   });
 });
 
+describe("fallback anti silent-drop (prompt-no-visible-audit.md)", () => {
+  /** Devuelve el texto concatenado de todos los segmentos de texto. */
+  const textOf = (msg: string) =>
+    parseMessageWithArtifacts(msg)
+      .segments.filter((s) => s.kind === "text")
+      .map((s) => (s.kind === "text" ? s.content : ""))
+      .join("\n");
+
+  test("sin `type` (no rinde artifact) → el contenido NO se pierde, sale como texto", () => {
+    const msg = artifactBlock(
+      `<parameter name="title">prompt</parameter>\n` +
+        `<parameter name="content">EL PROMPT QUE NO SE VEIA</parameter>`,
+    );
+    const { segments } = parseMessageWithArtifacts(msg);
+    expect(segments.some((s) => s.kind === "artifact")).toBe(false);
+    expect(textOf(msg)).toContain("EL PROMPT QUE NO SE VEIA");
+  });
+
+  test("comillas simples en name → se rescata el contenido", () => {
+    const msg = artifactBlock(
+      `<parameter name='content'>CONTENIDO CON COMILLAS SIMPLES</parameter>`,
+    );
+    expect(textOf(msg)).toContain("CONTENIDO CON COMILLAS SIMPLES");
+  });
+
+  test("parámetro con namespace (antml:) → se rescata el contenido", () => {
+    // Armado por concatenación para no escribir la etiqueta de cierre literal.
+    const open = "<" + "parameter" + ' name="content">';
+    const close = "</" + "parameter>";
+    const msg = artifactBlock(`${open}CONTENIDO NAMESPACED${close}`);
+    expect(textOf(msg)).toContain("CONTENIDO NAMESPACED");
+  });
+
+  test("no muestra la METADATA como si fuera el prompt", () => {
+    // Sin `content`: no hay nada que rescatar → no inventamos un segmento con
+    // "text/plain" ni con el título.
+    const msg = artifactBlock(
+      `<parameter name="type">text/plain</parameter>\n` +
+        `<parameter name="title">solo-metadata</parameter>`,
+    );
+    const t = textOf(msg);
+    expect(t).not.toContain("text/plain");
+    expect(t).not.toContain("solo-metadata");
+  });
+
+  test("no rompe el camino feliz: el artifact válido sigue siendo card", () => {
+    const msg = artifactBlock(
+      `<parameter name="type">text/plain</parameter>\n` +
+        `<parameter name="title">ok</parameter>\n` +
+        `<parameter name="content">CONTENIDO</parameter>`,
+    );
+    const { segments } = parseMessageWithArtifacts(msg);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("artifact");
+  });
+
+  test("conserva el texto conversacional alrededor del bloque roto", () => {
+    const msg =
+      "Listo, va el prompt:\n" +
+      artifactBlock(`<parameter name="content">EL PROMPT</parameter>`) +
+      "\nprobalo.";
+    const t = textOf(msg);
+    expect(t).toContain("Listo, va el prompt:");
+    expect(t).toContain("EL PROMPT");
+    expect(t).toContain("probalo.");
+  });
+});
+
 describe("hasIncompleteArtifact", () => {
   test("false cuando está completo o no hay artifacts", () => {
     expect(hasIncompleteArtifact("texto plano")).toBe(false);

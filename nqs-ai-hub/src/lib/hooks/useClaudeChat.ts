@@ -211,12 +211,18 @@ export function useClaudeChat() {
           ),
         );
 
-      // Parte 1: red de seguridad. Si el mensaje del assistant quedó SIN
-      // archivos (el `done` no trajo `files`, o el stream se cortó antes del
-      // `done`), re-fetcheamos los claude_files de la conversación y los
-      // reconciliamos contra el mensaje. Idempotente: solo aplica si encuentra
-      // archivos Y el mensaje todavía no los tiene, así no duplica cuando el
-      // `done` ya los entregó. Silenciosa: es una red, nunca rompe el flujo.
+      // Red de seguridad. Si el mensaje del assistant quedó SIN archivos (el
+      // `done` no trajo `files`, o el stream se cortó antes del `done`),
+      // re-fetcheamos los claude_files de la conversación y los reconciliamos
+      // contra el mensaje. Idempotente y silenciosa: nunca rompe el flujo.
+      //
+      // REGLA DURA (fix del "archivo equivocado", ver archivo-equivocado-audit.md):
+      // un mensaje muestra EXCLUSIVAMENTE su propio archivo. La versión anterior
+      // caía a "el último mensaje del assistant con archivos" cuando no encontraba
+      // nada, y en una conversación con varias generaciones eso pegaba el archivo
+      // de un turno ANTERIOR al mensaje nuevo (el user pedía los reframes y le
+      // llegaba el .txt del edit anterior). "Este mensaje no tiene archivo" es un
+      // resultado VÁLIDO, no una señal para ir a buscar el de otro.
       const reconcileFilesFromServer = async (
         convId: string,
         stateMsgId: string,
@@ -229,30 +235,41 @@ export function useClaudeChat() {
           });
           if (!res.ok) return;
           const data = (await res.json()) as ConversationDetailResponse;
-          // Preferimos el match por el id REAL del server; si no lo tenemos (el
-          // `done` se perdió), caemos al último mensaje del assistant con files.
-          let found: ChatFile[] | undefined;
-          if (serverMsgId) {
-            found = data.messages.find((m) => m.id === serverMsgId)?.files;
-          }
-          if (!found || found.length === 0) {
-            for (let i = data.messages.length - 1; i >= 0; i--) {
-              const m = data.messages[i];
-              if (m.role === "assistant" && m.files && m.files.length > 0) {
-                found = m.files;
+
+          // La selección va DENTRO del setMessages para poder mirar el estado
+          // actual (`prev`) y no adoptar archivos que ya se muestran en otro
+          // mensaje.
+          setMessages((prev) => {
+            const target = prev.find((m) => m.id === stateMsgId);
+            // Idempotente: si el `done` ya trajo los archivos, no tocamos nada.
+            if (!target || (target.files && target.files.length > 0)) return prev;
+
+            let found: ChatFile[] | undefined;
+            if (serverMsgId) {
+              // Tenemos el id REAL → match exacto y punto. Si ese mensaje no
+              // tiene archivos, no hay nada que adjuntar.
+              found = data.messages.find((m) => m.id === serverMsgId)?.files;
+            } else {
+              // No tenemos el id real (el stream se cortó antes del `done`). El
+              // mensaje de ESTE turno es el único assistant que el server ya
+              // tiene y el cliente todavía no conoce. Miramos ese y solo ese:
+              // cortamos en el primer assistant desconocido, así nunca caminamos
+              // hacia atrás hasta un turno anterior.
+              const knownIds = new Set(prev.map((m) => m.id));
+              for (let i = data.messages.length - 1; i >= 0; i--) {
+                const m = data.messages[i];
+                if (m.role !== "assistant" || knownIds.has(m.id)) continue;
+                if (m.files && m.files.length > 0) found = m.files;
                 break;
               }
             }
-          }
-          if (!found || found.length === 0) return;
-          const files = found;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === stateMsgId && (!m.files || m.files.length === 0)
-                ? { ...m, files }
-                : m,
-            ),
-          );
+
+            if (!found || found.length === 0) return prev;
+            const files = found;
+            return prev.map((m) =>
+              m.id === stateMsgId ? { ...m, files } : m,
+            );
+          });
         } catch {
           // Silencioso: red de seguridad, no interrumpe la respuesta.
         }
@@ -346,6 +363,7 @@ export function useClaudeChat() {
               code?: string;
               files?: ChatFile[];
               filesFailed?: number;
+              filesMissing?: boolean;
             };
             try {
               ev = JSON.parse(line);
@@ -412,9 +430,14 @@ export function useClaudeChat() {
                         streaming: false,
                         stopReason: ev.stopReason ?? null,
                         files: doneFiles,
-                        // Parte 3.2: se generó un archivo que no se pudo adjuntar.
+                        // Se esperaba un archivo y el user no lo va a ver. Dos
+                        // causas, mismo aviso (la acción del user es la misma:
+                        // pedirlo de nuevo): `filesFailed` = se capturó pero no
+                        // se pudo persistir; `filesMissing` = corrió el sandbox y
+                        // no salió ningún archivo (antes este caso quedaba mudo).
                         filesPartialError:
-                          ev.filesFailed != null && ev.filesFailed > 0
+                          (ev.filesFailed != null && ev.filesFailed > 0) ||
+                          ev.filesMissing === true
                             ? true
                             : undefined,
                       }
