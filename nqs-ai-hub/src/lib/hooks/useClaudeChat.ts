@@ -536,6 +536,7 @@ export function useClaudeChat(projectId: string | null = null) {
               prompt,
               imagePaths: imagePaths.length > 0 ? imagePaths : undefined,
               conversationId: sourceConversationId ?? undefined,
+              projectId: projectId ?? undefined,
             }),
           });
 

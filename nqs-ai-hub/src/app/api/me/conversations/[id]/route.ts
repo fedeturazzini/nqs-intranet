@@ -12,7 +12,6 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
 import { signDownloadUrls } from "@/lib/storage/claude-uploads";
-import { getActiveProjectId } from "@/lib/db/queries/projects";
 import { hasProjectGate } from "@/lib/auth/project-gate";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -51,17 +50,10 @@ export async function GET(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  // FIX 17.5: además del ownership, la conversación debe pertenecer al
-  // proyecto activo del user. Evita abrir una conv de otro proyecto por
-  // URL. 404 (no leakear).
-  const activeProjectId = await getActiveProjectId(session.userId);
-  if (conv.project_id !== activeProjectId) {
-    return NextResponse.json({ error: "wrong_project" }, { status: 404 });
-  }
-
-  // Gate de proyecto privado (migration 0016): si el proyecto activo es privado
-  // y no hay cookie de gate válida, no devolvemos los mensajes.
-  if (activeProjectId && !(await hasProjectGate(activeProjectId))) {
+  // La conversación es la autoridad de proyecto. El singleton global puede
+  // cambiar desde otra pestaña y no debe impedir abrir esta conversación.
+  // Las conversaciones legacy/huérfanas (project_id null) no inventan un gate.
+  if (conv.project_id && !(await hasProjectGate(conv.project_id))) {
     return NextResponse.json({ error: "project_locked" }, { status: 403 });
   }
 
@@ -239,7 +231,7 @@ export async function PATCH(
   // Ownership: traemos la conv y validamos que sea del user antes de tocar nada.
   const { data: conv, error: convErr } = await db
     .from("claude_conversations")
-    .select("id, user_id")
+    .select("id, user_id, project_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -254,6 +246,9 @@ export async function PATCH(
   }
   if (conv.user_id !== session.userId) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (conv.project_id && !(await hasProjectGate(conv.project_id))) {
+    return NextResponse.json({ error: "project_locked" }, { status: 403 });
   }
 
   // Update con guard extra por user_id (defensa en profundidad).

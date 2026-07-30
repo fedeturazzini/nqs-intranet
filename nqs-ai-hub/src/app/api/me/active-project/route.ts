@@ -6,16 +6,13 @@
  *
  * Valida que el project exista y esté activo antes de setearlo.
  * Si el destino es privado, exige cookie de gate válida.
- * Al salir de un proyecto privado, limpia su cookie de gate para que la
- * próxima entrada vuelva a pedir la contraseña.
+ * Las cookies de gate son por proyecto y pueden coexistir: no se limpia la
+ * anterior al cambiar, porque otra pestaña puede seguir usando ese proyecto.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/server";
-import {
-  clearProjectGateCookie,
-  hasProjectGate,
-} from "@/lib/auth/project-gate";
+import { hasProjectGate } from "@/lib/auth/project-gate";
 import {
   getActiveProjectForUser,
   getProjectById,
@@ -71,18 +68,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const previous = await getActiveProjectForUser(session.userId);
-
   await setActiveProject(session.userId, project.id);
 
-  const res = NextResponse.json({ ok: true, project });
-  // Al salir de un privado distinto, invalidar su cookie de gate.
-  if (
-    previous &&
-    previous.is_private &&
-    previous.id !== project.id
-  ) {
-    clearProjectGateCookie(res, previous.id);
-  }
-  return res;
+  // No invalidamos cookies pg_* anteriores: son project-scoped, expiran a los
+  // 15 min y logout/gate_version las revocan. Esto permite tabs privadas en
+  // paralelo sin que el último switch bloquee a las demás.
+  return NextResponse.json({ ok: true, project });
 }

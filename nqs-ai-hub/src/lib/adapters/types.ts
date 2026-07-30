@@ -56,6 +56,26 @@ export type ExecuteParams = {
   imagePaths?: string[];
   /** Si viene, se appendea a la conversación existente. Si no, se crea una nueva. */
   conversationId?: string;
+  /**
+   * Proyecto que la pestaña espera usar. Es un hint no confiable: para una
+   * conversación existente el server usa `claude_conversations.project_id`
+   * como autoridad y rechaza cualquier mismatch.
+   */
+  projectId?: string;
+  /**
+   * Contexto canónico resuelto server-side antes de abrir el stream. El schema
+   * HTTP no acepta este campo: la route lo agrega después de validar ownership,
+   * proyecto activo y gate.
+   */
+  projectContext?: {
+    projectId: string;
+    source:
+      | "conversation"
+      | "request"
+      | "global_fallback"
+      | "legacy_request"
+      | "legacy_global_fallback";
+  };
 };
 
 export type ExecuteResult = {

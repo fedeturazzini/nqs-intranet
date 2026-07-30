@@ -1,7 +1,7 @@
 /**
  * POST /api/tools/claude/execute
  *
- * Body: { prompt: string, images?: ExecuteImage[], conversationId?: uuid }
+ * Body: { prompt, imagePaths?, conversationId?, projectId? }
  * Response: { text, tokensInput, tokensOutput, conversationId, messageId }
  *           | { error, message? }
  *
@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/server";
 import { getAdapter } from "@/lib/adapters";
+import { resolveClaudeExecuteContext } from "@/lib/adapters/claude-execute-context";
 import { requireToolAccess } from "@/lib/middleware/permissions";
 import { logWarn, logError, requestIdFrom } from "@/lib/log";
 import { NO_CREDITS_CODE } from "@/lib/anthropic/errors";
@@ -41,11 +42,16 @@ const MAX_ATTACHMENTS = 10;
 // límite de 4.5MB de Vercel.
 const ExecuteSchema = z.object({
   prompt: z.string().min(1).max(MAX_PROMPT_CHARS),
-  imagePaths: z.array(z.string().min(1).max(500)).max(MAX_ATTACHMENTS).optional(),
+  imagePaths: z
+    .array(z.string().min(1).max(500))
+    .max(MAX_ATTACHMENTS)
+    .optional(),
   conversationId: z.string().uuid().optional(),
+  projectId: z.string().uuid().optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
+  const requestId = requestIdFrom(request);
   // 1) sesión
   const session = await getSession();
   if (!session) {
@@ -53,7 +59,7 @@ export async function POST(request: Request): Promise<Response> {
       route: "tools/claude/execute",
       status: 401,
       reason: "session_invalid",
-      requestId: requestIdFrom(request),
+      requestId,
     });
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -93,6 +99,40 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: "not_implemented" }, { status: 501 });
   }
   const execute = adapter.execute.bind(adapter);
+  const userId = session.userId;
+
+  // El contexto de proyecto se valida ANTES de abrir NDJSON. Así un mismatch
+  // real puede responder HTTP 409 y garantizamos que Anthropic no se invoque.
+  let resolved;
+  try {
+    resolved = await resolveClaudeExecuteContext(userId, parsed.data, {
+      requestId,
+    });
+  } catch (err) {
+    logError("execute: no se pudo resolver el contexto de proyecto", {
+      route: "tools/claude/execute",
+      userId,
+      requestId,
+      err,
+    });
+    return NextResponse.json(
+      { error: "db_error", message: "No pudimos validar el proyecto." },
+      { status: 500 },
+    );
+  }
+  if (!resolved.ok) {
+    return NextResponse.json(
+      {
+        error: resolved.error.error,
+        message: resolved.error.message,
+      },
+      { status: resolved.error.status },
+    );
+  }
+  const params = {
+    ...parsed.data,
+    projectContext: resolved.value,
+  };
 
   // Respuesta NDJSON (una línea JSON por evento):
   //   {"type":"delta","text":"…"}                        ← por cada fragmento
@@ -100,8 +140,6 @@ export async function POST(request: Request): Promise<Response> {
   //   {"type":"done","conversationId","messageId",…}     ← al terminar OK
   //   {"type":"error","message":"…"}                     ← si falló el modelo
   const encoder = new TextEncoder();
-  const userId = session.userId;
-  const params = parsed.data;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

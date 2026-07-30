@@ -13,7 +13,8 @@
  *
  * Orden de operaciones (importante para minimizar partial state):
  *   1. Fetch system prompt (DB)
- *   2. Si hay conversationId, levantar mensajes previos + validar ownership
+ *   2. Si hay conversationId, levantar mensajes previos (ownership/proyecto
+ *      ya fueron validados pre-stream por resolveClaudeExecuteContext)
  *   3. Llamar a Anthropic (caro)
  *   4. Si OK: crear conversación si nueva + persistir user msg + asistente
  *   5. Loguear usage
@@ -40,8 +41,7 @@ import { shortHash, previewText } from "@/lib/utils/log-preview";
 import { createServerClient } from "@/lib/db/supabase";
 import { getToolAccess } from "@/lib/db/queries/tools";
 import { getActiveSystemAndMemoryForProject } from "@/lib/db/queries/system-prompts";
-import { getActiveProjectId, getProjectSummary } from "@/lib/db/queries/projects";
-import { hasProjectGate } from "@/lib/auth/project-gate";
+import { getProjectSummary } from "@/lib/db/queries/projects";
 import {
   pathBelongsToUser,
   signDownloadUrls,
@@ -213,29 +213,19 @@ export const claudeAdapter: ToolAdapter = {
     try {
       const db = createServerClient();
 
-      // 0. Proyecto activo del user (migration 0008). Cada proyecto tiene
-      //    su propio cerebro + memoria. Sin proyecto activo, no se puede
-      //    usar Claude.
-      const projectId = await getActiveProjectId(userId);
-      if (!projectId) {
-        return {
-          ok: false,
-          error: new Error("Seleccioná un proyecto antes de usar Claude"),
-        };
-      }
-
-      // Gate de proyecto privado (migration 0016). El backend usa service_role
-      // (saltea RLS) → este chequeo explícito es la única defensa: si el
-      // proyecto activo es privado y no hay cookie de gate válida, NO cargamos
-      // su cerebro ni persistimos nada.
-      if (!(await hasProjectGate(projectId))) {
+      // 0. Contexto canónico resuelto por la route ANTES de abrir el stream.
+      //    Para una conversación existente viene de conversation.project_id;
+      //    el projectId del request/global nunca puede pisarlo.
+      const projectContext = params.projectContext;
+      if (!projectContext) {
         return {
           ok: false,
           error: new Error(
-            "Este proyecto es privado. Ingresá la contraseña para usarlo.",
+            "No pudimos validar el proyecto de esta conversación.",
           ),
         };
       }
+      const projectId = projectContext.projectId;
 
       // 1. System prompt + memoria DEL PROYECTO (plaintext, desencriptados).
       //    Concatenamos con tags <system_prompt> / <workspace_memory>.
@@ -276,27 +266,8 @@ export const claudeAdapter: ToolAdapter = {
       let conversationId = params.conversationId ?? null;
 
       if (conversationId) {
-        // Validar ownership y traer historial.
-        const { data: conv, error: convErr } = await db
-          .from("claude_conversations")
-          .select("id, user_id")
-          .eq("id", conversationId)
-          .maybeSingle();
-
-        if (convErr) throw convErr;
-        if (!conv) {
-          return {
-            ok: false,
-            error: new Error("conversación no encontrada"),
-          };
-        }
-        if (conv.user_id !== userId) {
-          return {
-            ok: false,
-            error: new Error("conversación pertenece a otro usuario"),
-          };
-        }
-
+        // Ownership + project_id ya se resolvieron una sola vez pre-stream.
+        // Acá solo traemos la historia para no duplicar la query de metadata.
         const { data: prior, error: prErr } = await db
           .from("claude_messages")
           .select("role, content")
@@ -347,6 +318,7 @@ export const claudeAdapter: ToolAdapter = {
         logInfo("execute.context", {
           userId,
           projectId,
+          projectContextSource: projectContext.source,
           projectName: project?.name ?? null,
           systemPromptId: systemPrompt.id,
           systemPromptSource: `system_prompts:${systemPrompt.id} (project:${projectId})`,
