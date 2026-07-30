@@ -20,7 +20,7 @@ export const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
 // PDF: límite de Anthropic (32 MB por request). Los PDFs NO se comprimen.
 export const MAX_PDF_BYTES = 32 * 1024 * 1024;
 /** Máximo de adjuntos por mensaje (imágenes + PDFs, contados juntos). */
-export const MAX_ATTACHMENTS = 5;
+export const MAX_ATTACHMENTS = 10;
 export const ACCEPTED_MEDIA_TYPES = [
   "image/jpeg",
   "image/png",

@@ -28,7 +28,7 @@ const ACCEPTED = [
 ] as const;
 
 const BodySchema = z.object({
-  mediaTypes: z.array(z.enum(ACCEPTED)).min(1).max(5),
+  mediaTypes: z.array(z.enum(ACCEPTED)).min(1).max(10),
   conversationId: z.string().uuid().optional(),
 });
 

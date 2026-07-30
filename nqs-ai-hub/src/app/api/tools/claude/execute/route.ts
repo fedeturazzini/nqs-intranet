@@ -33,7 +33,7 @@ export const maxDuration = 300;
 const MAX_PROMPT_CHARS = 10_000;
 // Máximo de adjuntos por mensaje (imágenes + PDFs). `imagePaths` lleva paths
 // mixtos; el adapter decide el tipo de bloque por la extensión.
-const MAX_ATTACHMENTS = 5;
+const MAX_ATTACHMENTS = 10;
 
 // Las imágenes ya viajaron a Storage (vía /upload-url). Acá solo
 // recibimos los PATHS — el adapter valida ownership y genera signed

@@ -12,7 +12,7 @@
  *   - Drag-and-drop sobre cualquier parte del componente.
  *   - Click en 📎 abre el file picker.
  *   - Validación local antes de subir (tipo + tamaño).
- *   - Max 5 adjuntos por mensaje (= MAX_ATTACHMENTS). Imágenes o PDF.
+ *   - Max 10 adjuntos por mensaje (= MAX_ATTACHMENTS). Imágenes o PDF.
  */
 import {
   useCallback,
