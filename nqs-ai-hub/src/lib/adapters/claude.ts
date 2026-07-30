@@ -413,8 +413,10 @@ export const claudeAdapter: ToolAdapter = {
         messageId = assistantRow?.id ?? "";
         // Parte 2.2: si NO recuperamos el id del mensaje del assistant, los
         // archivos de la etapa 2 quedarían con `message_id = null` (huérfanos).
-        // No es fatal (el reload los adjunta al último mensaje del assistant como
-        // fallback), pero lo logueamos fuerte para poder detectarlo.
+        // No es fatal — al recargar, el reload los recupera asociándolos por
+        // `created_at` al mensaje de SU turno (ya NO "al último assistant": eso
+        // servía el archivo equivocado, ver archivo-equivocado-audit.md) — pero
+        // lo logueamos fuerte para poder detectarlo.
         if (!messageId) {
           console.error(
             JSON.stringify({

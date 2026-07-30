@@ -101,20 +101,35 @@ export async function GET(
   // message_id para adjuntarlos a cada mensaje del assistant al recargar.
   const { data: files } = await db
     .from("claude_files")
-    .select("id, message_id, name, media_type")
+    .select("id, message_id, name, media_type, created_at")
     .eq("conversation_id", id);
   const filesByMessage = new Map<
     string,
     Array<{ id: string; name: string; mediaType: string }>
   >();
-  // Parte 2.1: los archivos con `message_id` null (el mensaje del assistant no
-  // se guardó bien en la etapa 2) NO se descartan: se juntan como huérfanos y se
-  // adjuntan como fallback al ÚLTIMO mensaje del assistant de la conversación,
-  // así aparecen igual al recargar en vez de perderse.
-  const orphanFiles: Array<{ id: string; name: string; mediaType: string }> = [];
+  // Los archivos con `message_id` null (el mensaje del assistant no se guardó
+  // bien en la etapa 2) NO se descartan: se recuperan por TIEMPO para que
+  // aparezcan al recargar.
+  //
+  // REGLA DURA (fix del "archivo equivocado", ver archivo-equivocado-audit.md):
+  // cada huérfano va al mensaje de SU PROPIO turno. La versión anterior los
+  // adjuntaba TODOS al último mensaje del assistant de la conversación, así que
+  // un huérfano de un turno viejo aterrizaba en el mensaje más nuevo (y varios
+  // huérfanos de turnos distintos se apilaban en el mismo mensaje).
+  const orphanFiles: Array<{
+    id: string;
+    name: string;
+    mediaType: string;
+    createdAt: string | null;
+  }> = [];
   for (const f of files ?? []) {
     if (!f.message_id) {
-      orphanFiles.push({ id: f.id, name: f.name, mediaType: f.media_type });
+      orphanFiles.push({
+        id: f.id,
+        name: f.name,
+        mediaType: f.media_type,
+        createdAt: f.created_at,
+      });
       continue;
     }
     const arr = filesByMessage.get(f.message_id) ?? [];
@@ -122,16 +137,29 @@ export async function GET(
     filesByMessage.set(f.message_id, arr);
   }
   if (orphanFiles.length > 0) {
-    // `messages` viene ordenado ascendente por created_at → el último assistant
-    // que veamos en el recorrido es el más reciente.
-    let lastAssistantId: string | null = null;
-    for (const m of messages ?? []) {
-      if (m.role === "assistant") lastAssistantId = m.id;
-    }
-    if (lastAssistantId) {
-      const arr = filesByMessage.get(lastAssistantId) ?? [];
-      arr.push(...orphanFiles);
-      filesByMessage.set(lastAssistantId, arr);
+    // `messages` viene ordenado ascendente por created_at.
+    const assistantMsgs = (messages ?? []).filter((m) => m.role === "assistant");
+    for (const orphan of orphanFiles) {
+      // La etapa 2 inserta el archivo DESPUÉS de su mensaje del assistant, en la
+      // misma vuelta → su dueño es el ÚLTIMO assistant creado en o antes que el
+      // archivo. Si no podemos fecharlo, NO adivinamos (mejor no mostrarlo que
+      // colgarlo del mensaje equivocado).
+      if (!orphan.createdAt) continue;
+      const fileTime = new Date(orphan.createdAt).getTime();
+      let ownerId: string | null = null;
+      for (const m of assistantMsgs) {
+        if (!m.created_at) continue;
+        if (new Date(m.created_at).getTime() <= fileTime) ownerId = m.id;
+        else break; // ascendente: de acá en adelante todos son posteriores
+      }
+      if (!ownerId) continue;
+      const arr = filesByMessage.get(ownerId) ?? [];
+      arr.push({
+        id: orphan.id,
+        name: orphan.name,
+        mediaType: orphan.mediaType,
+      });
+      filesByMessage.set(ownerId, arr);
     }
   }
 
