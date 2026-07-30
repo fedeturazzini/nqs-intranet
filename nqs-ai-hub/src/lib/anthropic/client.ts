@@ -238,6 +238,12 @@ export type ClaudeResponse = {
    *  respuesta para correlacionar en los logs (no es el HTTP request-id, pero
    *  cumple el mismo rol si hiciera falta soporte de Anthropic). */
   anthropicMessageId: string | null;
+  /** Tokens ESCRITOS al cache de prompt en esta llamada (prompt caching). >0 en
+   *  la 1ª llamada de una conversación (se cachea el system prompt). */
+  cacheCreationTokens: number;
+  /** Tokens LEÍDOS del cache de prompt en esta llamada. >0 en los mensajes de
+   *  seguimiento de una conversación (el system prompt sale del cache, barato). */
+  cacheReadTokens: number;
 };
 
 /**
@@ -259,7 +265,14 @@ export async function callClaude(
       options.maxTokens ?? maxTokensFor(options.model ?? DEFAULT_MODEL),
       NONSTREAMING_MAX_TOKENS,
     ),
-    system: systemPrompt,
+    // Prompt caching: marcamos el system (cerebro + format instructions, ~9k
+    // tokens y estable dentro de una conversación) con cache_control ephemeral.
+    // La 1ª llamada lo escribe al cache; las siguientes (dentro del TTL de 5 min)
+    // lo leen barato en vez de re-procesar los 9k. GA en el SDK 0.98, sin beta.
+    // (TTL 1h: opción futura vía `ttl:"1h"` + beta `extended-cache-ttl`.)
+    system: [
+      { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+    ],
     messages,
   });
 
@@ -277,6 +290,8 @@ export async function callClaude(
     stopReason: response.stop_reason,
     contentBlocks: summarizeContentBlocks(response.content),
     anthropicMessageId: response.id ?? null,
+    cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
   };
 }
 
@@ -338,7 +353,11 @@ async function streamTextOnly(
   const stream = client.messages.stream({
     model,
     max_tokens: maxTokens,
-    system: systemPrompt,
+    // Prompt caching del system (ver callClaude): el cerebro se lee del cache en
+    // los mensajes de seguimiento en vez de re-procesarse entero cada turno.
+    system: [
+      { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+    ],
     messages,
   });
 
@@ -359,6 +378,8 @@ async function streamTextOnly(
     stopReason: final.stop_reason,
     contentBlocks: summarizeContentBlocks(final.content),
     anthropicMessageId: final.id ?? null,
+    cacheCreationTokens: final.usage.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: final.usage.cache_read_input_tokens ?? 0,
   };
 }
 
@@ -391,6 +412,8 @@ async function streamWithFileGeneration(
   let text = "";
   let tokensInput = 0;
   let tokensOutput = 0;
+  let cacheCreationTokens = 0;
+  let cacheReadTokens = 0;
   let stopReason: string | null = null;
   let anthropicMessageId: string | null = null;
   const generatedFiles: GeneratedFile[] = [];
@@ -402,7 +425,11 @@ async function streamWithFileGeneration(
     const stream = client.beta.messages.stream({
       model,
       max_tokens: maxTokens,
-      system: systemPrompt,
+      // Prompt caching del system (ver callClaude). Mismo literal; acá tipa
+      // contra BetaTextBlockParam.
+      system: [
+        { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+      ],
       messages: working,
       tools: [CODE_EXECUTION_TOOL],
       container: { skills: FILE_SKILLS },
@@ -474,6 +501,8 @@ async function streamWithFileGeneration(
 
     tokensInput += final.usage.input_tokens;
     tokensOutput += final.usage.output_tokens;
+    cacheCreationTokens += final.usage.cache_creation_input_tokens ?? 0;
+    cacheReadTokens += final.usage.cache_read_input_tokens ?? 0;
     stopReason = final.stop_reason;
     anthropicMessageId = final.id ?? anthropicMessageId;
     contentBlocks.push(...summarizeContentBlocks(final.content));
@@ -495,6 +524,8 @@ async function streamWithFileGeneration(
     generatedFiles,
     contentBlocks,
     anthropicMessageId,
+    cacheCreationTokens,
+    cacheReadTokens,
   };
 }
 
