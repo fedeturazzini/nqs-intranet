@@ -48,9 +48,14 @@ import {
   uploadBuffer,
 } from "@/lib/storage/claude-uploads";
 import {
+  detectBinaryDeliveryIntent,
+  isPotentialBinaryFollowUp,
+  resolvePriorDeliveryTurn,
+  shouldEnableBinaryFileGeneration,
+} from "./claude-binary-delivery";
+import {
   detectTextDeliveryIntent,
   hasDeliveredTextArtifact,
-  repairTextDeliveryOnce,
 } from "./claude-text-delivery";
 import { logToolUsage } from "./utils";
 import type {
@@ -108,11 +113,6 @@ Tipos soportados (esto define el TIPO DE ARCHIVO, NO es una instrucción de esti
 - text/markdown (.md) — documentos formateados
 - application/vnd.ant.code (con language="python|javascript|…") — código
 
-ENTREGA OBLIGATORIA DE .txt/.md:
-- Si el user pide explícitamente recibir, descargar, generar o exportar un .txt/.md, DEBÉS emitir el artifact completo y válido en ESE MISMO mensaje.
-- No alcanza con devolver el contenido inline ni con decir "listo".
-- Si usaste el sandbox para contar, validar o revisar el contenido, esa ejecución NO reemplaza al artifact: después emití igualmente el bloque <function_calls> completo.
-
 Patrón recomendado:
 - En el chat respondé breve y conversacional ("Listo, generé el prompt…").
 - En el artifact poné el contenido pesado (prompt completo, código, documento).
@@ -165,9 +165,7 @@ código, el user NO recibe NINGÚN archivo — por más que digas que se lo mand
   ("es el mismo", "ya te lo mandé", "usá el anterior"): generalo de nuevo.
 - Si por algún motivo no podés generarlo, DECILO explícitamente en vez de dar por
   hecho que llegó.
-Para TEXTO o Markdown (no binario), seguí usando el artifact de texto de siempre.
-Si usaste el sandbox para validar TEXTO/Markdown, igual DEBÉS emitir el artifact completo:
-la validación, stdout o texto inline NO son la entrega descargable.`;
+Para TEXTO o Markdown (no binario), seguí usando el artifact de texto de siempre.`;
 
 export const claudeAdapter: ToolAdapter = {
   id: TOOL_ID,
@@ -260,37 +258,63 @@ export const claudeAdapter: ToolAdapter = {
       const projectSystem = memoryText
         ? `<system_prompt>${systemPrompt.content}</system_prompt>\n<workspace_memory>${memoryText}</workspace_memory>`
         : systemPrompt.content;
-      // Generación de archivos reales: detrás de un flag (costo de container) +
-      // solo si el modelo del proyecto soporta code execution (Sonnet/Opus 4.5+,
-      // Fable 5). Si no, se comporta como hoy (solo texto).
-      const fileGenEnabled =
+      // Capacidad disponible. La intención del turno se resuelve después de
+      // cargar el contexto: tener sandbox disponible no significa prenderlo.
+      const fileGenerationAvailable =
         process.env.ENABLE_FILE_GENERATION === "true" &&
         modelSupportsCodeExecution(systemPrompt.model);
-
-      // Las instrucciones de formato van al final (prioridad). Con file-gen
-      // activo, sumamos las instrucciones de generación real de binarios.
-      const fullSystem = fileGenEnabled
-        ? `${projectSystem}\n\n${FORMAT_INSTRUCTIONS}\n\n${FILE_GEN_INSTRUCTIONS}`
-        : `${projectSystem}\n\n${FORMAT_INSTRUCTIONS}`;
 
       // 2. Construir history si vino conversationId.
       const messages: ClaudeMessage[] = [];
       let conversationId = params.conversationId ?? null;
+      let previousUserPrompt: string | null = null;
+      let previousAssistantId: string | null = null;
+      let previousAssistantFileMediaTypes: string[] = [];
 
       if (conversationId) {
         // Ownership + project_id ya se resolvieron una sola vez pre-stream.
         // Acá solo traemos la historia para no duplicar la query de metadata.
         const { data: prior, error: prErr } = await db
           .from("claude_messages")
-          .select("role, content")
+          .select("id, role, content")
           .eq("conversation_id", conversationId)
           .order("created_at", { ascending: true });
         if (prErr) throw prErr;
 
-        for (const m of prior ?? []) {
+        const priorMessages = prior ?? [];
+        for (const m of priorMessages) {
           messages.push({ role: m.role, content: m.content });
         }
+        ({ previousUserPrompt, previousAssistantId } =
+          resolvePriorDeliveryTurn(priorMessages));
+
+        // Solo miramos archivos del assistant inmediatamente relevante. Nunca
+        // heredamos "el último archivo de la conversación": ese atajo fue la
+        // causa de archivo-equivocado.
+        if (previousAssistantId && isPotentialBinaryFollowUp(params.prompt)) {
+          const { data: previousFiles, error: previousFilesError } = await db
+            .from("claude_files")
+            .select("media_type")
+            .eq("conversation_id", conversationId)
+            .eq("message_id", previousAssistantId);
+          if (previousFilesError) throw previousFilesError;
+          previousAssistantFileMediaTypes = (previousFiles ?? []).map(
+            (file) => file.media_type,
+          );
+        }
       }
+
+      const binaryDeliveryIntent = detectBinaryDeliveryIntent(params.prompt, {
+        previousUserPrompt,
+        previousAssistantFileMediaTypes,
+      });
+      const fileGenEnabled = shouldEnableBinaryFileGeneration(
+        fileGenerationAvailable,
+        binaryDeliveryIntent,
+      );
+      const fullSystem = fileGenEnabled
+        ? `${projectSystem}\n\n${FORMAT_INSTRUCTIONS}\n\n${FILE_GEN_INSTRUCTIONS}`
+        : `${projectSystem}\n\n${FORMAT_INSTRUCTIONS}`;
 
       // Imágenes: validamos ownership de cada path y generamos signed
       // download URLs (1h) para que Anthropic las descargue. Los paths
@@ -346,7 +370,13 @@ export const claudeAdapter: ToolAdapter = {
           model: systemPrompt.model,
           messagesSent: messages.length, // incluye el turno actual
           imagesReceived,
-          expectedOutput: textDeliveryIntent?.format ?? null,
+          expectedOutput:
+            binaryDeliveryIntent?.format ?? textDeliveryIntent?.format ?? null,
+          fileGenerationAvailable,
+          binaryDeliveryRequested: binaryDeliveryIntent != null,
+          binaryDeliverySource: binaryDeliveryIntent?.source ?? null,
+          binaryDeliveryReason: binaryDeliveryIntent?.reason ?? null,
+          fileGenerationEnabled: fileGenEnabled,
           maxTokens: maxTokensFor(systemPrompt.model),
           ...(brainVerbose ? { fullSystemPrompt: fullSystem } : {}),
         });
@@ -366,45 +396,27 @@ export const claudeAdapter: ToolAdapter = {
       // medida que se generan (la respuesta no se corta por timeout aunque
       // el prompt sea grande). Igual acumulamos el texto completo.
       const callStartedAt = Date.now();
-      const initialResponse = await streamClaude(
+      const response = await streamClaude(
         fullSystem,
         messages,
         { model: systemPrompt.model, enableFileGeneration: fileGenEnabled },
         onText,
         onStatus,
       );
-      const repaired = await repairTextDeliveryOnce({
-        intent: textDeliveryIntent,
-        initialResponse,
-        messages,
-        onText,
-        onRepairStart(first) {
-          onStatus?.("repairing_text_file");
-          logWarn("execute: reintento de entrega textual", {
-            userId,
-            conversationId,
-            expectedOutput: textDeliveryIntent?.format,
-            reason: "text_delivery_missing",
-            firstAnthropicMessageId: first.anthropicMessageId,
-          });
-        },
-        runRepair: (repairMessages, repairOnText) =>
-          streamClaude(
-            fullSystem,
-            repairMessages,
-            {
-              model: systemPrompt.model,
-              enableFileGeneration: fileGenEnabled,
-            },
-            repairOnText,
-            onStatus,
-          ),
-      });
-      const response = repaired.response;
-      const anthropicMessageIds = repaired.anthropicMessageIds;
-      const repairAttempted = repaired.attempted;
-      const repairSucceeded = repaired.succeeded;
       const durationMs = Date.now() - callStartedAt;
+      if (
+        response.stopReason === "tool_use" &&
+        response.toolUseDelivery?.detected &&
+        !response.toolUseDelivery.recognized
+      ) {
+        logWarn("execute: tool_use no materializable", {
+          userId,
+          conversationId,
+          toolName: response.toolUseDelivery.toolName ?? "unknown",
+          reason: response.toolUseDelivery.failReason ?? "unknown_shape",
+          stopReason: response.stopReason,
+        });
+      }
 
       // ETAPA 1: si Claude generó archivos en el sandbox, logueamos los file_id
       // para confirmar que anda. Todavía NO se bajan ni se guardan (etapa 2).
@@ -520,7 +532,6 @@ export const claudeAdapter: ToolAdapter = {
         textDeliveryIntent != null && !hasDeliveredTextArtifact(response);
       logInfo("execute.summary", {
         requestId: response.anthropicMessageId ?? undefined,
-        anthropicMessageIds,
         userId,
         conversationId,
         messageId,
@@ -538,10 +549,18 @@ export const claudeAdapter: ToolAdapter = {
         artifactDetected: artifactAttempt.detected,
         artifactFailReason: artifactAttempt.reason,
         fileIds: response.generatedFiles?.length ?? 0,
-        expectedOutput: textDeliveryIntent?.format ?? null,
-        attempts: repairAttempted ? 2 : 1,
-        repairAttempted,
-        repairSucceeded,
+        expectedOutput:
+          binaryDeliveryIntent?.format ?? textDeliveryIntent?.format ?? null,
+        attempts: 1,
+        fileGenerationAvailable,
+        binaryDeliveryRequested: binaryDeliveryIntent != null,
+        binaryDeliverySource: binaryDeliveryIntent?.source ?? null,
+        binaryDeliveryReason: binaryDeliveryIntent?.reason ?? null,
+        fileGenerationEnabled: fileGenEnabled,
+        toolUseDetected: response.toolUseDelivery?.detected ?? false,
+        toolUseRecognized: response.toolUseDelivery?.recognized ?? false,
+        toolUseFailReason: response.toolUseDelivery?.failReason ?? null,
+        toolUseName: response.toolUseDelivery?.toolName ?? null,
         textDeliveryFailed,
         imagesReceived,
         attachmentsSource: imagesReceived > 0 ? "url" : undefined,
@@ -630,34 +649,24 @@ export const claudeAdapter: ToolAdapter = {
         );
       }
 
-      // Capa 1 del archivo-equivocado-audit.md: SE ESPERABA archivo y no vino.
-      // El sandbox corrió (hay un bloque `server_tool_use`) pero no se capturó
-      // ningún file_id. Dos causas posibles, que la instrumentación de client.ts
-      // distingue por prod: el modelo no produjo el archivo, o llegó en una forma
-      // de bloque que no capturamos.
+      // Capa 1 del archivo-equivocado-audit.md: SE PIDIÓ un binario y no vino.
+      // Se informa aunque el modelo no haya llegado a invocar el sandbox: la
+      // postcondición es que exista un file_id real, no que haya un tool call.
       //
       // Por qué importa: este turno quedaba MUDO — `filesFailed` es 0 porque no
       // había nada capturado que pudiera "fallar" —, y ese hueco sin señal era
       // justo el que el fallback de la card rellenaba con el archivo de un turno
       // ANTERIOR. Avisar acá es lo que evita que el silencio se vuelva engaño.
-      const usedCodeTool = response.contentBlocks.some(
-        (b) =>
-          b.type === "server_tool_use" &&
-          (b.toolName === "code_execution" ||
-            b.toolName === "bash_code_execution"),
-      );
-      const filesMissing =
-        fileGenEnabled &&
-        usedCodeTool &&
-        fileIds.length === 0 &&
-        !artifactAttempt.detected;
+      const filesMissing = binaryDeliveryIntent != null && fileIds.length === 0;
       if (filesMissing) {
         console.error(
           JSON.stringify({
             level: "error",
-            msg: "code exec: corrió el sandbox y NO salió ningún archivo",
+            msg: "code exec: se pidió un binario y NO llegó ningún archivo",
             userId,
             conversationId,
+            expectedFormat: binaryDeliveryIntent.format,
+            fileGenerationEnabled: fileGenEnabled,
             contentBlockTypes: response.contentBlocks.map((b) => b.type),
           }),
         );
@@ -704,13 +713,21 @@ export const claudeAdapter: ToolAdapter = {
           // Parte 3.2: archivos capturados que no se pudieron adjuntar (>0 → la
           // UI avisa). 0 en el caso normal.
           filesFailed,
-          // Capa 1: se esperaba archivo (corrió el sandbox) y no vino ninguno.
+          // Capa 1: se pidió un binario y no vino ningún file_id.
           filesMissing,
-          // Ambos intentos de entregar el .txt/.md fallaron: la UI ofrece
-          // descargar el texto visible sin fingir que fue un archivo generado.
+          // La única llamada no entregó el artifact textual: la UI ofrece el
+          // texto visible como descarga sin fingir que fue un archivo generado.
           textFileFallback: textDeliveryFailed
             ? { filename: textDeliveryIntent.filename }
             : undefined,
+          toolDeliveryFailed:
+            response.stopReason === "tool_use" &&
+            response.toolUseDelivery?.detected &&
+            !response.toolUseDelivery.recognized
+              ? {
+                  toolName: response.toolUseDelivery.toolName ?? "unknown",
+                }
+              : undefined,
         },
       };
     } catch (error) {

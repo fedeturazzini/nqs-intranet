@@ -108,16 +108,18 @@ export function hasIncompleteThinking(content: string): boolean {
  * la card). Evita que se vean tags crudos en el chat.
  */
 function cleanResidualTags(text: string): string {
-  return text
-    // Bloques <thinking>…</thinking> completos (razonamiento interno que el
-    // user no debe ver). Va primero, antes de borrar tags sueltos.
-    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
-    .replace(/<\/?thinking[^>]*>/gi, "")
-    .replace(/<\/?function_calls\s*>/gi, "")
-    .replace(/<\/?invoke[^>]*>/gi, "")
-    .replace(/<\/?parameter[^>]*>/gi, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return (
+    text
+      // Bloques <thinking>…</thinking> completos (razonamiento interno que el
+      // user no debe ver). Va primero, antes de borrar tags sueltos.
+      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+      .replace(/<\/?thinking[^>]*>/gi, "")
+      .replace(/<\/?function_calls\s*>/gi, "")
+      .replace(/<\/?invoke[^>]*>/gi, "")
+      .replace(/<\/?parameter[^>]*>/gi, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 /**
@@ -199,10 +201,21 @@ function parseArtifactBody(body: string): ParsedArtifact | null {
 
 function extractParam(body: string, name: string): string {
   const re = new RegExp(
-    `<parameter name="${name}">([\\s\\S]*?)</parameter>`,
+    `<parameter name="${name}"([^>]*)>([\\s\\S]*?)</parameter>`,
   );
   const m = body.match(re);
-  return m ? m[1].trim() : "";
+  if (!m) return "";
+  const value = m[2].trim();
+  return /\bencoding=["']?entities["']?/i.test(m[1])
+    ? decodeXmlEntities(value)
+    : value;
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
 }
 
 /**

@@ -1,9 +1,7 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   detectTextDeliveryIntent,
   hasDeliveredTextArtifact,
-  mergeClaudeResponses,
-  repairTextDeliveryOnce,
 } from "@/lib/adapters/claude-text-delivery";
 import {
   extractGeneratedFilesFromBlocks,
@@ -68,91 +66,6 @@ describe("postcondición de entrega textual", () => {
         response({ generatedFiles: [{ fileId: "file_1" }] }),
       ),
     ).toBe(true);
-  });
-
-  test("un artifact válido no dispara retry", async () => {
-    const runRepair = vi.fn();
-    const result = await repairTextDeliveryOnce({
-      intent: { format: "txt", filename: "prompt.txt" },
-      initialResponse: response({ text: artifact }),
-      messages: [{ role: "user", content: "dame un txt" }],
-      runRepair,
-    });
-    expect(result.attempted).toBe(false);
-    expect(runRepair).not.toHaveBeenCalled();
-  });
-
-  test("no duplica costo si el primer intento ya agotó max_tokens", async () => {
-    const runRepair = vi.fn();
-    const result = await repairTextDeliveryOnce({
-      intent: { format: "txt", filename: "prompt.txt" },
-      initialResponse: response({ stopReason: "max_tokens" }),
-      messages: [{ role: "user", content: "dame un txt" }],
-      runRepair,
-    });
-    expect(result.attempted).toBe(false);
-    expect(runRepair).not.toHaveBeenCalled();
-  });
-
-  test("texto inline dispara exactamente una reparación y acumula el stream", async () => {
-    const deltas: string[] = [];
-    const runRepair = vi.fn(async (_messages, onText) => {
-      onText?.(artifact);
-      return response({
-        text: artifact,
-        tokensInput: 7,
-        tokensOutput: 8,
-        anthropicMessageId: "msg_repair",
-      });
-    });
-    const result = await repairTextDeliveryOnce({
-      intent: { format: "txt", filename: "prompt.txt" },
-      initialResponse: response(),
-      messages: [{ role: "user", content: "mandame prompt.txt" }],
-      onText: (delta) => deltas.push(delta),
-      runRepair,
-    });
-
-    expect(runRepair).toHaveBeenCalledTimes(1);
-    expect(result.attempted).toBe(true);
-    expect(result.succeeded).toBe(true);
-    expect(result.anthropicMessageIds).toEqual(["msg_first", "msg_repair"]);
-    expect(deltas).toEqual(["\n\n", artifact]);
-    expect(result.response.tokensInput).toBe(17);
-    expect(result.response.tokensOutput).toBe(13);
-  });
-
-  test("si la única reparación también falla, deja señal de fallo", async () => {
-    const runRepair = vi.fn(async () =>
-      response({ text: "sigue inline", anthropicMessageId: "msg_repair" }),
-    );
-    const result = await repairTextDeliveryOnce({
-      intent: { format: "txt", filename: "prompt.txt" },
-      initialResponse: response(),
-      messages: [{ role: "user", content: "mandame prompt.txt" }],
-      runRepair,
-    });
-    expect(runRepair).toHaveBeenCalledTimes(1);
-    expect(result.attempted).toBe(true);
-    expect(result.succeeded).toBe(false);
-  });
-});
-
-describe("mergeClaudeResponses", () => {
-  test("deduplica archivos y acumula uso/bloques", () => {
-    const merged = mergeClaudeResponses(
-      response({ generatedFiles: [{ fileId: "same" }] }),
-      response({
-        text: "reparado",
-        generatedFiles: [{ fileId: "same" }, { fileId: "new" }],
-      }),
-    );
-    expect(merged.generatedFiles).toEqual([
-      { fileId: "same" },
-      { fileId: "new" },
-    ]);
-    expect(merged.contentBlocks).toHaveLength(2);
-    expect(merged.text).toBe("texto inline\n\nreparado");
   });
 });
 

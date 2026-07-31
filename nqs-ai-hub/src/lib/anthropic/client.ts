@@ -19,6 +19,11 @@
  *     al SDK por cada call.
  */
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  materializeToolUseArtifacts,
+  redactToolInput,
+  type ToolUseDelivery,
+} from "@/lib/utils/tool-use-artifacts";
 
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
 // max_tokens es un TECHO de salida por request (se paga solo lo realmente
@@ -30,18 +35,16 @@ export const DEFAULT_MODEL = "claude-sonnet-4-6";
 //     API). Haiku 4.5 = 64K · Sonnet 4.6 y Opus 4.6/4.7/4.8/5 = 128K.
 // Targets: 32K general, 64K para Opus (tier premium). Clampeamos al ceiling por
 // las dudas (subir el target por encima del techo real haría rechazar el request).
-const MAX_TOKENS_BY_MODEL: Record<
-  string,
-  { target: number; ceiling: number }
-> = {
-  "claude-haiku-4-5": { target: 32_000, ceiling: 64_000 },
-  "claude-sonnet-4-6": { target: 32_000, ceiling: 128_000 },
-  "claude-sonnet-5": { target: 32_000, ceiling: 128_000 },
-  "claude-opus-4-6": { target: 64_000, ceiling: 128_000 },
-  "claude-opus-4-7": { target: 64_000, ceiling: 128_000 },
-  "claude-opus-4-8": { target: 64_000, ceiling: 128_000 },
-  "claude-opus-5": { target: 64_000, ceiling: 128_000 },
-};
+const MAX_TOKENS_BY_MODEL: Record<string, { target: number; ceiling: number }> =
+  {
+    "claude-haiku-4-5": { target: 32_000, ceiling: 64_000 },
+    "claude-sonnet-4-6": { target: 32_000, ceiling: 128_000 },
+    "claude-sonnet-5": { target: 32_000, ceiling: 128_000 },
+    "claude-opus-4-6": { target: 64_000, ceiling: 128_000 },
+    "claude-opus-4-7": { target: 64_000, ceiling: 128_000 },
+    "claude-opus-4-8": { target: 64_000, ceiling: 128_000 },
+    "claude-opus-5": { target: 64_000, ceiling: 128_000 },
+  };
 
 /**
  * Techo de tokens de salida a pedir para un modelo, clampeado a su máximo real.
@@ -171,6 +174,11 @@ export type ContentBlockSummary = {
   chars?: number;
   /** Nombre del server tool (sin sus parámetros). */
   toolName?: string;
+  /** Claves top-level del input de un tool client-side, sin sus valores. */
+  inputKeys?: string[];
+  /** Tamaños de campos frecuentes de un artifact nativo. */
+  contentChars?: number;
+  titleChars?: number;
   /** Subtipo interno del resultado (`bash_code_execution_result`, error, etc.). */
   resultType?: string;
   returnCode?: number;
@@ -214,7 +222,10 @@ export function summarizeContentBlocks(
       content?: unknown;
     };
     if (b.type === "text" && typeof b.text === "string") {
-      const summary: ContentBlockSummary = { type: b.type, chars: b.text.length };
+      const summary: ContentBlockSummary = {
+        type: b.type,
+        chars: b.text.length,
+      };
       if (verbose) summary.snippet = b.text.slice(0, VERBOSE_SNIPPET_CHARS);
       return summary;
     }
@@ -225,6 +236,30 @@ export function summarizeContentBlocks(
       };
       if (verbose && b.input != null) {
         summary.inputSnippet = JSON.stringify(b.input).slice(
+          0,
+          VERBOSE_SNIPPET_CHARS,
+        );
+      }
+      return summary;
+    }
+    if (b.type === "tool_use") {
+      const input =
+        b.input != null &&
+        typeof b.input === "object" &&
+        !Array.isArray(b.input)
+          ? (b.input as Record<string, unknown>)
+          : null;
+      const summary: ContentBlockSummary = {
+        type: b.type,
+        toolName: typeof b.name === "string" ? b.name : undefined,
+        inputKeys: input ? Object.keys(input).sort() : undefined,
+        contentChars:
+          typeof input?.content === "string" ? input.content.length : undefined,
+        titleChars:
+          typeof input?.title === "string" ? input.title.length : undefined,
+      };
+      if (verbose && b.input != null) {
+        summary.inputSnippet = redactToolInput(b.input).slice(
           0,
           VERBOSE_SNIPPET_CHARS,
         );
@@ -284,9 +319,7 @@ export function summarizeContentBlocks(
 
 /** Cuenta outputs con `file_id` en cualquiera de las dos variantes oficiales. */
 function countFileOutputs(content: unknown): number {
-  const result = content as
-    | { type?: string; content?: unknown[] }
-    | undefined;
+  const result = content as { type?: string; content?: unknown[] } | undefined;
   if (!result || !Array.isArray(result.content)) {
     return 0;
   }
@@ -323,6 +356,23 @@ export function extractGeneratedFilesFromBlocks(
   );
 }
 
+function materializedText(
+  blocks: readonly unknown[],
+  text: string,
+): {
+  text: string;
+  delivery?: ClaudeResponse["toolUseDelivery"];
+  append: string;
+} {
+  const materialized = materializeToolUseArtifacts(blocks, text);
+  if (!materialized.detected) return { text, append: "" };
+  const append = materialized.appendedText
+    ? `${text ? "\n\n" : ""}${materialized.appendedText}`
+    : "";
+  const { appendedText: _appendedText, ...delivery } = materialized;
+  return { text: `${text}${append}`, delivery, append };
+}
+
 export type ClaudeResponse = {
   text: string;
   tokensInput: number;
@@ -330,6 +380,8 @@ export type ClaudeResponse = {
   stopReason: string | null;
   /** Archivos generados en el sandbox (solo con `enableFileGeneration`). */
   generatedFiles?: GeneratedFile[];
+  /** Resultado de materializar un tool_use nativo antes de persistir. */
+  toolUseDelivery?: Omit<ToolUseDelivery, "appendedText">;
   /** Tipo + tamaño de cada bloque de la respuesta, para `execute.summary`. */
   contentBlocks: ContentBlockSummary[];
   /** Id del mensaje de Anthropic ("msg_…"). Identificador único de ESTA
@@ -369,7 +421,11 @@ export async function callClaude(
     // lo leen barato en vez de re-procesar los 9k. GA en el SDK 0.98, sin beta.
     // (TTL 1h: opción futura vía `ttl:"1h"` + beta `extended-cache-ttl`.)
     system: [
-      { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+      {
+        type: "text",
+        text: systemPrompt,
+        cache_control: { type: "ephemeral" },
+      },
     ],
     messages,
   });
@@ -379,13 +435,15 @@ export async function callClaude(
   const textBlocks = response.content.filter(
     (b): b is Anthropic.Messages.TextBlock => b.type === "text",
   );
-  const text = textBlocks.map((b) => b.text).join("\n");
+  const rawText = textBlocks.map((b) => b.text).join("\n");
+  const materialized = materializedText(response.content, rawText);
 
   return {
-    text,
+    text: materialized.text,
     tokensInput: response.usage.input_tokens,
     tokensOutput: response.usage.output_tokens,
     stopReason: response.stop_reason,
+    toolUseDelivery: materialized.delivery,
     contentBlocks: summarizeContentBlocks(response.content),
     anthropicMessageId: response.id ?? null,
     cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
@@ -433,7 +491,14 @@ export async function streamClaude(
   }
 
   // Path text-only (comportamiento actual, sin cambios).
-  return streamTextOnly(client, model, maxTokens, systemPrompt, messages, onText);
+  return streamTextOnly(
+    client,
+    model,
+    maxTokens,
+    systemPrompt,
+    messages,
+    onText,
+  );
 }
 
 /**
@@ -454,7 +519,11 @@ async function streamTextOnly(
     // Prompt caching del system (ver callClaude): el cerebro se lee del cache en
     // los mensajes de seguimiento en vez de re-procesarse entero cada turno.
     system: [
-      { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+      {
+        type: "text",
+        text: systemPrompt,
+        cache_control: { type: "ephemeral" },
+      },
     ],
     messages,
   });
@@ -467,13 +536,16 @@ async function streamTextOnly(
   const textBlocks = final.content.filter(
     (b): b is Anthropic.Messages.TextBlock => b.type === "text",
   );
-  const text = textBlocks.map((b) => b.text).join("\n");
+  const rawText = textBlocks.map((b) => b.text).join("\n");
+  const materialized = materializedText(final.content, rawText);
+  if (materialized.append) onText?.(materialized.append);
 
   return {
-    text,
+    text: materialized.text,
     tokensInput: final.usage.input_tokens,
     tokensOutput: final.usage.output_tokens,
     stopReason: final.stop_reason,
+    toolUseDelivery: materialized.delivery,
     contentBlocks: summarizeContentBlocks(final.content),
     anthropicMessageId: final.id ?? null,
     cacheCreationTokens: final.usage.cache_creation_input_tokens ?? 0,
@@ -514,6 +586,7 @@ async function streamWithFileGeneration(
   let cacheReadTokens = 0;
   let stopReason: string | null = null;
   let anthropicMessageId: string | null = null;
+  let toolUseDelivery: ClaudeResponse["toolUseDelivery"];
   const generatedFiles: GeneratedFile[] = [];
   // Con pause_turn puede haber varias vueltas — acumulamos los bloques de TODAS
   // (no solo la última), así el resumen refleja la respuesta completa.
@@ -526,7 +599,11 @@ async function streamWithFileGeneration(
       // Prompt caching del system (ver callClaude). Mismo literal; acá tipa
       // contra BetaTextBlockParam.
       system: [
-        { type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } },
+        {
+          type: "text",
+          text: systemPrompt,
+          cache_control: { type: "ephemeral" },
+        },
       ],
       messages: working,
       tools: [CODE_EXECUTION_TOOL],
@@ -547,6 +624,11 @@ async function streamWithFileGeneration(
           event.content_block.type === "server_tool_use"
         ) {
           onStatus("generating_file");
+        } else if (
+          event.type === "content_block_start" &&
+          event.content_block.type === "tool_use"
+        ) {
+          onStatus("generating_artifact");
         }
       });
     }
@@ -560,6 +642,15 @@ async function streamWithFileGeneration(
       if (block.type === "text") {
         text += block.text;
       }
+    }
+    const materialized = materializedText(final.content, text);
+    text = materialized.text;
+    if (materialized.append) onText?.(materialized.append);
+    if (materialized.delivery) {
+      toolUseDelivery =
+        toolUseDelivery?.detected && !toolUseDelivery.recognized
+          ? toolUseDelivery
+          : materialized.delivery;
     }
     generatedFiles.push(...extractGeneratedFilesFromBlocks(final.content));
 
@@ -612,6 +703,7 @@ async function streamWithFileGeneration(
     tokensOutput,
     stopReason,
     generatedFiles,
+    toolUseDelivery,
     contentBlocks,
     anthropicMessageId,
     cacheCreationTokens,

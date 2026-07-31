@@ -11,9 +11,8 @@ import {
   messageToPlainText,
 } from "@/lib/utils/parse-artifacts";
 
-const artifactBlock = (
-  inner: string,
-) => `<function_calls>\n<invoke name="artifacts">\n${inner}\n</invoke>\n</function_calls>`;
+const artifactBlock = (inner: string) =>
+  `<function_calls>\n<invoke name="artifacts">\n${inner}\n</invoke>\n</function_calls>`;
 
 describe("parseMessageWithArtifacts", () => {
   test("sin artifacts → un único segmento de texto con todo", () => {
@@ -111,6 +110,22 @@ describe("parseMessageWithArtifacts", () => {
     );
     const { segments } = parseMessageWithArtifacts(msg);
     expect(segments.every((s) => s.kind !== "artifact")).toBe(true);
+  });
+
+  test("decodifica parámetros materializados con entidades", () => {
+    const msg = artifactBlock(
+      `<parameter name="type" encoding="entities">text/plain</parameter>\n` +
+        `<parameter name="title" encoding="entities">a&amp;b.txt</parameter>\n` +
+        `<parameter name="content" encoding="entities">&lt;tag&gt; &amp; &lt;/parameter&gt;</parameter>`,
+    );
+    const { segments } = parseMessageWithArtifacts(msg);
+    expect(segments[0]).toMatchObject({
+      kind: "artifact",
+      artifact: {
+        title: "a&b.txt",
+        content: "<tag> & </parameter>",
+      },
+    });
   });
 });
 

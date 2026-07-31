@@ -80,6 +80,24 @@ describe("reconcileMessages", () => {
     expect(reconciled[0].textFileFallback).toEqual({ filename: "a.txt" });
     expect(reconciled[1].textFileFallback).toBeUndefined();
   });
+
+  test("preserva fallo de tool_use solo por message_id exacto", () => {
+    const server = [
+      message("assistant-a", "assistant", "respuesta A"),
+      message("assistant-b", "assistant", "respuesta B"),
+    ];
+    const local = [
+      message("assistant-b", "assistant", "respuesta B", {
+        toolDeliveryFailed: { toolName: "otra_tool" },
+      }),
+    ];
+
+    const reconciled = reconcileMessages(server, local);
+    expect(reconciled[0].toolDeliveryFailed).toBeUndefined();
+    expect(reconciled[1].toolDeliveryFailed).toEqual({
+      toolName: "otra_tool",
+    });
+  });
 });
 
 describe("createClaudeChatSessionStore", () => {

@@ -116,19 +116,23 @@ export type ExecuteResult = {
    */
   filesFailed?: number;
   /**
-   * True si SE ESPERABA un archivo y no vino: el sandbox de code execution corrió
-   * (hubo un bloque `server_tool_use`) pero no se capturó ningún `file_id`.
+   * True si SE PIDIÓ un archivo binario y no se capturó ningún `file_id`,
+   * incluso si el modelo no llegó a invocar el sandbox.
    * Distinto de `filesFailed`, que cuenta archivos capturados que no se pudieron
    * persistir. Este caso antes quedaba MUDO (ver archivo-equivocado-audit.md).
    */
   filesMissing?: boolean;
   /**
-   * Ambos intentos de entregar un `.txt`/`.md` explícitamente pedido terminaron
-   * sin artifact ni archivo real. La UI puede ofrecer descargar el texto
-   * visible como fallback honesto, sin persistirlo en `claude_files`.
+   * La única llamada para un `.txt`/`.md` explícitamente pedido terminó sin
+   * artifact ni archivo real. La UI puede ofrecer descargar el texto visible
+   * como fallback honesto, sin persistirlo en `claude_files`.
    */
   textFileFallback?: {
     filename: string;
+  };
+  /** Claude terminó en un tool_use que el hub no sabe materializar. */
+  toolDeliveryFailed?: {
+    toolName: string;
   };
 };
 

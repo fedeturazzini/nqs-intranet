@@ -175,10 +175,12 @@ export async function POST(request: Request): Promise<Response> {
             files: result.value.files,
             // Parte 3.2: >0 si se generó un archivo que no se pudo adjuntar.
             filesFailed: result.value.filesFailed,
-            // Se esperaba archivo y no vino (el sandbox corrió sin producir nada).
+            // Se pidió un binario y no llegó ningún file_id.
             filesMissing: result.value.filesMissing,
-            // Fallaron el intento original + una reparación de artifact textual.
+            // La única llamada no entregó el artifact textual pedido.
             textFileFallback: result.value.textFileFallback,
+            // Claude usó un tool client-side que el hub no pudo materializar.
+            toolDeliveryFailed: result.value.toolDeliveryFailed,
           });
         }
       } catch (err) {

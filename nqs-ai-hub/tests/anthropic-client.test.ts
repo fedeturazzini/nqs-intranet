@@ -34,9 +34,8 @@ beforeEach(() => {
   process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
 });
 
-const { callClaude, buildUserContent, maxTokensFor } = await import(
-  "@/lib/anthropic/client"
-);
+const { callClaude, buildUserContent, maxTokensFor } =
+  await import("@/lib/anthropic/client");
 
 describe("callClaude", () => {
   test("llamada exitosa devuelve texto + tokens", async () => {
@@ -45,9 +44,7 @@ describe("callClaude", () => {
       usage: { input_tokens: 42, output_tokens: 7 },
       stop_reason: "end_turn",
     });
-    const r = await callClaude("system", [
-      { role: "user", content: "hola" },
-    ]);
+    const r = await callClaude("system", [{ role: "user", content: "hola" }]);
     expect(r.text).toBe("hola desde claude");
     expect(r.tokensInput).toBe(42);
     expect(r.tokensOutput).toBe(7);
@@ -153,7 +150,12 @@ describe("callClaude — contentBlocks / anthropicMessageId (para execute.summar
   test("resume bloques de code execution (cuenta archivos, no expone contenido)", async () => {
     mockCreate = async () => ({
       content: [
-        { type: "server_tool_use", id: "t1", name: "code_execution", input: {} },
+        {
+          type: "server_tool_use",
+          id: "t1",
+          name: "code_execution",
+          input: {},
+        },
         {
           type: "bash_code_execution_tool_result",
           tool_use_id: "t1",
@@ -184,6 +186,42 @@ describe("callClaude — contentBlocks / anthropicMessageId (para execute.summar
     ]);
   });
 
+  test("resume tool_use por shape y tamaño sin exponer el contenido", async () => {
+    const secret = "contenido sensible".repeat(1_000);
+    mockCreate = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "tool_1",
+          name: "artifacts",
+          input: {
+            title: "prompt.txt",
+            type: "text/plain",
+            content: secret,
+          },
+        },
+      ],
+      usage: { input_tokens: 1, output_tokens: 2 },
+      stop_reason: "tool_use",
+    });
+    const r = await callClaude("sys", [{ role: "user", content: "x" }]);
+    expect(r.contentBlocks).toEqual([
+      {
+        type: "tool_use",
+        toolName: "artifacts",
+        inputKeys: ["content", "title", "type"],
+        contentChars: secret.length,
+        titleChars: "prompt.txt".length,
+      },
+    ]);
+    expect(JSON.stringify(r.contentBlocks)).not.toContain(secret);
+    expect(r.toolUseDelivery).toMatchObject({
+      detected: true,
+      recognized: true,
+    });
+    expect(r.text).toContain('<invoke name="artifacts">');
+  });
+
   test("sin DEBUG_EXECUTE_VERBOSE, NO incluye snippet (nunca el contenido crudo por default)", async () => {
     mockCreate = async () => ({
       content: [{ type: "text", text: "contenido sensible del usuario" }],
@@ -203,7 +241,34 @@ describe("callClaude — contentBlocks / anthropicMessageId (para execute.summar
     });
     const r = await callClaude("sys", [{ role: "user", content: "x" }]);
     expect(r.contentBlocks[0]).toMatchObject({ type: "text", chars: 600 });
-    expect((r.contentBlocks[0] as { snippet?: string }).snippet).toHaveLength(500);
+    expect((r.contentBlocks[0] as { snippet?: string }).snippet).toHaveLength(
+      500,
+    );
+  });
+
+  test("verbose conserva el shape de tool_use pero redacta strings sensibles", async () => {
+    process.env.DEBUG_EXECUTE_VERBOSE = "true";
+    mockCreate = async () => ({
+      content: [
+        {
+          type: "tool_use",
+          id: "tool_secret",
+          name: "otra_tool",
+          input: {
+            type: "text/plain",
+            content: "SECRETO",
+            prompt: "OTRO SECRETO",
+          },
+        },
+      ],
+      usage: { input_tokens: 1, output_tokens: 1 },
+      stop_reason: "tool_use",
+    });
+    const r = await callClaude("sys", [{ role: "user", content: "x" }]);
+    const snippet = r.contentBlocks[0].inputSnippet ?? "";
+    expect(snippet).toContain('"type":"text/plain"');
+    expect(snippet).toContain("[7 chars]");
+    expect(snippet).not.toContain("SECRETO");
   });
 });
 

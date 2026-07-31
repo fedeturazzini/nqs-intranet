@@ -251,6 +251,7 @@ function MessageBubble({
             (ver archivo-equivocado-audit.md). */}
         {isAi &&
           msg.filesPartialError &&
+          !msg.toolDeliveryFailed &&
           (!msg.files || msg.files.length === 0) && (
             <div className="message-truncated-warning">
               ⚠ Claude intentó generar un archivo y no llegó ninguno. Pedile que
@@ -259,12 +260,22 @@ function MessageBubble({
           )}
 
         {isAi &&
+          msg.toolDeliveryFailed &&
+          (!msg.files || msg.files.length === 0) && (
+            <div className="message-truncated-warning">
+              ⚠ Claude usó un formato de entrega que no pudimos procesar (
+              {msg.toolDeliveryFailed.toolName}). No se descartó un archivo de
+              otro turno: pedile que vuelva a entregar el contenido.
+            </div>
+          )}
+
+        {isAi &&
           msg.textFileFallback &&
           msg.content &&
           (!msg.files || msg.files.length === 0) && (
             <div className="message-truncated-warning">
-              No llegó una card descargable después del reintento. Podés bajar
-              exactamente el texto recibido.
+              No llegó una card descargable. Podés bajar exactamente el texto
+              recibido, sin ejecutar un segundo intento.
               <div style={{ marginTop: 8 }}>
                 <button
                   type="button"

@@ -97,6 +97,7 @@ describe("POST /api/tools/claude/execute preflight", () => {
         messageId: "message-id",
         createdAt: null,
         textFileFallback: { filename: "respuesta.txt" },
+        toolDeliveryFailed: { toolName: "otra_tool" },
       },
     });
 
@@ -119,6 +120,7 @@ describe("POST /api/tools/claude/execute preflight", () => {
     const body = await response.text();
     expect(body).toContain('"type":"done"');
     expect(body).toContain('"textFileFallback":{"filename":"respuesta.txt"}');
+    expect(body).toContain('"toolDeliveryFailed":{"toolName":"otra_tool"}');
     expect(mocks.execute).toHaveBeenCalledWith(
       USER,
       expect.objectContaining({
