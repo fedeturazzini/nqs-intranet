@@ -12,12 +12,11 @@
  *     con título derivado del primer prompt.
  *
  * Orden de operaciones (importante para minimizar partial state):
- *   1. Fetch system prompt (DB)
- *   2. Si hay conversationId, levantar mensajes previos (ownership/proyecto
- *      ya fueron validados pre-stream por resolveClaudeExecuteContext)
- *   3. Llamar a Anthropic (caro)
- *   4. Si OK: crear conversación si nueva + persistir user msg + asistente
- *   5. Loguear usage
+ *   1. Fetch system prompt y, si hay conversationId, mensajes previos en
+ *      paralelo (ownership/proyecto ya fueron validados pre-stream)
+ *   2. Llamar a Anthropic (caro)
+ *   3. Si OK: crear conversación si nueva + persistir user msg + asistente
+ *   4. Loguear usage
  *
  * Si #4 o #5 fallan después de un Anthropic OK, devolvemos igual la
  * respuesta al user (ya pagamos esos tokens) y dejamos console.error
@@ -41,7 +40,6 @@ import { shortHash, previewText } from "@/lib/utils/log-preview";
 import { createServerClient } from "@/lib/db/supabase";
 import { getToolAccess } from "@/lib/db/queries/tools";
 import { getActiveSystemAndMemoryForProject } from "@/lib/db/queries/system-prompts";
-import { getProjectSummary } from "@/lib/db/queries/projects";
 import {
   pathBelongsToUser,
   signDownloadUrls,
@@ -237,14 +235,25 @@ export const claudeAdapter: ToolAdapter = {
         };
       }
       const projectId = projectContext.projectId;
+      let conversationId = params.conversationId ?? null;
 
-      // 1. System prompt + memoria DEL PROYECTO (plaintext, desencriptados).
-      //    Concatenamos con tags <system_prompt> / <workspace_memory>.
-      //    Si la memoria está vacía, no incluimos el bloque.
-      const prompts = await getActiveSystemAndMemoryForProject(
-        TOOL_ID,
-        projectId,
-      );
+      // 1. Cerebro e historial son independientes una vez resuelto projectId:
+      //    arrancan juntos para pagar una sola ola de latencia de DB.
+      const historyPromise = conversationId
+        ? db
+            .from("claude_messages")
+            .select("id, role, content, created_at")
+            .eq("conversation_id", conversationId)
+            .order("created_at", { ascending: true })
+        : Promise.resolve({ data: [], error: null });
+      const [prompts, historyResult] = await Promise.all([
+        getActiveSystemAndMemoryForProject(TOOL_ID, projectId),
+        historyPromise,
+      ]);
+
+      // System prompt + memoria DEL PROYECTO (plaintext, desencriptados).
+      // Concatenamos con tags <system_prompt> / <workspace_memory>.
+      // Si la memoria está vacía, no incluimos el bloque.
       const systemPrompt = prompts.system;
       const memoryPrompt = prompts.memory;
       if (!systemPrompt) {
@@ -267,19 +276,14 @@ export const claudeAdapter: ToolAdapter = {
 
       // 2. Construir history si vino conversationId.
       const messages: ClaudeMessage[] = [];
-      let conversationId = params.conversationId ?? null;
       let previousUserPrompt: string | null = null;
       let previousAssistantId: string | null = null;
       let previousAssistantFileMediaTypes: string[] = [];
 
       if (conversationId) {
         // Ownership + project_id ya se resolvieron una sola vez pre-stream.
-        // Acá solo traemos la historia para no duplicar la query de metadata.
-        const { data: prior, error: prErr } = await db
-          .from("claude_messages")
-          .select("id, role, content, created_at")
-          .eq("conversation_id", conversationId)
-          .order("created_at", { ascending: true });
+        // La historia ya terminó de cargar en paralelo con el cerebro.
+        const { data: prior, error: prErr } = historyResult;
         if (prErr) throw prErr;
 
         const priorMessages = orderPriorDeliveryMessages(prior ?? []);
@@ -347,17 +351,16 @@ export const claudeAdapter: ToolAdapter = {
       // system prompt (confirma que no viene cortado ni vacío, sin loguear el
       // contenido entero), y el contexto (mensajes, imágenes, max_tokens).
       // Detrás de DEBUG_BRAIN_VERBOSE (default off) suma el cerebro COMPLETO.
-      // Best-effort: hace una query extra (nombre del proyecto) — si ESO falla,
-      // no puede tirar abajo el chat real por un log de diagnóstico.
+      // Nombre/privacidad ya vienen del proyecto validado pre-stream: el log no
+      // agrega una query ni un RTT antes de Anthropic.
       const textDeliveryIntent = detectTextDeliveryIntent(params.prompt);
       try {
-        const project = await getProjectSummary(projectId);
         const brainVerbose = process.env.DEBUG_BRAIN_VERBOSE === "true";
         logInfo("execute.context", {
           userId,
           projectId,
           projectContextSource: projectContext.source,
-          projectName: project?.name ?? null,
+          projectName: projectContext.projectName,
           systemPromptId: systemPrompt.id,
           systemPromptSource: `system_prompts:${systemPrompt.id} (project:${projectId})`,
           systemPromptVersion: systemPrompt.version,
@@ -367,7 +370,7 @@ export const claudeAdapter: ToolAdapter = {
           // Si el proyecto es privado, llegar hasta acá YA implica que el gate
           // pasó (hasProjectGate cortó antes si no) — se loguea explícito para
           // no tener que inferirlo de "no hubo error".
-          brainPasswordGated: project?.isPrivate ?? false,
+          brainPasswordGated: projectContext.isPrivate,
           model: systemPrompt.model,
           messagesSent: messages.length, // incluye el turno actual
           imagesReceived,

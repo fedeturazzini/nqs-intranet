@@ -1,277 +1,275 @@
-# Audit — Performance ("recontra lenta")
+# Auditoría estructural de performance
 
-**Fecha**: 2026-07-28
-**Modo**: READ-ONLY (no se tocó código, no se deployó).
-**Branch**: `develop`.
-**Síntoma**: usuarios reportan la plataforma muy lenta. Se busca separar causas
-estructurales: infra/región, base de datos, API de Claude, y overhead de los
-merges recientes. Más un plan de medición.
+**Fecha:** 2026-07-31
+**Branch:** `develop`
+**Alcance:** lectura de código e infraestructura versionada. No se midió latencia
+en vivo, no se cambió código ni configuración y no se desplegó.
 
----
+## Veredicto priorizado
 
-## VEREDICTO (las 3 causas más probables, por impacto × barato de arreglar)
+1. **Región Vercel ↔ Supabase desalineada: candidato principal, pendiente de
+   confirmación.** Vercel está fijado en São Paulo (`gru1`), pero la región cloud
+   de Supabase no está en el repo. Si la DB está en US, este es el mayor
+   multiplicador porque cada request hace muchas llamadas a Supabase. Impacto
+   potencial: muy alto. Fix: muy barato si se mueve Vercel a la región de la DB.
+2. **Demasiados round-trips seriales antes de Anthropic.** Un mensaje de una
+   conversación existente, pública y sin adjuntos hace aproximadamente **9
+   requests a Supabase en serie** antes de llamar a Claude; un proyecto privado
+   suma otro. Hay lecturas duplicadas de `users` y `projects`, además de una
+   query hecha solo para diagnóstico. Impacto: alto con DB remota, medio aun con
+   regiones alineadas. Fix: bajo/medio.
+3. **Historial de chat sin límite.** El listado lateral está limitado a 20, pero
+   abrir y ejecutar una conversación carga todos sus mensajes. En chats largos
+   crecen el payload de DB, los tokens de entrada y el tiempo al primer token.
+   Impacto: alto en conversaciones largas. Fix: bajo/medio.
 
-| # | Causa | Impacto | Costo de fix | Dónde |
-|---|-------|---------|--------------|-------|
-| **1** | **Región cruzada Vercel ↔ Supabase** — funciones en `gru1` (São Paulo) y la DB (probablemente) en `us-east` (Washington). CADA query cruza el continente (~110–140ms RTT), y cada página/endpoint hace **varias**. | 🔴 Altísimo (afecta TODO: navegación + Claude + admin) | 🟢 Barato (1 línea en `vercel.json` o migrar región de Supabase) | infra |
-| **2** | **Sin prompt caching del cerebro + historial sin límite** — el system prompt (cerebro del proyecto, largo) se re-procesa entero en CADA mensaje, y el historial se manda completo sin tope. | 🔴 Alto (en las respuestas de Claude: TTFT + costo) | 🟢 Barato (`cache_control` + cap de historial) | Claude |
-| **3** | **Queries secuenciales en el path de execute** — ~5–6 round-trips a la DB **en serie** antes de siquiera llamar a Anthropic. Con la región cruzada (#1) se suman ~600–800ms de puro ida-y-vuelta. | 🟡 Medio (se multiplica con #1) | 🟢🟡 Barato/medio (`Promise.all` donde son independientes) | DB |
+Fix barato adicional: conservar el logging, pero quitarle sus dos esperas de DB
+del camino crítico (`getProjectSummary` antes de Claude y `usage_logs` antes de
+`done`).
 
-> **#1 es el sospechoso número uno y el más barato**: explica que TODO esté
-> lento (no solo Claude). Confirmar la región de Supabase es el primer paso.
-> **Descartados por lectura de código**: falta de índices, streaming, y el
-> logging nuevo (ver detalle abajo).
+## 1. Región
 
----
+### Vercel
 
-## 1. REGIÓN (sospecha barata y gorda) — **CAUSA PRINCIPAL CANDIDATA**
+`vercel.json:5` declara:
 
-**Vercel** — [`vercel.json`](nqs-ai-hub/vercel.json):
 ```json
-{ "regions": ["gru1"], "fluid": true, ... }
+"regions": ["gru1"]
 ```
-- `gru1` = **São Paulo**. Está fijado así desde el commit inicial (`11dcfbc`),
-  no es un cambio reciente. `fluid: true` (Fluid Compute) no perjudica latencia.
 
-**Supabase** — **no es determinable desde el repo**: `supabase/config.toml`
-es config local (`project_id = "nqs-ai-hub"`, sin región cloud), y
-`NEXT_PUBLIC_SUPABASE_URL` está vacío en `.env.local.example`. La región real
-vive en el dashboard de Supabase.
+`gru1` es São Paulo. No se está usando el default de Vercel.
 
-**El dato clave (logs de Vercel: un request en São Paulo, otro en Washington)**
-apunta fuerte a que **la DB está en `us-east-1` (N. Virginia ≈ Washington)**
-mientras las funciones corren en `gru1` (São Paulo). Es el escenario clásico de
-**región cruzada**: cada query viaja SP↔Virginia (~110–140ms ida y vuelta), y
-como cada página/endpoint hace **varias queries en serie**, se acumula rápido.
+### Supabase
 
-> ⚠️ **Verificar (1 min):** Supabase Dashboard → Project Settings → General →
-> *Region*. O resolver el host de la DB (`db.<ref>.supabase.co`). Si dice
-> `East US (North Virginia)` / `us-east-1` → **mismatch confirmado = causa #1**.
+No se puede determinar la región hosted desde el repo:
 
-**Recomendación (sin aplicar):**
-- **Fix barato:** alinear la región de las **funciones** a la de la **DB** (lo
-  que domina es el ida-y-vuelta Vercel↔DB, que se repite muchas veces por
-  request). Si Supabase está en `us-east-1`, cambiar `vercel.json` →
-  `"regions": ["iad1"]` y redeploy. Una línea.
-- **Fix ideal (usuarios en Argentina):** tener **ambos** cerca de Argentina —
-  Vercel `gru1` (ya está) **+** migrar Supabase a `sa-east-1` (São Paulo). Así
-  se minimiza tanto el hop usuario↔Vercel como Vercel↔DB. Es más pesado (implica
-  migrar/restaurar el proyecto de Supabase, con downtime), por eso va como
-  segunda opción.
-- Regla: **las funciones tienen que estar en la misma región que la DB.** El
-  costo dominante son los round-trips a la DB (muchos por request), no el hop
-  del usuario (uno solo).
+- `supabase/config.toml` es configuración local y no declara región cloud.
+- `.env.local.example` no contiene una URL real.
+- El project ref/URL de Supabase tampoco codifica la región de forma confiable.
+- La CLI no pudo listar el proyecto hosted sin una sesión utilizable.
 
----
+Por rigor, el mismatch **no queda confirmado** solo con este código.
 
-## 2. BASE DE DATOS — queries por request
+### Recomendación sin aplicar
 
-### 2.1 Índices — ✅ **NO es el problema** (descartado)
-Todas las columnas calientes por las que se filtra tienen índice
-(`supabase/migrations/0001` + deltas):
+Verificar Supabase Dashboard → Project Settings → General → Region.
 
-| Columna / filtro | Índice |
-|---|---|
-| `tool_access(user_id)` / `(tool_id)` | `idx_tool_access_user` / `idx_tool_access_tool` (+ UNIQUE `user_id,tool_id` por el `onConflict` del upsert) |
-| `claude_messages(conversation_id)` | `idx_claude_msg_conv` |
-| `claude_conversations(user_id)` / `(user_id, project_id)` | `idx_claude_conv_user` / `idx_claude_conversations_user_project` |
-| `system_prompts(project_id)` / `(tool_id)` / `is_active` | `idx_system_prompts_project` / `_tool` / `_active` (parcial) |
-| `users(reports_to_id)` / `is_in_org` | `idx_users_reports_to` / `idx_users_in_org` |
-| `projects(slug)` / `is_active` | `idx_projects_slug` / `_active` |
-| `claude_files(conversation_id)` / `(user_id)` | `idx_claude_files_conv` / `_user` |
+- Si es `us-east-1` / North Virginia, alinear las funciones a Vercel `iad1` y
+  redeployar. Es una línea y debe probarse primero.
+- La alternativa ideal para usuarios argentinos es mantener Vercel en `gru1` y
+  migrar Supabase a São Paulo, pero una migración de DB es más cara y riesgosa.
+- Regla práctica: priorizar cercanía función ↔ DB, porque hay muchos cruces por
+  request; usuario ↔ función ocurre una vez.
 
-No hay que agregar índices. La lentitud de DB **no** es por falta de índices,
-es por **latencia de red × cantidad de queries** (ver #1 y 2.2).
+## 2. Queries por request
 
-### 2.2 N+1 y queries secuenciales — el verdadero costo de DB
-- **No hay N+1 clásico** (no se encontraron `await` dentro de loops ni
-  `.map(async)` que peguen una query por iteración). ✅
-- **Sí hay una cadena secuencial larga en el execute de Claude**
-  ([`src/lib/adapters/claude.ts`](nqs-ai-hub/src/lib/adapters/claude.ts)), todo
-  en serie ANTES de llamar a Anthropic:
-  1. `getActiveProjectId(userId)` — [claude.ts:179](nqs-ai-hub/src/lib/adapters/claude.ts:179)
-  2. `hasProjectGate(projectId)` → 1 query (`getProjectGateFields`) — [claude.ts:191](nqs-ai-hub/src/lib/adapters/claude.ts:191)
-  3. `getActiveSystemAndMemoryForProject(projectId)` — [claude.ts:203](nqs-ai-hub/src/lib/adapters/claude.ts:203)
-  4. ownership de la conversación — [claude.ts:240](nqs-ai-hub/src/lib/adapters/claude.ts:240)
-  5. historial de mensajes — [claude.ts:260](nqs-ai-hub/src/lib/adapters/claude.ts:260)
+### Índices presentes
 
-  Son **5–6 round-trips en serie**. En región cruzada (#1) eso es **~600–800ms
-  de pura red** apilados antes de que el modelo empiece a responder. Varios son
-  **independientes** una vez que se tiene `projectId` (el gate, el cerebro y la
-  ownership de la conv no dependen entre sí) → se pueden lanzar en `Promise.all`.
-  **Recomendación (sin aplicar):** paralelizar 2–4 con `Promise.all`. Ahorra
-  3–4 round-trips por mensaje; el ahorro es proporcional a la latencia de red,
-  así que **#3 y #1 se potencian** (paralelizar rinde muchísimo más si la DB
-  está lejos).
+Los filtros básicos pedidos están cubiertos:
 
-### 2.3 Gate de proyectos privados (merge reciente)
-- `hasProjectGate(projectId)` corre **1 query** (`getProjectGateFields` → SELECT
-  `gate_version` de `projects` por PK) cada vez que se toca un proyecto:
-  [project-gate.ts:113-118](nqs-ai-hub/src/lib/auth/project-gate.ts:113). Es
-  **liviana** (una fila por PK, indexada), pero **es un round-trip extra por
-  request** que antes no existía → en región cruzada, otro cruce de continente.
-- Corre en el page load de `/tool/claude` y **otra vez** en cada `execute`
-  (revalida el gate). No se cachea. Como el `gate_version` cambia poco, es
-  **candidato a cachear** por request (o incluir en un `Promise.all` con el
-  fetch del cerebro, ya que ambos parten de `projectId`).
-- Veredicto: **no es la causa principal**, pero suma. Barato de mitigar.
+- `tool_access`: índices de `user_id`, `tool_id` y UNIQUE
+  `(user_id, tool_id)`.
+- `claude_messages`: `conversation_id`.
+- `claude_conversations`: `user_id` y `(user_id, project_id)`.
+- `system_prompts`: `tool_id`, `project_id` y parcial de `is_active`.
+- `projects.id`, `users.id`: PK; `users.reports_to_id` e `is_in_org`.
+- `claude_files`: `conversation_id` y `user_id`.
 
----
+No aparece un scan evidente del chat causado por ausencia total de índices. Sí
+faltan compuestos que acompañen filtro + orden/rango:
 
-## 3. API DE CLAUDE
+- `(conversation_id, created_at)` en `claude_messages`, para historial ordenado
+  (`src/lib/adapters/claude.ts:274-281`).
+- `(user_id, project_id, updated_at DESC)` en `claude_conversations`, para las
+  últimas 20 conversaciones.
+- `(action, created_at DESC)` y `(user_id, action, created_at DESC)` en
+  `usage_logs`, para resumen y detalle de costos.
+- Opcionales, de menor impacto actual: prompt activo por
+  `(project_id, tool_id, type, version DESC)` y `claude_files(message_id)`.
 
-### 3.1 Modelo por defecto y por proyecto
-- **Default = `claude-sonnet-4-6`** ([client.ts:23](nqs-ai-hub/src/lib/anthropic/client.ts:23)
-  y `system_prompts.model DEFAULT` migration 0004). ✅ No es Opus.
-- Las migraciones recientes de Opus (**0017 / 0018**) **solo amplían el CHECK
-  constraint** para *permitir* elegir Opus; **no flipean** ningún proyecto
-  existente y **no cambian el DEFAULT**. Opus es **opt-in por proyecto** (el
-  admin lo elige en `/admin/prompt`).
-- ⚠️ **Cuántos proyectos quedaron en Opus es dato de DB** (no se ve en el repo).
-  Opus es el más lento de la familia; si varios cerebros están en Opus, explica
-  respuestas lentas. **Confirmar con:**
-  ```sql
-  SELECT model, count(*) FROM system_prompts GROUP BY model ORDER BY 2 DESC;
-  ```
-  Los que estén en `claude-opus-*` son candidatos a bajar a `claude-sonnet-4-6`
-  salvo que necesiten Opus de verdad.
+Validar estos candidatos con Query Performance / `EXPLAIN (ANALYZE, BUFFERS)`.
+Con pocos registros, reducir round-trips dará más retorno que sumar índices.
 
-### 3.2 max_tokens (tras el "Tokens fix")
-- Es un **techo de salida**, no un piso: se paga/tarda solo lo realmente
-  generado. Valores ([client.ts:33-42](nqs-ai-hub/src/lib/anthropic/client.ts:33)):
-  - Sonnet 4.6: target **32K** (ceiling 128K)
-  - Opus 4.6/4.7/4.8/5: target **64K** (ceiling 128K)
-  - Haiku 4.5: target 32K (ceiling 64K)
-- **No enlentece respuestas cortas.** Sí **habilita** respuestas largas (hasta
-  32K/64K tokens), que tardan más — pero eso es correcto para el caso de uso.
-  No es una causa a "arreglar"; es un techo. (El path no-streaming se clampea a
-  16K por límite del SDK, pero solo lo usan tests/scripts.)
+### N+1 confirmados
 
-### 3.3 Streaming — ✅ **usado en todo el chat** (descartado como causa)
-- El chat usa `streamClaude` → `client.messages.stream()`
-  ([client.ts:263](nqs-ai-hub/src/lib/anthropic/client.ts:263)).
-- El endpoint devuelve un `ReadableStream` NDJSON, haciendo `enqueue` por cada
-  delta ([execute/route.ts:105](nqs-ai-hub/src/app/api/tools/claude/execute/route.ts:105)),
-  y el cliente lo consume con `res.body.getReader()`
-  ([useClaudeChat.ts:265](nqs-ai-hub/src/lib/hooks/useClaudeChat.ts:265)).
-- Streaming real de punta a punta: el user ve tokens a medida que se generan.
-  `callClaude` (no-streaming) solo lo usan tests/scripts. **No es el problema.**
+No hay un N+1 general al listar usuarios, proyectos o accesos. Los casos
+encontrados son acotados:
 
-### 3.4 Prompt caching — 🔴 **NO se usa. Es el mayor lever de latencia en Claude.**
-- **No hay `cache_control` en ningún lado** (grep vacío en `src/`). El system
-  prompt se manda como `system: fullSystem` en cada call
-  ([client.ts:266](nqs-ai-hub/src/lib/anthropic/client.ts:266)) sin marca de
-  caché.
-- `fullSystem` = **cerebro del proyecto** (`<system_prompt>` + `<workspace_memory>`)
-  + instrucciones de formato ([claude.ts:214-231](nqs-ai-hub/src/lib/adapters/claude.ts:214)).
-  Es **largo y se repite idéntico** en cada mensaje de la conversación.
-- **Sin caching, cada mensaje re-procesa TODO el cerebro desde cero** → más TTFT
-  (time-to-first-token) y más costo de input en cada turno.
-- **Agravante — historial sin tope:** los mensajes previos se cargan con
-  `.order("created_at")` **sin `.limit`**
-  ([claude.ts:261-264](nqs-ai-hub/src/lib/adapters/claude.ts:261)) y se mandan
-  **completos**. A medida que la conversación crece, el contexto crece → cada
-  turno es más lento y más caro. Se compone con la falta de caching.
-- **Recomendación (sin aplicar):**
-  1. Marcar el bloque `system` (cerebro) con `cache_control: { type: "ephemeral" }`
-     (prompt caching de Anthropic). El cerebro es el candidato ideal: largo,
-     estable, repetido. Baja TTFT y costo de input notablemente.
-  2. Opcional: cachear también el tramo estable del historial.
-  3. Poner un **tope al historial** (ej. últimos N turnos, o un budget de
-     tokens) para que las conversaciones largas no se degraden sin techo.
+- `wouldCreateCycle` consulta un usuario por nivel de jerarquía dentro de un
+  `while` (`src/lib/db/queries/org.ts:151-170`). Solo afecta una edición admin.
+- `OrgAdminPanel.saveAll()` manda un PATCH por usuario modificado, en serie
+  (`src/components/admin/OrgAdminPanel.tsx:147-166`). Combinado con
+  `wouldCreateCycle`, guardar N personas puede costar N requests HTTP + N ×
+  profundidad de la jerarquía en queries.
+- El fallback de costos consulta mensajes viejos en chunks de 200, secuenciales
+  (`src/lib/db/queries/usage-costs.ts:55-85`).
+- La persistencia de archivos generados itera en serie: metadata, download,
+  upload e INSERT por archivo (`src/lib/adapters/claude.ts:577-628`). Afecta el
+  final de respuestas con varios binarios, no navegación ni primer token.
 
----
+El problema dominante es la cantidad de queries individuales serializadas, no
+un N+1 masivo.
 
-## 4. OVERHEAD DE LOS MERGES RECIENTES
+### Gate de proyectos privados
 
-- **Logging nuevo (`src/lib/log.ts`) — ✅ despreciable (descartado).** Es
-  `console.error/warn/log` + `JSON.stringify` con forma fija
-  ([log.ts:emit](nqs-ai-hub/src/lib/log.ts)). **No** escribe a DB ni a un
-  servicio externo; no hay I/O bloqueante. En Vercel, `console` va a stdout
-  (buffered). El costo es un `JSON.stringify` por llamada → nanosegundos. No
-  agrega latencia perceptible salvo que se llamara miles de veces en un loop
-  caliente (no es el caso). **No es causa.**
-- **Organigrama (auto-layout d3-hierarchy) — 🟢 bajo.** `computeOrgLayout`
-  ([lib/org/layout.ts](nqs-ai-hub/src/lib/org/layout.ts)) es **puro y
-  server-side**, Reingold-Tilford (`tree()`) O(n) sobre decenas de nodos →
-  microsegundos de CPU. No se cachea, pero **no hace falta** (es barato) y
-  **solo corre cuando alguien abre `/organigrama`** (no es hot path). No mueve la
-  aguja. Si el org creciera a cientos de nodos, revisar; hoy no.
-- **Gate de privados — 🟡 bajo/medio.** Ya cubierto en 2.3: +1 query liviana por
-  endpoint que toca un proyecto. Suma en región cruzada.
-- **Sin middleware nuevo por request:** no existe `middleware.ts` de Next a
-  nivel root; no hay un check global corriendo en cada request en el edge.
+`resolveClaudeExecuteContext` trae el proyecto completo y, si es privado,
+`hasProjectGate` vuelve a consultar esa misma fila para `is_private` y
+`gate_version` (`claude-execute-context.ts:141-155`;
+`project-gate.ts:113-118`).
 
----
+También corre al listar conversaciones del proyecto y al leer/renombrar una
+conversación. La query es chica e indexada por PK, pero suma un RTT por request.
 
-## 5. FRONTEND (secundario)
+Recomendación: pasar `gate_version` desde la primera lectura y resolver proyecto
+y gate una sola vez por request. Cachear entre requests puede mantener una
+cookie revocada hasta vencer el cache; deduplicar dentro del request es más
+seguro. El gate no explica solo una plataforma muy lenta, pero amplifica una DB
+remota.
 
-- **`/admin/users`** ([admin/users/page.tsx:36](nqs-ai-hub/src/app/(dashboard)/admin/users/page.tsx:36)):
-  trae **todos** los usuarios + `tool_access` activos, sin paginar. A escala de
-  la empresa (decenas de users) es fine; si crece a cientos, paginar.
-- **`/admin/logs/[userId]`**: agrega llamadas por período (admin-only,
-  infrecuente). Bajo.
-- **Historial de conversaciones** (`/api/me/conversations`): lista sin `.limit`,
-  pero acotado por conversaciones-por-user. Bajo; poner límite/paginar si crece.
-- **Veredicto:** el frontend **no** es la causa del "recontra lenta"
-  generalizado. Los volúmenes hoy son chicos. Es higiene para más adelante.
+## 3. Path del chat
 
----
+### Antes de Anthropic
 
-## 6. PLAN DE MEDICIÓN (para dejar de suponer)
+Camino normal para una conversación existente, proyecto público, empleado, sin
+adjuntos ni follow-up binario:
 
-**A. Logs de Vercel (duración por endpoint):**
-- Filtrar por función y mirar **Execution Duration** (p50/p95). Ordenar los
-  endpoints por duración. Sospechosos: `/api/tools/claude/execute` (esperable
-  alto por el modelo) vs. **páginas server** (`/hub`, `/tool/claude`, `/admin/*`)
-  y `/api/me/*`. Si las **páginas** (que no llaman a Claude) también tardan
-  cientos de ms → confirma que el costo es **DB/región**, no el modelo.
-- Anotar la **región** que reporta cada ejecución (el dato SP vs Washington ya
-  visto). Confirmar que las funciones estén realmente en `gru1`.
+1. `getSession`: `auth.getUser(accessToken)` + perfil de `users` — 2 requests.
+2. `requireToolAccess`: vuelve a leer `users` + lee `tool_access` — 2.
+3. `resolveClaudeExecuteContext`: conversación/ownership + proyecto — 2.
+4. Adapter: system prompt + memoria en una query — 1.
+5. Adapter: todos los mensajes previos — 1.
+6. `execute.context`: resumen del proyecto solo para el log — 1.
 
-**B. Network del navegador (separar navegación vs Claude):**
-- Abrir DevTools → Network, navegar hub → proyecto → admin. Mirar el **TTFB** de
-  los documentos (navegación entre páginas) por separado del de
-  `/api/tools/claude/execute`.
-  - Si la **navegación** (TTFB de las páginas) ya es lenta → es **infra/región/DB**
-    (#1/#3), no Claude.
-  - Si **solo** `execute` es lento y la navegación es rápida → es **Claude**
-    (#2/#3.1): caching + modelo.
-- En `execute`, medir **time-to-first-chunk** (cuándo llega el primer byte del
-  stream) vs. duración total. TTFT alto con generación normal ⇒ falta caching
-  (#3.4) y/o cerebro grande; total alto ⇒ respuesta larga / Opus.
+Total aproximado: **9 requests a Supabase, secuenciales, antes de Anthropic**.
 
-**C. Dónde agregar timing/logging (3–5 puntos, sin aplicar):**
-1. **En `execute`**, envolver cada await del pre-Anthropic (proyecto, gate,
-   cerebro, ownership, historial) con `Date.now()` y loguear `ms` por paso vía
-   `logInfo` — muestra cuánto es red-DB vs modelo. (Ideal para validar #1/#3.)
-2. **Time-to-first-chunk** de Anthropic: `ms` entre el inicio de `streamClaude`
-   y el primer `onText`. Aísla TTFT del modelo (impacto de #3.4).
-3. **Duración total del stream** + `usage` (input/output tokens) por mensaje: si
-   los input tokens son altos y estables ⇒ cerebro sin cachear + historial largo
-   (#3.4).
-4. **En un page load server** (ej. `/hub` → `listToolsWithAccess`, o el layout
-   → `requireAuth`), loguear `ms` de las queries → mide el costo de DB/región
-   fuera de Claude (#1).
-5. **En `hasProjectGate`**, loguear `ms` de `getProjectGateFields` → cuantifica
-   el round-trip extra del gate (#2.3).
+- Proyecto privado: 10.
+- Follow-up potencial de archivo binario: +1 query de `claude_files`.
+- Adjuntos: +1 operación de firmado en Storage.
+- Conversación nueva con `projectId` explícito: aproximadamente 7.
+- Un admin evita la query de `tool_access`, pero no el resto.
 
-Con A+B ya se decide el orden real de los fixes; C confirma números.
+Antes del execute, subir adjuntos usa otro endpoint que repite sesión y permisos.
+Además genera hasta 10 URLs de upload con llamadas a Storage en serie
+(`src/lib/storage/claude-uploads.ts:57-69`). La firma de descarga dentro del
+execute sí está batcheada.
 
----
+Oportunidades, en orden:
 
-## Resumen ejecutivo
+1. Reusar el perfil de sesión para `is_active/role`; evita el segundo SELECT de
+   `users`.
+2. Reusar el proyecto de contexto para gate y log; evita hasta 2 queries.
+3. Lanzar brain e historial en paralelo una vez fijado el proyecto.
+4. Seleccionar columnas mínimas: `getProjectById` hoy usa `select("*")`.
+5. Si sigue alto tras alinear regiones, evaluar una RPC/vista de preflight.
 
-- **Lo más probable y más barato: región cruzada Vercel↔Supabase (#1).** Explica
-  que TODO esté lento, no solo Claude. Confirmar la región de Supabase en el
-  dashboard; si es `us-east`, alinear `vercel.json` (o migrar la DB a São Paulo).
-- **En Claude: falta prompt caching del cerebro + historial sin tope (#2).**
-  Cada mensaje re-procesa todo el cerebro. Fix barato (`cache_control` + cap).
-- **Queries secuenciales en execute (#3):** paralelizar con `Promise.all`; rinde
-  el doble si además se arregla la región.
-- **Descartados como causa:** falta de índices (están todos), streaming (anda
-  end-to-end), y el logging nuevo (es solo `console`).
-- **Bajo impacto:** organigrama (cálculo barato, no hot path), gate (query
-  liviana pero suma en región cruzada), frontend sin paginar (volúmenes chicos).
-- **Confirmar por dato:** región de Supabase, y `SELECT model, count(*) FROM
-  system_prompts GROUP BY model` (cuántos cerebros en Opus).
+### Historial, prompt caching y modelo
+
+- El historial se lee ordenado y sin `.limit()` (`claude.ts:274-305`) y se manda
+  completo a Anthropic.
+- Abrir una conversación también devuelve todos los mensajes, archivos y
+  adjuntos (`api/me/conversations/[id]/route.ts:60-185`).
+- El system prompt **sí tiene prompt caching** en los tres paths:
+  `client.ts:418-429`, `519-527` y `599-607`. Los logs guardan cache creation y
+  cache read. No corresponde señalar falta de caching como causa actual.
+- El cache es ephemeral: ayuda a follow-ups cercanos, pero no limita el
+  crecimiento del historial.
+- El default es Sonnet 4.6; Sonnet 5 y Opus son seleccionables. El modelo real
+  de cada proyecto es dato de DB. Confirmar con:
+
+```sql
+SELECT model, count(*)
+FROM system_prompts
+WHERE is_active AND type = 'system'
+GROUP BY model
+ORDER BY 2 DESC;
+```
+
+- `max_tokens` es un techo, no trabajo preasignado. No explica respuestas cortas
+  lentas, aunque permite salidas largas.
+
+Recomendación: aplicar ventana por budget de tokens y resumir lo que quede
+afuera. Un límite fijo por cantidad de mensajes puede cortar mal conversaciones
+con adjuntos o turnos muy desparejos.
+
+### Streaming
+
+Hay streaming real Anthropic → NDJSON → `getReader()`. No es una causa
+estructural. La ruta no emite un chunk inicial antes del primer delta; por eso el
+`Waiting/TTFB` de Network para `execute` mezcla preflight DB + TTFT de Claude.
+Hace falta timing server-side para separarlos.
+
+### Logging en el hot path
+
+- `src/lib/log.ts` solo hace `JSON.stringify` + `console.*`; no bloquea contra DB
+  ni servicios externos.
+- `execute.context` sí espera `getProjectSummary` antes de Anthropic
+  (`claude.ts:342-389`). El `try/catch` evita que un error rompa el chat, pero el
+  caso exitoso igualmente paga el RTT.
+- `logToolUsage` inserta en `usage_logs` y está await'eado antes de devolver
+  `done` (`claude.ts:675-697`). No afecta primer token, pero demora el cierre.
+- El UPDATE de `claude_conversations` se comenta como “no-bloqueante”, aunque
+  está await'eado (`claude.ts:500-505`).
+
+## 4. Frontend
+
+- `/api/me/conversations` limita el listado a 20. La carga de una conversación
+  concreta no pagina mensajes ni archivos.
+- Al montar Claude, el sidebar vuelve a pedir ese listado. La página SSR ya
+  resolvió proyectos/proyecto activo y el endpoint repite proyecto activo +
+  gate; es trabajo duplicado en cada entrada a `/tool/claude`.
+- `/admin/users` trae todos los perfiles, todos los accesos activos y hasta 200
+  usuarios de Supabase Auth. Las tres consultas van en `Promise.all`; con
+  decenas de personas es aceptable, pero necesita paginación para escala.
+- `/admin/logs` trae todos los `claude.execute` del período y agrega costos en
+  Node (`usage-costs.ts:97-131`). El detalle también devuelve todas las
+  llamadas. Puede ser lento si `usage_logs` ya creció; conviene agregación SQL y
+  paginación.
+- Los tutoriales incluyen HTML/media pesados: progress 18 documenta ~89 MB
+  totales, sobre todo Reframes/Weavy. Puede volver lenta una pantalla de tutorial
+  concreta, no la plataforma general.
+- No se encontró un componente global que al montar descargue usuarios, logs,
+  proyectos y organigrama juntos. La lentitud general encaja mejor con auth/DB
+  por navegación.
+
+### Organigrama
+
+- La página valida sesión y carga personas/cajas con dos queries en paralelo.
+- `computeOrgLayout` está memoizado por `persons/deptNodes`
+  (`OrgCanvas.tsx:78-81`): zoom, búsqueda y selección no lo recalculan.
+- Es `force-dynamic`, por lo que no hay cache entre navegaciones.
+- `teamCount` recorre descendientes por nodo y puede ser O(n²) en el peor árbol,
+  pero con decenas de personas es despreciable. Revisar recién con cientos.
+
+El organigrama no es una causa probable de lentitud general.
+
+## 5. Plan de medición
+
+### Vercel
+
+1. Comparar p50/p95, cold starts y región de `/hub`, `/projects`,
+   `/tool/claude`, `/organigrama`, `/api/me/conversations` y
+   `/api/tools/claude/execute`.
+2. Si páginas que no llaman a Anthropic ya tienen TTFB alto, priorizar
+   región/auth/DB.
+3. Separar duración hasta primer byte y duración total de `execute`.
+4. Agregar temporalmente timings por fases, no por cada helper:
+   `session`, `permission`, `context+gate`, `brain+history`, `diagnostic`,
+   `anthropic_first_delta`, `anthropic_total`, `persist+usage_log`.
+5. Correlacionar con input/output tokens, cache creation/read y modelo.
+
+### Network del navegador
+
+1. Con “Disable cache”, medir documento/RSC al navegar
+   Hub → Proyectos → Claude → Organigrama.
+2. Medir por separado `/api/tools/claude/execute`.
+3. Interpretación:
+   - navegación lenta + execute lento: región/auth/DB;
+   - navegación rápida + preflight lento: queries seriales del execute;
+   - preflight rápido + primer delta lento: modelo/contexto/Anthropic;
+   - primer delta rápido + total alto: salida larga, tools, Opus o persistencia.
+4. Probar una conversación nueva y una larga: si solo la larga empeora, confirma
+   el historial sin budget.
+
+No se inspeccionó Network en vivo en esta auditoría: el alcance pedido fue
+diagnóstico estructural. El próximo paso necesita el preview/producción y una
+sesión del cliente para aportar navegación vs Claude.

@@ -7,22 +7,38 @@
  */
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+const mocks = vi.hoisted(() => ({
+  cookieValue: undefined as string | undefined,
+  getProjectGateFields: vi.fn(async () => null),
+}));
+
 vi.mock("next/headers", () => ({
-  cookies: vi.fn(async () => ({ get: () => undefined })),
+  cookies: vi.fn(async () => ({
+    get: () =>
+      mocks.cookieValue === undefined
+        ? undefined
+        : { value: mocks.cookieValue },
+  })),
 }));
 vi.mock("@/lib/db/queries/projects", () => ({
-  getProjectGateFields: vi.fn(async () => null),
+  getProjectGateFields: mocks.getProjectGateFields,
 }));
 
 process.env.ENCRYPTION_KEY = "test-secret-key-for-project-gate";
 
-const { mintProjectGateToken, verifyProjectGateToken, projectGateCookieName } =
-  await import("@/lib/auth/project-gate");
+const {
+  hasProjectGate,
+  mintProjectGateToken,
+  verifyProjectGateToken,
+  projectGateCookieName,
+} = await import("@/lib/auth/project-gate");
 
 const PID = "11111111-1111-1111-1111-111111111111";
 
 afterEach(() => {
   vi.useRealTimers();
+  mocks.cookieValue = undefined;
+  mocks.getProjectGateFields.mockClear();
 });
 
 describe("verifyProjectGateToken", () => {
@@ -68,6 +84,26 @@ describe("verifyProjectGateToken", () => {
 describe("projectGateCookieName", () => {
   test("incluye el projectId (una cookie por proyecto)", () => {
     expect(projectGateCookieName(PID)).toBe(`pg_${PID}`);
+  });
+});
+
+describe("hasProjectGate con campos precargados", () => {
+  test("acepta una cookie vigente sin releer el proyecto", async () => {
+    mocks.cookieValue = mintProjectGateToken(PID, 3);
+
+    await expect(
+      hasProjectGate(PID, { is_private: true, gate_version: 3 }),
+    ).resolves.toBe(true);
+    expect(mocks.getProjectGateFields).not.toHaveBeenCalled();
+  });
+
+  test("revoca una cookie anterior por gate_version sin releer el proyecto", async () => {
+    mocks.cookieValue = mintProjectGateToken(PID, 3);
+
+    await expect(
+      hasProjectGate(PID, { is_private: true, gate_version: 4 }),
+    ).resolves.toBe(false);
+    expect(mocks.getProjectGateFields).not.toHaveBeenCalled();
   });
 });
 

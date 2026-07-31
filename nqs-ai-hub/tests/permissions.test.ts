@@ -8,8 +8,10 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 type Row = Record<string, unknown> | null;
 let tableData: Record<string, Row> = {};
+let tableCalls: string[] = [];
 
 function makeBuilder(table: string) {
+  tableCalls.push(table);
   const result = { data: tableData[table] ?? null, error: null };
   const builder = {
     select: () => builder,
@@ -33,6 +35,7 @@ const { canUseTool, requireToolAccess } = await import(
 
 beforeEach(() => {
   tableData = {};
+  tableCalls = [];
 });
 
 describe("canUseTool", () => {
@@ -107,6 +110,38 @@ describe("canUseTool", () => {
     };
     const r = await canUseTool("admin1", "weavy");
     expect(r.allowed).toBe(true);
+  });
+
+  test("perfil de sesión activo evita releer users", async () => {
+    tableData = {
+      tool_access: { status: "active", expires_at: null, schedule: null },
+    };
+
+    const r = await canUseTool("u1", "claude", {
+      user: { role: "employee", isActive: true },
+    });
+
+    expect(r.allowed).toBe(true);
+    expect(tableCalls).toEqual(["tool_access"]);
+  });
+
+  test("perfil de sesión admin evita users y tool_access", async () => {
+    const r = await canUseTool("admin1", "claude", {
+      user: { role: "admin", isActive: true },
+    });
+
+    expect(r.allowed).toBe(true);
+    expect(tableCalls).toEqual([]);
+  });
+
+  test("perfil de sesión inactivo se rechaza sin consultar DB", async () => {
+    const r = await canUseTool("u1", "claude", {
+      user: { role: "employee", isActive: false },
+    });
+
+    expect(r.allowed).toBe(false);
+    if (!r.allowed) expect(r.reason).toBe("not_authenticated");
+    expect(tableCalls).toEqual([]);
   });
 
   test("user inactivo → not_authenticated", async () => {

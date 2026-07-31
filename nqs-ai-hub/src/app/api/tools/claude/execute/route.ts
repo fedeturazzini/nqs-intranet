@@ -65,7 +65,9 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   // 2) permisos
-  const denied = await requireToolAccess(session.userId, "claude");
+  const denied = await requireToolAccess(session.userId, "claude", {
+    user: session,
+  });
   if (denied) return denied;
 
   // 3) body

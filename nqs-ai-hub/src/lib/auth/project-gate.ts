@@ -109,9 +109,21 @@ export function verifyProjectGateToken(
  * Los admins NO están exentos (decisión de diseño: pasan el mismo gate; el
  * reset de contraseña es su mecanismo de recuperación). Lee las cookies del
  * request con `cookies()` de next/headers (mismo patrón que `getSession`).
+ *
+ * `preloaded` permite reutilizar una fila de `projects` leída en este mismo
+ * request. No se cachea nada entre requests: cada execute compara la cookie con
+ * el gate_version que acaba de traer de la DB.
  */
-export async function hasProjectGate(projectId: string): Promise<boolean> {
-  const fields = await getProjectGateFields(projectId);
+export type ProjectGateFields = {
+  is_private: boolean;
+  gate_version: number;
+};
+
+export async function hasProjectGate(
+  projectId: string,
+  preloaded?: ProjectGateFields,
+): Promise<boolean> {
+  const fields = preloaded ?? (await getProjectGateFields(projectId));
   if (!fields || !fields.is_private) return true;
   const store = await cookies();
   const token = store.get(projectGateCookieName(projectId))?.value;

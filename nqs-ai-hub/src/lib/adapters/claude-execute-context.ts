@@ -1,6 +1,9 @@
 import { hasProjectGate } from "@/lib/auth/project-gate";
 import { createServerClient } from "@/lib/db/supabase";
-import { getActiveProjectId, getProjectById } from "@/lib/db/queries/projects";
+import {
+  getActiveProjectId,
+  getProjectForExecuteContext,
+} from "@/lib/db/queries/projects";
 import { logWarn } from "@/lib/log";
 import type { ExecuteParams } from "@/lib/adapters/types";
 
@@ -8,6 +11,8 @@ type ContextSource = NonNullable<ExecuteParams["projectContext"]>["source"];
 
 export type ClaudeExecuteContext = {
   projectId: string;
+  projectName: string;
+  isPrivate: boolean;
   source: ContextSource;
 };
 
@@ -138,7 +143,7 @@ export async function resolveClaudeExecuteContext(
     });
   }
 
-  const project = await getProjectById(projectId);
+  const project = await getProjectForExecuteContext(projectId);
   if (!project || !project.is_active) {
     return failure(
       404,
@@ -147,7 +152,13 @@ export async function resolveClaudeExecuteContext(
     );
   }
 
-  if (project.is_private && !(await hasProjectGate(projectId))) {
+  if (
+    project.is_private &&
+    !(await hasProjectGate(projectId, {
+      is_private: project.is_private,
+      gate_version: project.gate_version,
+    }))
+  ) {
     return failure(
       403,
       "project_locked",
@@ -155,5 +166,13 @@ export async function resolveClaudeExecuteContext(
     );
   }
 
-  return { ok: true, value: { projectId, source } };
+  return {
+    ok: true,
+    value: {
+      projectId,
+      projectName: project.name,
+      isPrivate: project.is_private,
+      source,
+    },
+  };
 }

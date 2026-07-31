@@ -69,6 +69,8 @@ export type ExecuteParams = {
    */
   projectContext?: {
     projectId: string;
+    projectName: string;
+    isPrivate: boolean;
     source:
       | "conversation"
       | "request"

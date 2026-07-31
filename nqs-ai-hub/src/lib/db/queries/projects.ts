@@ -59,6 +59,32 @@ export async function getProjectById(id: string): Promise<PublicProject | null> 
   return data ? toPublic(data) : null;
 }
 
+/**
+ * Campos mínimos que necesita el preflight de Claude. Incluye nombre para el
+ * log `execute.context` y gate_version para validar la cookie sin releer la
+ * misma fila dentro del request.
+ */
+export type ProjectExecuteContextRow = {
+  id: string;
+  name: string;
+  is_active: boolean;
+  is_private: boolean;
+  gate_version: number;
+};
+
+export async function getProjectForExecuteContext(
+  id: string,
+): Promise<ProjectExecuteContextRow | null> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("projects")
+    .select("id, name, is_active, is_private, gate_version")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
 export async function getProjectBySlug(
   slug: string,
 ): Promise<PublicProject | null> {

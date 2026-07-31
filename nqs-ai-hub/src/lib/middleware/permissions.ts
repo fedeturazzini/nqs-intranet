@@ -12,7 +12,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/db/supabase";
 import { checkSchedule } from "@/lib/utils/schedule";
 import type { ToolId } from "@/lib/adapters/types";
-import type { ToolSchedule } from "@/types/db-aliases";
+import type { ToolSchedule, UserRole } from "@/types/db-aliases";
 import { logWarn } from "@/lib/log";
 
 export type PermissionReason =
@@ -27,22 +27,44 @@ export type PermissionResult =
   | { allowed: true }
   | { allowed: false; reason: PermissionReason; message?: string };
 
+export type PermissionUserHint = {
+  role: UserRole;
+  isActive: boolean;
+};
+
 /**
  * Verifica si `userId` puede usar `toolId` ahora mismo.
  * No tira excepciones — devuelve `PermissionResult`.
+ *
+ * Si el caller ya resolvió el perfil con `getSession`, puede pasarlo como hint
+ * para no repetir el SELECT de `users`. El hint es interno/server-side: nunca
+ * viene del body del cliente.
  */
 export async function canUseTool(
   userId: string,
   toolId: ToolId,
+  options: { user?: PermissionUserHint } = {},
 ): Promise<PermissionResult> {
   const db = createServerClient();
 
   // ─── CHECK 1: usuario existe y está activo ───
-  const { data: user, error: userErr } = await db
-    .from("users")
-    .select("id, is_active, role")
-    .eq("id", userId)
-    .maybeSingle();
+  let user: { id: string; is_active: boolean | null; role: UserRole } | null;
+  let userErr: unknown = null;
+  if (options.user) {
+    user = {
+      id: userId,
+      is_active: options.user.isActive,
+      role: options.user.role,
+    };
+  } else {
+    const result = await db
+      .from("users")
+      .select("id, is_active, role")
+      .eq("id", userId)
+      .maybeSingle();
+    user = result.data;
+    userErr = result.error;
+  }
 
   if (userErr || !user || !user.is_active) {
     return { allowed: false, reason: "not_authenticated" };
@@ -127,8 +149,9 @@ export async function canUseTool(
 export async function requireToolAccess(
   userId: string,
   toolId: ToolId,
+  options: { user?: PermissionUserHint } = {},
 ): Promise<NextResponse | null> {
-  const result = await canUseTool(userId, toolId);
+  const result = await canUseTool(userId, toolId, options);
   if (result.allowed) return null;
 
   const status = result.reason === "not_authenticated" ? 401 : 403;

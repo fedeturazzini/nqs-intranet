@@ -33,6 +33,7 @@ export type Session = {
   name: string;
   initials: string;
   role: UserRole;
+  isActive: boolean;
   theme: Theme;
 };
 
@@ -53,7 +54,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
 
   const { data: profile, error: profErr } = await db
     .from("users")
-    .select("id, email, name, initials, role, theme_preference")
+    .select("id, email, name, initials, role, is_active, theme_preference")
     .eq("id", userData.user.id)
     .maybeSingle();
 
@@ -70,6 +71,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     name: profile.name,
     initials: profile.initials,
     role: profile.role,
+    isActive: profile.is_active === true,
     theme,
   };
 });

@@ -9,8 +9,10 @@ const state = vi.hoisted(() => ({
   activeProjectId: null as string | null,
   project: null as {
     id: string;
+    name: string;
     is_active: boolean;
     is_private: boolean;
+    gate_version: number;
   } | null,
   gateAllowed: true,
 }));
@@ -18,7 +20,7 @@ const state = vi.hoisted(() => ({
 const mocks = vi.hoisted(() => ({
   logWarn: vi.fn(),
   getActiveProjectId: vi.fn(async () => state.activeProjectId),
-  getProjectById: vi.fn(async () => state.project),
+  getProjectForExecuteContext: vi.fn(async () => state.project),
   hasProjectGate: vi.fn(async () => state.gateAllowed),
 }));
 
@@ -43,7 +45,7 @@ vi.mock("@/lib/db/supabase", () => ({
 
 vi.mock("@/lib/db/queries/projects", () => ({
   getActiveProjectId: mocks.getActiveProjectId,
-  getProjectById: mocks.getProjectById,
+  getProjectForExecuteContext: mocks.getProjectForExecuteContext,
 }));
 
 vi.mock("@/lib/auth/project-gate", () => ({
@@ -63,7 +65,13 @@ const PROJECT_A = "22222222-2222-2222-2222-222222222222";
 const PROJECT_B = "33333333-3333-3333-3333-333333333333";
 
 function availableProject(id: string, isPrivate = false) {
-  return { id, is_active: true, is_private: isPrivate };
+  return {
+    id,
+    name: "Proyecto A",
+    is_active: true,
+    is_private: isPrivate,
+    gate_version: 3,
+  };
 }
 
 beforeEach(() => {
@@ -89,7 +97,12 @@ describe("resolveClaudeExecuteContext", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { projectId: PROJECT_A, source: "conversation" },
+      value: {
+        projectId: PROJECT_A,
+        projectName: "Proyecto A",
+        isPrivate: false,
+        source: "conversation",
+      },
     });
     expect(mocks.getActiveProjectId).not.toHaveBeenCalled();
   });
@@ -125,7 +138,7 @@ describe("resolveClaudeExecuteContext", () => {
       ok: false,
       error: { status: 409, error: "project_context_mismatch" },
     });
-    expect(mocks.getProjectById).not.toHaveBeenCalled();
+    expect(mocks.getProjectForExecuteContext).not.toHaveBeenCalled();
     expect(mocks.logWarn).toHaveBeenCalledWith(
       "execute: contexto de proyecto no coincide",
       expect.objectContaining({ reason: "project_context_mismatch" }),
@@ -174,7 +187,12 @@ describe("resolveClaudeExecuteContext", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { projectId: PROJECT_A, source: "legacy_request" },
+      value: {
+        projectId: PROJECT_A,
+        projectName: "Proyecto A",
+        isPrivate: false,
+        source: "legacy_request",
+      },
     });
     expect(mocks.logWarn).toHaveBeenCalledWith(
       "execute: conversación sin proyecto",
@@ -196,7 +214,12 @@ describe("resolveClaudeExecuteContext", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { projectId: PROJECT_A, source: "legacy_global_fallback" },
+      value: {
+        projectId: PROJECT_A,
+        projectName: "Proyecto A",
+        isPrivate: false,
+        source: "legacy_global_fallback",
+      },
     });
     expect(mocks.logWarn).toHaveBeenCalledWith(
       "execute: fallback al proyecto activo global",
@@ -228,7 +251,12 @@ describe("resolveClaudeExecuteContext", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { projectId: PROJECT_A, source: "request" },
+      value: {
+        projectId: PROJECT_A,
+        projectName: "Proyecto A",
+        isPrivate: false,
+        source: "request",
+      },
     });
     expect(mocks.getActiveProjectId).not.toHaveBeenCalled();
   });
@@ -240,7 +268,12 @@ describe("resolveClaudeExecuteContext", () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { projectId: PROJECT_A, source: "global_fallback" },
+      value: {
+        projectId: PROJECT_A,
+        projectName: "Proyecto A",
+        isPrivate: false,
+        source: "global_fallback",
+      },
     });
     expect(mocks.logWarn).toHaveBeenCalledWith(
       "execute: fallback al proyecto activo global",
@@ -258,7 +291,13 @@ describe("resolveClaudeExecuteContext", () => {
   });
 
   test("rechaza proyecto inexistente o archivado", async () => {
-    state.project = { id: PROJECT_A, is_active: false, is_private: false };
+    state.project = {
+      id: PROJECT_A,
+      name: "Proyecto A",
+      is_active: false,
+      is_private: false,
+      gate_version: 3,
+    };
 
     const result = await resolveClaudeExecuteContext(USER, {
       projectId: PROJECT_A,
@@ -282,6 +321,9 @@ describe("resolveClaudeExecuteContext", () => {
       ok: false,
       error: { status: 403, error: "project_locked" },
     });
-    expect(mocks.hasProjectGate).toHaveBeenCalledWith(PROJECT_A);
+    expect(mocks.hasProjectGate).toHaveBeenCalledWith(PROJECT_A, {
+      is_private: true,
+      gate_version: 3,
+    });
   });
 });

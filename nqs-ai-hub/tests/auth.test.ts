@@ -47,6 +47,7 @@ type SupabaseStub = {
     name: string;
     initials: string;
     role: string;
+    is_active: boolean;
     theme_preference?: string;
   } | null;
 };
@@ -120,6 +121,7 @@ describe("getSession", () => {
         name: "Sofía Galván",
         initials: "SG",
         role: "employee",
+        is_active: true,
         theme_preference: "light",
       },
     });
@@ -130,7 +132,32 @@ describe("getSession", () => {
       name: "Sofía Galván",
       initials: "SG",
       role: "employee",
+      isActive: true,
       theme: "light",
+    });
+  });
+
+  test("expone isActive=false para que permisos rechace sin releer users", async () => {
+    cookieJar.set(ACCESS_TOKEN_COOKIE, "valid-token");
+    setSupabaseStub({
+      authGetUser: vi.fn(async () => ({
+        data: { user: { id: "user-1" } },
+        error: null,
+      })),
+      profile: {
+        id: "user-1",
+        email: "sofia@nqs.test",
+        name: "Sofía Galván",
+        initials: "SG",
+        role: "employee",
+        is_active: false,
+      },
+    });
+
+    await expect(getSession()).resolves.toMatchObject({
+      userId: "user-1",
+      role: "employee",
+      isActive: false,
     });
   });
 });
@@ -155,6 +182,7 @@ describe("requireAdmin", () => {
         name: "Sofía Galván",
         initials: "SG",
         role: "employee",
+        is_active: true,
       },
     });
     await expect(requireAdmin()).rejects.toThrow(/__REDIRECT__:\/hub/);
@@ -173,6 +201,7 @@ describe("requireAdmin", () => {
         name: "Tomás Pérez",
         initials: "TP",
         role: "admin",
+        is_active: true,
       },
     });
     const s = await requireAdmin();

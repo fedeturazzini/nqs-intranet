@@ -38,7 +38,15 @@ const PROJECT_B = "33333333-3333-4333-8333-333333333333";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getSession.mockResolvedValue({ userId: USER });
+  mocks.getSession.mockResolvedValue({
+    userId: USER,
+    email: "user@example.com",
+    name: "User",
+    initials: "US",
+    role: "employee",
+    isActive: true,
+    theme: "dark",
+  });
   mocks.requireToolAccess.mockResolvedValue(null);
 });
 
@@ -85,7 +93,12 @@ describe("POST /api/tools/claude/execute preflight", () => {
   test("inyecta el contexto canónico y recién entonces inicia NDJSON", async () => {
     mocks.resolve.mockResolvedValue({
       ok: true,
-      value: { projectId: PROJECT_A, source: "conversation" },
+      value: {
+        projectId: PROJECT_A,
+        projectName: "Proyecto A",
+        isPrivate: false,
+        source: "conversation",
+      },
     });
     mocks.execute.mockResolvedValue({
       ok: true,
@@ -121,11 +134,19 @@ describe("POST /api/tools/claude/execute preflight", () => {
     expect(body).toContain('"type":"done"');
     expect(body).toContain('"textFileFallback":{"filename":"respuesta.txt"}');
     expect(body).toContain('"toolDeliveryFailed":{"toolName":"otra_tool"}');
+    expect(mocks.requireToolAccess).toHaveBeenCalledWith(USER, "claude", {
+      user: await mocks.getSession.mock.results[0]?.value,
+    });
     expect(mocks.execute).toHaveBeenCalledWith(
       USER,
       expect.objectContaining({
         projectId: PROJECT_A,
-        projectContext: { projectId: PROJECT_A, source: "conversation" },
+        projectContext: {
+          projectId: PROJECT_A,
+          projectName: "Proyecto A",
+          isPrivate: false,
+          source: "conversation",
+        },
       }),
       expect.any(Function),
       expect.any(Function),
