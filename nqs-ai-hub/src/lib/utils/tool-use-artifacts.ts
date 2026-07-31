@@ -1,4 +1,7 @@
-import { analyzeArtifactAttempt, type ParsedArtifact } from "./parse-artifacts";
+import {
+  parseMessageWithArtifacts,
+  type ParsedArtifact,
+} from "./parse-artifacts";
 
 type ToolUseBlock = {
   type?: unknown;
@@ -13,6 +16,9 @@ export type ToolUseDelivery = {
   toolName?: string;
   failReason?: "unrecognized_tool" | "invalid_artifact_input";
 };
+
+export const TOOL_DELIVERY_WARNING =
+  "⚠ No pudimos completar el formato de entrega que usó Claude. Pedile que vuelva a entregar el contenido.";
 
 function record(value: unknown): Record<string, unknown> | null {
   return value != null && typeof value === "object" && !Array.isArray(value)
@@ -94,22 +100,30 @@ export function materializeToolUseArtifacts(
     const unrecognized = toolUses.find(
       (toolUse) => parseToolUseArtifact(toolUse) == null,
     );
-    if (analyzeArtifactAttempt(currentText).detected) {
-      return {
-        detected: true,
-        recognized: unrecognized == null,
-        appendedText: "",
-        toolName:
-          typeof unrecognized?.name === "string"
-            ? unrecognized.name
-            : "artifacts",
-        failReason: unrecognized ? "unrecognized_tool" : undefined,
-      };
-    }
+    const existingArtifacts = parseMessageWithArtifacts(currentText)
+      .segments.filter((segment) => segment.kind === "artifact")
+      .map((segment) => segment.artifact);
+    const newArtifacts = artifacts.filter(
+      (artifact, index, all) =>
+        all.findIndex(
+          (candidate) =>
+            candidate.type === artifact.type &&
+            candidate.title === artifact.title &&
+            candidate.content === artifact.content,
+        ) === index &&
+        !existingArtifacts.some(
+          (existing) =>
+            existing.type === artifact.type &&
+            existing.title === artifact.title &&
+            existing.content === artifact.content,
+        ),
+    );
+    const appendedParts = newArtifacts.map(artifactToPseudoXml);
+    if (unrecognized) appendedParts.push(TOOL_DELIVERY_WARNING);
     return {
       detected: true,
       recognized: unrecognized == null,
-      appendedText: artifacts.map(artifactToPseudoXml).join("\n\n"),
+      appendedText: appendedParts.join("\n\n"),
       toolName:
         typeof unrecognized?.name === "string"
           ? unrecognized.name
@@ -122,7 +136,7 @@ export function materializeToolUseArtifacts(
   return {
     detected: true,
     recognized: false,
-    appendedText: "",
+    appendedText: TOOL_DELIVERY_WARNING,
     toolName: typeof first.name === "string" ? first.name : "unknown",
     failReason:
       first.name === "artifacts"

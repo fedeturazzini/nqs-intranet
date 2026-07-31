@@ -9,6 +9,7 @@
  * en Result).
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { TOOL_DELIVERY_WARNING } from "@/lib/utils/tool-use-artifacts";
 
 type CreateFn = (...args: unknown[]) => Promise<unknown>;
 let mockCreate: CreateFn = async () => ({
@@ -269,6 +270,7 @@ describe("callClaude — contentBlocks / anthropicMessageId (para execute.summar
     expect(snippet).toContain('"type":"text/plain"');
     expect(snippet).toContain("[7 chars]");
     expect(snippet).not.toContain("SECRETO");
+    expect(r.text).toContain(TOOL_DELIVERY_WARNING);
   });
 });
 

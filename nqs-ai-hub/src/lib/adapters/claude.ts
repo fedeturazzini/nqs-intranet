@@ -50,6 +50,7 @@ import {
 import {
   detectBinaryDeliveryIntent,
   isPotentialBinaryFollowUp,
+  orderPriorDeliveryMessages,
   resolvePriorDeliveryTurn,
   shouldEnableBinaryFileGeneration,
 } from "./claude-binary-delivery";
@@ -276,12 +277,12 @@ export const claudeAdapter: ToolAdapter = {
         // Acá solo traemos la historia para no duplicar la query de metadata.
         const { data: prior, error: prErr } = await db
           .from("claude_messages")
-          .select("id, role, content")
+          .select("id, role, content, created_at")
           .eq("conversation_id", conversationId)
           .order("created_at", { ascending: true });
         if (prErr) throw prErr;
 
-        const priorMessages = prior ?? [];
+        const priorMessages = orderPriorDeliveryMessages(prior ?? []);
         for (const m of priorMessages) {
           messages.push({ role: m.role, content: m.content });
         }

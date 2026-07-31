@@ -10,10 +10,13 @@ describe("detectBinaryDeliveryIntent", () => {
   test.each([
     ["Generame un PDF descargable", "pdf"],
     ["Creá un PDF que resuma estos datos", "pdf"],
+    ["Redactá un informe en PDF", "pdf"],
     ["Armá un archivo Word con este informe", "docx"],
+    ["Escribí un documento Word", "docx"],
     ["Exportá estos datos a Excel", "xlsx"],
     ["Armame una planilla con estos datos", "xlsx"],
     ["Creá una presentación PowerPoint", "pptx"],
+    ["Diseñá una presentación", "pptx"],
     ["Generá cinco diapositivas", "pptx"],
     ["en PDF", "pdf"],
     ["como docx", "docx"],
@@ -30,6 +33,7 @@ describe("detectBinaryDeliveryIntent", () => {
     "Analizá este PDF adjunto",
     "Resumí el contenido del PDF",
     "Quiero que analices un PDF",
+    "Quiero entender el PDF adjunto",
     "Necesito leer un PDF",
     "Leé este documento Word",
     "Revisá la presentación adjunta",
@@ -184,6 +188,28 @@ describe("resolvePriorDeliveryTurn — regresión archivo-equivocado", () => {
     ).toEqual({
       previousUserPrompt: "nuevo pedido",
       previousAssistantId: null,
+    });
+  });
+
+  test("desempata user antes de assistant cuando el batch comparte created_at", () => {
+    expect(
+      resolvePriorDeliveryTurn([
+        {
+          id: "assistant-a",
+          role: "assistant",
+          content: "PDF A",
+          created_at: "2026-07-31T10:00:00.000Z",
+        },
+        {
+          id: "user-a",
+          role: "user",
+          content: "Generame un PDF",
+          created_at: "2026-07-31T10:00:00.000Z",
+        },
+      ]),
+    ).toEqual({
+      previousUserPrompt: "Generame un PDF",
+      previousAssistantId: "assistant-a",
     });
   });
 });

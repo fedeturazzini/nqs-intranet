@@ -4,6 +4,7 @@ import {
   materializeToolUseArtifacts,
   parseToolUseArtifact,
   redactToolInput,
+  TOOL_DELIVERY_WARNING,
 } from "@/lib/utils/tool-use-artifacts";
 import { parseMessageWithArtifacts } from "@/lib/utils/parse-artifacts";
 
@@ -75,13 +76,38 @@ describe("tool-use artifacts", () => {
         {
           type: "tool_use",
           name: "artifacts",
-          input: { type: "text/plain", content: "dos" },
+          input: { type: "text/plain", title: "uno.txt", content: "uno" },
         },
       ],
       xml,
     );
     expect(result.recognized).toBe(true);
     expect(result.appendedText).toBe("");
+  });
+
+  test("conserva un artifact nativo distinto aunque ya exista pseudo-XML", () => {
+    const existing = artifactToPseudoXml({
+      command: "create",
+      type: "text/plain",
+      title: "uno.txt",
+      content: "uno",
+    });
+    const result = materializeToolUseArtifacts(
+      [
+        {
+          type: "tool_use",
+          name: "artifacts",
+          input: { type: "text/plain", title: "dos.txt", content: "dos" },
+        },
+      ],
+      existing,
+    );
+    const segments = parseMessageWithArtifacts(
+      `${existing}\n\n${result.appendedText}`,
+    ).segments;
+    expect(
+      segments.filter((segment) => segment.kind === "artifact"),
+    ).toHaveLength(2);
   });
 
   test("un tool desconocido falla claro y no expone su input", () => {
@@ -100,7 +126,7 @@ describe("tool-use artifacts", () => {
       recognized: false,
       toolName: "otra_tool",
       failReason: "unrecognized_tool",
-      appendedText: "",
+      appendedText: TOOL_DELIVERY_WARNING,
     });
     const redacted = redactToolInput({
       content: "secreto",

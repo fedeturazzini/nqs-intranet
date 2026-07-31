@@ -359,6 +359,7 @@ export function extractGeneratedFilesFromBlocks(
 function materializedText(
   blocks: readonly unknown[],
   text: string,
+  stopReason: string | null,
 ): {
   text: string;
   delivery?: ClaudeResponse["toolUseDelivery"];
@@ -366,9 +367,11 @@ function materializedText(
 } {
   const materialized = materializeToolUseArtifacts(blocks, text);
   if (!materialized.detected) return { text, append: "" };
-  const append = materialized.appendedText
-    ? `${text ? "\n\n" : ""}${materialized.appendedText}`
-    : "";
+  const appendedText =
+    materialized.recognized || stopReason === "tool_use"
+      ? materialized.appendedText
+      : "";
+  const append = appendedText ? `${text ? "\n\n" : ""}${appendedText}` : "";
   const { appendedText: _appendedText, ...delivery } = materialized;
   return { text: `${text}${append}`, delivery, append };
 }
@@ -436,7 +439,11 @@ export async function callClaude(
     (b): b is Anthropic.Messages.TextBlock => b.type === "text",
   );
   const rawText = textBlocks.map((b) => b.text).join("\n");
-  const materialized = materializedText(response.content, rawText);
+  const materialized = materializedText(
+    response.content,
+    rawText,
+    response.stop_reason,
+  );
 
   return {
     text: materialized.text,
@@ -537,7 +544,11 @@ async function streamTextOnly(
     (b): b is Anthropic.Messages.TextBlock => b.type === "text",
   );
   const rawText = textBlocks.map((b) => b.text).join("\n");
-  const materialized = materializedText(final.content, rawText);
+  const materialized = materializedText(
+    final.content,
+    rawText,
+    final.stop_reason,
+  );
   if (materialized.append) onText?.(materialized.append);
 
   return {
@@ -643,7 +654,11 @@ async function streamWithFileGeneration(
         text += block.text;
       }
     }
-    const materialized = materializedText(final.content, text);
+    const materialized = materializedText(
+      final.content,
+      text,
+      final.stop_reason,
+    );
     text = materialized.text;
     if (materialized.append) onText?.(materialized.append);
     if (materialized.delivery) {

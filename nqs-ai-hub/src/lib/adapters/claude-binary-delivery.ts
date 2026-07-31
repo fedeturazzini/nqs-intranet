@@ -22,20 +22,39 @@ export type PriorDeliveryMessage = {
   id: string;
   role: string;
   content: string;
+  created_at?: string | null;
 };
+
+export function orderPriorDeliveryMessages<T extends PriorDeliveryMessage>(
+  messages: T[],
+): T[] {
+  return [...messages].sort((left, right) => {
+    if (!left.created_at || !right.created_at) return 0;
+    const leftTime = left.created_at ? Date.parse(left.created_at) : 0;
+    const rightTime = right.created_at ? Date.parse(right.created_at) : 0;
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    // El batch INSERT asigna el mismo NOW() al user y assistant. Ante empate,
+    // forzamos el orden conversacional, en vez de depender del orden de Postgres.
+    if (left.role === right.role) return 0;
+    if (left.role === "user") return -1;
+    if (right.role === "user") return 1;
+    return 0;
+  });
+}
 
 export function resolvePriorDeliveryTurn(messages: PriorDeliveryMessage[]): {
   previousUserPrompt: string | null;
   previousAssistantId: string | null;
 } {
+  const ordered = orderPriorDeliveryMessages(messages);
   let previousUserPrompt: string | null = null;
-  for (let index = messages.length - 1; index >= 0; index--) {
-    if (messages[index].role === "user") {
-      previousUserPrompt = messages[index].content;
+  for (let index = ordered.length - 1; index >= 0; index--) {
+    if (ordered[index].role === "user") {
+      previousUserPrompt = ordered[index].content;
       break;
     }
   }
-  const immediatelyPrevious = messages.at(-1);
+  const immediatelyPrevious = ordered.at(-1);
   return {
     previousUserPrompt,
     previousAssistantId:
@@ -44,9 +63,9 @@ export function resolvePriorDeliveryTurn(messages: PriorDeliveryMessage[]): {
 }
 
 const DELIVERY_ACTION =
-  /\b(?:gener|cre|arm|hac|prepar|export|convert|entreg|mand|envi|pas|devolv|guard|descarg|quier|necesit|dame|d[áa]|create|generate|make|send|give|return|export|save|download|convert)\w*/i;
+  /\b(?:gener|cre|arm|hac|prepar|export|convert|entreg|mand|envi|pas|devolv|guard|descarg|quier|necesit|dame|d[áa]|redact|escrib|diseñ|disen|elabor|maquet|create|generate|make|send|give|return|export|save|download|convert|write|design)\w*/i;
 const STRONG_CREATE_ACTION =
-  /\b(?:gener|cre|arm|hac|prepar|export|create|generate|make|export)\w*/i;
+  /\b(?:gener|cre|arm|hac|prepar|export|redact|escrib|diseñ|disen|elabor|maquet|create|generate|make|export|write|design)\w*/i;
 const FOLLOW_UP_ACTION =
   /\b(?:hacelo|hac[eé]lo|hazlo|de nuevo|otra vez|regener|reintent|volv[eé]\s+a|otra\s+versi[oó]n|actualiz|modific|cambi|correg|ajust)\w*/i;
 const TXT_OR_MARKDOWN =
@@ -54,7 +73,7 @@ const TXT_OR_MARKDOWN =
 const IMAGE_REQUEST =
   /\b(?:imagen|image|mockup|mock-up|render|foto|visual|ilustraci[oó]n)\b/i;
 const ANALYSIS_ACTION =
-  /\b(?:anali[cz]|revis|le[eé]|resum|interpret|explic|extra[eé]|review|summari)\w*/i;
+  /\b(?:anali[cz]|revis|le[eé]|resum|interpret|explic|extra[eé]|entend|comprend|consult|mir|ver|review|summari|understand|read)\w*/i;
 const BINARY_TO_TEXT =
   /\bconvert\w*[\s\S]{0,40}(?:\.?pdf|\.?docx?|word|\.?xlsx?|excel|\.?pptx?)[\s\S]{0,24}\b(?:a|en)\s+(?:\.?txt|\.?md|texto|markdown)\b/i;
 

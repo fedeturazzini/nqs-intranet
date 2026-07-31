@@ -27,6 +27,7 @@ import {
   extractPartialArtifact,
   messageToPlainText,
 } from "@/lib/utils/parse-artifacts";
+import { TOOL_DELIVERY_WARNING } from "@/lib/utils/tool-use-artifacts";
 import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
 
 type ChatMessagesProps = Readonly<{
@@ -261,6 +262,7 @@ function MessageBubble({
 
         {isAi &&
           msg.toolDeliveryFailed &&
+          !msg.content.includes(TOOL_DELIVERY_WARNING) &&
           (!msg.files || msg.files.length === 0) && (
             <div className="message-truncated-warning">
               ⚠ Claude usó un formato de entrega que no pudimos procesar (
