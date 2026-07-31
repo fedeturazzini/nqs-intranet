@@ -47,6 +47,11 @@ import {
   signDownloadUrls,
   uploadBuffer,
 } from "@/lib/storage/claude-uploads";
+import {
+  detectTextDeliveryIntent,
+  hasDeliveredTextArtifact,
+  repairTextDeliveryOnce,
+} from "./claude-text-delivery";
 import { logToolUsage } from "./utils";
 import type {
   AccessState,
@@ -103,6 +108,11 @@ Tipos soportados (esto define el TIPO DE ARCHIVO, NO es una instrucción de esti
 - text/markdown (.md) — documentos formateados
 - application/vnd.ant.code (con language="python|javascript|…") — código
 
+ENTREGA OBLIGATORIA DE .txt/.md:
+- Si el user pide explícitamente recibir, descargar, generar o exportar un .txt/.md, DEBÉS emitir el artifact completo y válido en ESE MISMO mensaje.
+- No alcanza con devolver el contenido inline ni con decir "listo".
+- Si usaste el sandbox para contar, validar o revisar el contenido, esa ejecución NO reemplaza al artifact: después emití igualmente el bloque <function_calls> completo.
+
 Patrón recomendado:
 - En el chat respondé breve y conversacional ("Listo, generé el prompt…").
 - En el artifact poné el contenido pesado (prompt completo, código, documento).
@@ -155,7 +165,9 @@ código, el user NO recibe NINGÚN archivo — por más que digas que se lo mand
   ("es el mismo", "ya te lo mandé", "usá el anterior"): generalo de nuevo.
 - Si por algún motivo no podés generarlo, DECILO explícitamente en vez de dar por
   hecho que llegó.
-Para TEXTO o Markdown (no binario), seguí usando el artifact de texto de siempre.`;
+Para TEXTO o Markdown (no binario), seguí usando el artifact de texto de siempre.
+Si usaste el sandbox para validar TEXTO/Markdown, igual DEBÉS emitir el artifact completo:
+la validación, stdout o texto inline NO son la entrega descargable.`;
 
 export const claudeAdapter: ToolAdapter = {
   id: TOOL_ID,
@@ -312,6 +324,7 @@ export const claudeAdapter: ToolAdapter = {
       // Detrás de DEBUG_BRAIN_VERBOSE (default off) suma el cerebro COMPLETO.
       // Best-effort: hace una query extra (nombre del proyecto) — si ESO falla,
       // no puede tirar abajo el chat real por un log de diagnóstico.
+      const textDeliveryIntent = detectTextDeliveryIntent(params.prompt);
       try {
         const project = await getProjectSummary(projectId);
         const brainVerbose = process.env.DEBUG_BRAIN_VERBOSE === "true";
@@ -333,6 +346,7 @@ export const claudeAdapter: ToolAdapter = {
           model: systemPrompt.model,
           messagesSent: messages.length, // incluye el turno actual
           imagesReceived,
+          expectedOutput: textDeliveryIntent?.format ?? null,
           maxTokens: maxTokensFor(systemPrompt.model),
           ...(brainVerbose ? { fullSystemPrompt: fullSystem } : {}),
         });
@@ -352,13 +366,44 @@ export const claudeAdapter: ToolAdapter = {
       // medida que se generan (la respuesta no se corta por timeout aunque
       // el prompt sea grande). Igual acumulamos el texto completo.
       const callStartedAt = Date.now();
-      const response = await streamClaude(
+      const initialResponse = await streamClaude(
         fullSystem,
         messages,
         { model: systemPrompt.model, enableFileGeneration: fileGenEnabled },
         onText,
         onStatus,
       );
+      const repaired = await repairTextDeliveryOnce({
+        intent: textDeliveryIntent,
+        initialResponse,
+        messages,
+        onText,
+        onRepairStart(first) {
+          onStatus?.("repairing_text_file");
+          logWarn("execute: reintento de entrega textual", {
+            userId,
+            conversationId,
+            expectedOutput: textDeliveryIntent?.format,
+            reason: "text_delivery_missing",
+            firstAnthropicMessageId: first.anthropicMessageId,
+          });
+        },
+        runRepair: (repairMessages, repairOnText) =>
+          streamClaude(
+            fullSystem,
+            repairMessages,
+            {
+              model: systemPrompt.model,
+              enableFileGeneration: fileGenEnabled,
+            },
+            repairOnText,
+            onStatus,
+          ),
+      });
+      const response = repaired.response;
+      const anthropicMessageIds = repaired.anthropicMessageIds;
+      const repairAttempted = repaired.attempted;
+      const repairSucceeded = repaired.succeeded;
       const durationMs = Date.now() - callStartedAt;
 
       // ETAPA 1: si Claude generó archivos en el sandbox, logueamos los file_id
@@ -471,8 +516,11 @@ export const claudeAdapter: ToolAdapter = {
       // (default off), contentBlocks trae además un recorte de hasta 500 chars
       // por bloque de texto — nunca el contenido entero (ver client.ts).
       const artifactAttempt = analyzeArtifactAttempt(response.text);
+      const textDeliveryFailed =
+        textDeliveryIntent != null && !hasDeliveredTextArtifact(response);
       logInfo("execute.summary", {
         requestId: response.anthropicMessageId ?? undefined,
+        anthropicMessageIds,
         userId,
         conversationId,
         messageId,
@@ -490,6 +538,11 @@ export const claudeAdapter: ToolAdapter = {
         artifactDetected: artifactAttempt.detected,
         artifactFailReason: artifactAttempt.reason,
         fileIds: response.generatedFiles?.length ?? 0,
+        expectedOutput: textDeliveryIntent?.format ?? null,
+        attempts: repairAttempted ? 2 : 1,
+        repairAttempted,
+        repairSucceeded,
+        textDeliveryFailed,
         imagesReceived,
         attachmentsSource: imagesReceived > 0 ? "url" : undefined,
         durationMs,
@@ -588,10 +641,16 @@ export const claudeAdapter: ToolAdapter = {
       // justo el que el fallback de la card rellenaba con el archivo de un turno
       // ANTERIOR. Avisar acá es lo que evita que el silencio se vuelva engaño.
       const usedCodeTool = response.contentBlocks.some(
-        (b) => b.type === "server_tool_use",
+        (b) =>
+          b.type === "server_tool_use" &&
+          (b.toolName === "code_execution" ||
+            b.toolName === "bash_code_execution"),
       );
       const filesMissing =
-        fileGenEnabled && usedCodeTool && fileIds.length === 0;
+        fileGenEnabled &&
+        usedCodeTool &&
+        fileIds.length === 0 &&
+        !artifactAttempt.detected;
       if (filesMissing) {
         console.error(
           JSON.stringify({
@@ -647,6 +706,11 @@ export const claudeAdapter: ToolAdapter = {
           filesFailed,
           // Capa 1: se esperaba archivo (corrió el sandbox) y no vino ninguno.
           filesMissing,
+          // Ambos intentos de entregar el .txt/.md fallaron: la UI ofrece
+          // descargar el texto visible sin fingir que fue un archivo generado.
+          textFileFallback: textDeliveryFailed
+            ? { filename: textDeliveryIntent.filename }
+            : undefined,
         },
       };
     } catch (error) {
