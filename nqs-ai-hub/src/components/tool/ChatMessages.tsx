@@ -25,7 +25,6 @@ import {
   hasIncompleteArtifact,
   hasIncompleteThinking,
   extractPartialArtifact,
-  messageToPlainText,
 } from "@/lib/utils/parse-artifacts";
 import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
 
@@ -258,30 +257,6 @@ function MessageBubble({
             </div>
           )}
 
-        {isAi &&
-          msg.textFileFallback &&
-          msg.content &&
-          (!msg.files || msg.files.length === 0) && (
-            <div className="message-truncated-warning">
-              No llegó una card descargable después del reintento. Podés bajar
-              exactamente el texto recibido.
-              <div style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="message-action-btn"
-                  onClick={() =>
-                    downloadTextFallback(
-                      msg.content,
-                      msg.textFileFallback?.filename ?? "respuesta-claude.txt",
-                    )
-                  }
-                >
-                  ↓ descargar como {msg.textFileFallback.filename}
-                </button>
-              </div>
-            </div>
-          )}
-
         {isAi && msg.stopReason === "max_tokens" && (
           <div className="message-truncated-warning">
             ⚠ Respuesta cortada por el límite de longitud. Pedile a Claude que
@@ -427,7 +402,15 @@ function MessageActions({ content }: { content: string }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    const clean = messageToPlainText(content);
+    const { segments } = parseMessageWithArtifacts(content);
+    const clean = segments
+      .map((s) =>
+        s.kind === "text"
+          ? s.content
+          : `\n--- ${s.artifact.title} ---\n${s.artifact.content}\n`,
+      )
+      .join("\n")
+      .trim();
     try {
       await navigator.clipboard.writeText(clean);
       setCopied(true);
@@ -453,17 +436,4 @@ function MessageActions({ content }: { content: string }) {
       </button>
     </div>
   );
-}
-
-function downloadTextFallback(content: string, filename: string) {
-  const text = messageToPlainText(content);
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
 }

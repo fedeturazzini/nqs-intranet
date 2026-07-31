@@ -177,8 +177,6 @@ export async function POST(request: Request): Promise<Response> {
             filesFailed: result.value.filesFailed,
             // Se esperaba archivo y no vino (el sandbox corrió sin producir nada).
             filesMissing: result.value.filesMissing,
-            // Fallaron el intento original + una reparación de artifact textual.
-            textFileFallback: result.value.textFileFallback,
           });
         }
       } catch (err) {

@@ -169,22 +169,11 @@ export type ContentBlockSummary = {
   type: string;
   /** Caracteres del bloque — solo bloques de texto. */
   chars?: number;
-  /** Nombre del server tool (sin sus parámetros). */
-  toolName?: string;
-  /** Subtipo interno del resultado (`bash_code_execution_result`, error, etc.). */
-  resultType?: string;
-  returnCode?: number;
-  stdoutChars?: number;
-  stderrChars?: number;
-  errorCode?: string;
-  /** Archivos generados — resultados Bash o Code Execution. */
+  /** Archivos generados — solo resultados de code execution. */
   files?: number;
   /** Recorte del contenido (primeros 500 chars). SOLO si DEBUG_EXECUTE_VERBOSE=true
    *  (default off) — nunca el contenido entero. */
   snippet?: string;
-  inputSnippet?: string;
-  stdoutSnippet?: string;
-  stderrSnippet?: string;
 };
 
 const VERBOSE_SNIPPET_CHARS = 500;
@@ -201,126 +190,39 @@ function isVerboseLoggingEnabled(): boolean {
  * code execution (`Anthropic.Beta.BetaContentBlock[]`) sin acoplar a un tipo
  * concreto del SDK.
  */
-export function summarizeContentBlocks(
+function summarizeContentBlocks(
   blocks: readonly unknown[],
 ): ContentBlockSummary[] {
   const verbose = isVerboseLoggingEnabled();
   return blocks.map((raw) => {
-    const b = raw as {
-      type: string;
-      text?: unknown;
-      name?: unknown;
-      input?: unknown;
-      content?: unknown;
-    };
+    const b = raw as { type: string; text?: unknown; content?: unknown };
     if (b.type === "text" && typeof b.text === "string") {
       const summary: ContentBlockSummary = { type: b.type, chars: b.text.length };
       if (verbose) summary.snippet = b.text.slice(0, VERBOSE_SNIPPET_CHARS);
       return summary;
     }
-    if (b.type === "server_tool_use") {
-      const summary: ContentBlockSummary = {
-        type: b.type,
-        toolName: typeof b.name === "string" ? b.name : undefined,
-      };
-      if (verbose && b.input != null) {
-        summary.inputSnippet = JSON.stringify(b.input).slice(
-          0,
-          VERBOSE_SNIPPET_CHARS,
-        );
-      }
-      return summary;
-    }
-    if (
-      b.type === "bash_code_execution_tool_result" ||
-      b.type === "code_execution_tool_result"
-    ) {
-      const result = b.content as
-        | {
-            type?: string;
-            content?: unknown[];
-            return_code?: unknown;
-            stdout?: unknown;
-            encrypted_stdout?: unknown;
-            stderr?: unknown;
-            error_code?: unknown;
-          }
-        | undefined;
-      const stdout =
-        typeof result?.stdout === "string"
-          ? result.stdout
-          : typeof result?.encrypted_stdout === "string"
-            ? result.encrypted_stdout
-            : "";
-      const stderr = typeof result?.stderr === "string" ? result.stderr : "";
-      const summary: ContentBlockSummary = {
-        type: b.type,
-        resultType: result?.type,
-        returnCode:
-          typeof result?.return_code === "number"
-            ? result.return_code
-            : undefined,
-        stdoutChars: stdout.length,
-        stderrChars: stderr.length,
-        errorCode:
-          typeof result?.error_code === "string"
-            ? result.error_code
-            : undefined,
-        files: countFileOutputs(b.content),
-      };
-      if (verbose) {
-        if (stdout) {
-          summary.stdoutSnippet = stdout.slice(0, VERBOSE_SNIPPET_CHARS);
-        }
-        if (stderr) {
-          summary.stderrSnippet = stderr.slice(0, VERBOSE_SNIPPET_CHARS);
-        }
-      }
-      return summary;
+    if (b.type === "bash_code_execution_tool_result") {
+      return { type: b.type, files: countFileOutputs(b.content) };
     }
     return { type: b.type };
   });
 }
 
-/** Cuenta outputs con `file_id` en cualquiera de las dos variantes oficiales. */
+/** Cuenta los `bash_code_execution_output` (archivos) dentro de un tool_result. */
 function countFileOutputs(content: unknown): number {
   const result = content as
     | { type?: string; content?: unknown[] }
     | undefined;
-  if (!result || !Array.isArray(result.content)) {
+  if (
+    !result ||
+    result.type !== "bash_code_execution_result" ||
+    !Array.isArray(result.content)
+  ) {
     return 0;
   }
   return result.content.filter(
-    (out) => typeof (out as { file_id?: unknown }).file_id === "string",
+    (out) => (out as { type?: string }).type === "bash_code_execution_output",
   ).length;
-}
-
-/** Extrae file_id de `bash_code_execution_*` y `code_execution_*`. */
-export function extractGeneratedFilesFromBlocks(
-  blocks: readonly unknown[],
-): GeneratedFile[] {
-  const files: GeneratedFile[] = [];
-  for (const raw of blocks) {
-    const block = raw as { type?: string; content?: unknown };
-    if (
-      block.type !== "bash_code_execution_tool_result" &&
-      block.type !== "code_execution_tool_result"
-    ) {
-      continue;
-    }
-    const result = block.content as { content?: unknown[] } | undefined;
-    if (!Array.isArray(result?.content)) continue;
-    for (const rawOutput of result.content) {
-      const output = rawOutput as { file_id?: unknown };
-      if (typeof output.file_id === "string") {
-        files.push({ fileId: output.file_id });
-      }
-    }
-  }
-  return files.filter(
-    (file, index, all) =>
-      all.findIndex((candidate) => candidate.fileId === file.fileId) === index,
-  );
 }
 
 export type ClaudeResponse = {
@@ -559,9 +461,17 @@ async function streamWithFileGeneration(
     for (const block of final.content) {
       if (block.type === "text") {
         text += block.text;
+      } else if (block.type === "bash_code_execution_tool_result") {
+        const result = block.content;
+        if (result.type === "bash_code_execution_result") {
+          for (const out of result.content) {
+            if (out.type === "bash_code_execution_output") {
+              generatedFiles.push({ fileId: out.file_id });
+            }
+          }
+        }
       }
     }
-    generatedFiles.push(...extractGeneratedFilesFromBlocks(final.content));
 
     // Parte 4.2: instrumentación shape-agnóstica. Las skills (pdf/docx/xlsx/pptx)
     // pueden devolver el archivo con OTRA forma de bloque que la rama de arriba no

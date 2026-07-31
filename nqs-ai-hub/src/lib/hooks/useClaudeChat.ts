@@ -70,11 +70,6 @@ export type ChatMessage = {
    *  de persistencia). La UI muestra un aviso para que el user pueda reintentar
    *  en vez de creer que no se generó nada. */
   filesPartialError?: boolean;
-  /** Fallaron el intento original y la reparación de un `.txt`/`.md`.
-   * Permite descargar el texto visible como fallback, sin inventar FileCard. */
-  textFileFallback?: {
-    filename: string;
-  };
   tokensInput?: number;
   tokensOutput?: number;
   /** Cuando true, en lugar de content se muestra el "Claude está pensando…". */
@@ -337,28 +332,9 @@ export function reconcileMessages(
       message.clientExecutionId &&
       pendingExecutions.has(message.clientExecutionId),
   );
-  const localById = new Map(localMessages.map((message) => [message.id, message]));
-  const reconciledServer = serverMessages.map((serverMessage) => {
-    const local = localById.get(serverMessage.id);
-    if (!local) return serverMessage;
-    return {
-      ...serverMessage,
-      // Metadatos efímeros de entrega no viven en DB. Los preservamos solo por
-      // id exacto; nunca se trasladan al "último mensaje".
-      ...(local.filesPartialError !== undefined
-        ? { filesPartialError: local.filesPartialError }
-        : {}),
-      ...(local.textFileFallback !== undefined
-        ? { textFileFallback: local.textFileFallback }
-        : {}),
-      ...(local.stopReason !== undefined
-        ? { stopReason: local.stopReason }
-        : {}),
-    };
-  });
   const serverIds = new Set(serverMessages.map((message) => message.id));
   return [
-    ...reconciledServer,
+    ...serverMessages,
     ...pendingLocal.filter((message) => !serverIds.has(message.id)),
   ];
 }
@@ -632,9 +608,6 @@ export function useClaudeChat(projectId: string | null = null) {
               files?: ChatFile[];
               filesFailed?: number;
               filesMissing?: boolean;
-              textFileFallback?: {
-                filename: string;
-              };
             };
             try {
               ev = JSON.parse(line);
@@ -661,8 +634,7 @@ export function useClaudeChat(projectId: string | null = null) {
               }));
             } else if (
               ev.type === "status" &&
-              (ev.status === "generating_file" ||
-                ev.status === "repairing_text_file")
+              ev.status === "generating_file"
             ) {
               // Claude arrancó a generar un archivo → indicador "generando…".
               started = true;
@@ -716,7 +688,6 @@ export function useClaudeChat(projectId: string | null = null) {
                         streaming: false,
                         stopReason: ev.stopReason ?? null,
                         files: doneFiles,
-                        textFileFallback: ev.textFileFallback,
                         // Se esperaba un archivo y el user no lo va a ver. Dos
                         // causas, mismo aviso (la acción del user es la misma:
                         // pedirlo de nuevo): `filesFailed` = se capturó pero no
@@ -724,7 +695,7 @@ export function useClaudeChat(projectId: string | null = null) {
                         // no salió ningún archivo (antes este caso quedaba mudo).
                         filesPartialError:
                           (ev.filesFailed != null && ev.filesFailed > 0) ||
-                          (ev.filesMissing === true && !ev.textFileFallback)
+                          ev.filesMissing === true
                             ? true
                             : undefined,
                       }

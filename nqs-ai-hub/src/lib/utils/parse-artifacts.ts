@@ -243,16 +243,3 @@ export function analyzeArtifactAttempt(content: string): ArtifactAttempt {
       : "missing_type_or_content",
   };
 }
-
-/** Texto visible/descargable, sin envolver artifacts válidos en pseudo-XML. */
-export function messageToPlainText(content: string): string {
-  const { segments } = parseMessageWithArtifacts(content);
-  return segments
-    .map((segment) =>
-      segment.kind === "text"
-        ? segment.content
-        : `\n--- ${segment.artifact.title} ---\n${segment.artifact.content}\n`,
-    )
-    .join("\n")
-    .trim();
-}
