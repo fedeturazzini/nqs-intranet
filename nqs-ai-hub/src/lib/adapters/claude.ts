@@ -57,6 +57,11 @@ import {
   hasDeliveredTextArtifact,
   repairMalformedTextDelivery,
 } from "./claude-text-delivery";
+import {
+  HISTORY_FETCH_MESSAGE_LIMIT,
+  HISTORY_TOKEN_BUDGET,
+  selectHistoryWindow,
+} from "./claude-history-window";
 import { logToolUsage } from "./utils";
 import type {
   AccessState,
@@ -248,9 +253,10 @@ export const claudeAdapter: ToolAdapter = {
       const historyPromise = conversationId
         ? db
             .from("claude_messages")
-            .select("id, role, content, created_at")
+            .select("id, role, content, images, created_at")
             .eq("conversation_id", conversationId)
-            .order("created_at", { ascending: true })
+            .order("created_at", { ascending: false })
+            .limit(HISTORY_FETCH_MESSAGE_LIMIT)
         : Promise.resolve({ data: [], error: null });
       const [prompts, historyResult] = await Promise.all([
         getActiveSystemAndMemoryForProject(TOOL_ID, projectId),
@@ -289,6 +295,15 @@ export const claudeAdapter: ToolAdapter = {
         role: string;
         content: string;
       }> = [];
+      let historyAvailableMessages = 0;
+      let historyAvailableTurns = 0;
+      let historyMessagesSent = 0;
+      let historyTurnsSent = 0;
+      let historyEstimatedTokens = 0;
+      let historyAvailableEstimatedTokens = 0;
+      let historyAttachmentCount = 0;
+      let historyTruncated = false;
+      let historyMandatoryOverflow = false;
       let previousAssistantFileMediaTypes: string[] = [];
 
       if (conversationId) {
@@ -298,11 +313,25 @@ export const claudeAdapter: ToolAdapter = {
         if (prErr) throw prErr;
 
         const priorMessages = orderPriorDeliveryMessages(prior ?? []);
+        // No resumimos lo excluido todavía: una llamada extra agregaría costo y
+        // latencia. Recién vale evaluarlo si usuarios necesitan recuperar
+        // contexto antiguo que no cabe en esta ventana reciente.
+        const historyWindow = selectHistoryWindow(priorMessages);
+        historyAvailableMessages = historyWindow.availableMessages;
+        historyAvailableTurns = historyWindow.availableTurns;
+        historyMessagesSent = historyWindow.messages.length;
+        historyTurnsSent = historyWindow.selectedTurns;
+        historyEstimatedTokens = historyWindow.estimatedTokens;
+        historyAvailableEstimatedTokens =
+          historyWindow.availableEstimatedTokens;
+        historyAttachmentCount = historyWindow.attachmentCount;
+        historyTruncated = historyWindow.truncated;
+        historyMandatoryOverflow = historyWindow.mandatoryOverflow;
         recentDeliveryMessages = priorMessages.slice(-12).map((message) => ({
           role: message.role,
           content: message.content,
         }));
-        for (const m of priorMessages) {
+        for (const m of historyWindow.messages) {
           messages.push({ role: m.role, content: m.content });
         }
         ({ previousUserPrompt, previousAssistantId } =
@@ -397,6 +426,19 @@ export const claudeAdapter: ToolAdapter = {
           brainPasswordGated: projectContext.isPrivate,
           model: systemPrompt.model,
           messagesSent: messages.length, // incluye el turno actual
+          historyFetchMessageLimit: HISTORY_FETCH_MESSAGE_LIMIT,
+          historyFetchCapped:
+            historyAvailableMessages === HISTORY_FETCH_MESSAGE_LIMIT,
+          historyTokenBudget: HISTORY_TOKEN_BUDGET,
+          historyAvailableMessages,
+          historyMessagesSent,
+          historyAvailableTurns,
+          historyTurnsSent,
+          historyAvailableEstimatedTokens,
+          historyEstimatedTokens,
+          historyAttachmentCount,
+          historyTruncated,
+          historyMandatoryOverflow,
           imagesReceived,
           expectedOutput:
             binaryDeliveryIntent?.format ?? textDeliveryIntent?.format ?? null,
