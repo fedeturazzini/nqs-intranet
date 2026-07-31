@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   createClaudeChatSessionStore,
   reconcileMessages,
+  resolveFinalResponseText,
   type ChatMessage,
 } from "@/lib/hooks/useClaudeChat";
 
@@ -97,6 +98,21 @@ describe("reconcileMessages", () => {
     expect(reconciled[1].toolDeliveryFailed).toEqual({
       toolName: "otra_tool",
     });
+  });
+});
+
+describe("resolveFinalResponseText", () => {
+  test("done.text reemplaza deltas parciales aunque ya haya contenido", () => {
+    const streamed = "Listo, lo genero.";
+    const done = `${streamed}\n<function_calls>artifact completo</function_calls>`;
+
+    expect(resolveFinalResponseText(streamed, done)).toBe(done);
+  });
+
+  test("usa los deltas solo si done no trae texto", () => {
+    expect(resolveFinalResponseText("respuesta stream", undefined)).toBe(
+      "respuesta stream",
+    );
   });
 });
 

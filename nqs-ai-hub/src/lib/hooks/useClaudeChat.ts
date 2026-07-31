@@ -369,6 +369,18 @@ export function reconcileMessages(
   ];
 }
 
+/**
+ * El `done.text` viene del resultado final normalizado/persistido por el server
+ * (puede incluir un artifact reparado al terminar). Los deltas son solo una
+ * vista progresiva y nunca deben pisar esa versión autoritativa.
+ */
+export function resolveFinalResponseText(
+  streamedText: string,
+  doneText: string | undefined,
+): string {
+  return doneText ?? streamedText;
+}
+
 const chatSessions = createClaudeChatSessionStore();
 const executionControllers = new Map<string, AbortController>();
 
@@ -695,7 +707,7 @@ export function useClaudeChat(projectId: string | null = null) {
               return { ok: false, error: ev.code ?? msg };
             } else if (ev.type === "done") {
               const convId = ev.conversationId ?? "";
-              const finalText = acc || ev.text || "";
+              const finalText = resolveFinalResponseText(acc, ev.text);
               // messageId "" (la persistencia del mensaje falló) se trata como
               // AUSENTE: `??` no atrapa el string vacío, así que no pisamos el id
               // local con "".

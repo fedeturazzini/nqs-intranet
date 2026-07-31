@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest";
 import {
   detectTextDeliveryIntent,
   hasDeliveredTextArtifact,
+  repairMalformedTextDelivery,
 } from "@/lib/adapters/claude-text-delivery";
+import { parseMessageWithArtifacts } from "@/lib/utils/parse-artifacts";
 import {
   extractGeneratedFilesFromBlocks,
   summarizeContentBlocks,
@@ -56,6 +58,53 @@ describe("detectTextDeliveryIntent", () => {
     ).toBeNull();
     expect(detectTextDeliveryIntent("Escribí una respuesta larga")).toBeNull();
   });
+
+  test("hereda TXT en un reclamo o modificación inequívoca", () => {
+    expect(
+      detectTextDeliveryIntent("No lo veo", {
+        previousUserPrompt: "Genera el .txt",
+      }),
+    ).toEqual({ format: "txt", filename: "respuesta-claude.txt" });
+    expect(
+      detectTextDeliveryIntent("Cambiemos el shot 3", {
+        previousAssistantText: artifact,
+      }),
+    ).toEqual({ format: "txt", filename: "prompt.txt" });
+  });
+
+  test("no hereda formato para una pregunta conversacional", () => {
+    expect(
+      detectTextDeliveryIntent("¿Por qué elegiste esa cámara?", {
+        previousAssistantText: artifact,
+      }),
+    ).toBeNull();
+  });
+
+  test("recupera la intención reciente tras una respuesta fallida", () => {
+    expect(
+      detectTextDeliveryIntent("No lo veo", {
+        recentMessages: [
+          { role: "assistant", content: artifact },
+          { role: "user", content: "Cambiemos el shot 3" },
+          { role: "assistant", content: "Listo, ahí va el archivo." },
+        ],
+      }),
+    ).toEqual({ format: "txt", filename: "prompt.txt" });
+  });
+
+  test("una instrucción posterior de entregar por chat corta la herencia", () => {
+    expect(
+      detectTextDeliveryIntent("Cambiemos el shot 3", {
+        recentMessages: [
+          { role: "assistant", content: artifact },
+          {
+            role: "user",
+            content: "Desde ahora dámelos directamente en el chat, sin .txt",
+          },
+        ],
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("postcondición de entrega textual", () => {
@@ -66,6 +115,58 @@ describe("postcondición de entrega textual", () => {
         response({ generatedFiles: [{ fileId: "file_1" }] }),
       ),
     ).toBe(true);
+  });
+
+  test("repara pseudo-tools bash/present_files como artifact sin ejecutarlos", () => {
+    const malformed = `## Archivo generado
+<function_calls>
+<invoke name="bash_tool">
+<parameter name="command">cat > /mnt/user-data/outputs/prompt.txt << 'EOF'
+CONTENIDO
+con dos líneas
+EOF
+wc -m /mnt/user-data/outputs/prompt.txt</parameter>
+</invoke>
+</function_calls>
+<function_calls>
+<invoke name="present_files">
+<parameter name="files">["/mnt/user-data/outputs/prompt.txt"]</parameter>
+</invoke>
+</function_calls>`;
+
+    const repaired = repairMalformedTextDelivery(malformed, {
+      format: "txt",
+      filename: "prompt.txt",
+    });
+
+    expect(repaired).toMatchObject({
+      repaired: true,
+      source: "bash_heredoc",
+    });
+    expect(repaired.text).not.toContain("bash_tool");
+    expect(repaired.text).not.toContain("/mnt/user-data");
+    expect(parseMessageWithArtifacts(repaired.text).segments).toEqual([
+      { kind: "text", content: "Listo, va el archivo." },
+      {
+        kind: "artifact",
+        artifact: {
+          command: "create",
+          type: "text/plain",
+          title: "prompt.txt",
+          content: "CONTENIDO\ncon dos líneas",
+          language: undefined,
+        },
+      },
+    ]);
+  });
+
+  test("no repara texto sin heredoc recuperable", () => {
+    expect(
+      repairMalformedTextDelivery("Listo, ya lo generé.", {
+        format: "txt",
+        filename: "prompt.txt",
+      }),
+    ).toEqual({ text: "Listo, ya lo generé.", repaired: false });
   });
 });
 

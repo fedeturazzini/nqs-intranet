@@ -55,6 +55,7 @@ import {
 import {
   detectTextDeliveryIntent,
   hasDeliveredTextArtifact,
+  repairMalformedTextDelivery,
 } from "./claude-text-delivery";
 import { logToolUsage } from "./utils";
 import type {
@@ -117,7 +118,12 @@ Patrón recomendado:
 - En el artifact poné el contenido pesado (prompt completo, código, documento).
 El user lo ve como una card con botones de copiar y descargar.
 
-Si el contenido es corto (< 200 palabras) o conversacional, NO uses artifact: devolvelo inline con markdown.
+REGLA OBLIGATORIA PARA ENTREGAS TXT/MARKDOWN:
+- Si el user pide explícitamente un .txt, .md, Markdown, "archivo de texto", descargar, entregar o volver a entregar un archivo textual, DEBÉS usar el artifact de arriba aunque el contenido sea corto.
+- Para TXT/Markdown usá EXCLUSIVAMENTE <invoke name="artifacts">. NUNCA escribas ni simules bash_tool, present_files, cat >, /mnt/user-data, rutas de sandbox ni comandos de shell.
+- No afirmes que entregaste un archivo si no emitiste el artifact completo con type, title y content.
+
+Si el contenido es corto (< 200 palabras) o conversacional, NO uses artifact y devolvelo inline con markdown, SALVO que el user haya pedido explícitamente una entrega TXT/Markdown.
 
 REGLA DE TÍTULOS (aplica SOLO a tus mensajes conversacionales del chat):
 - Para títulos de sección EN EL CHAT, usá SIEMPRE \`## Título\` (header H2 de markdown).
@@ -278,6 +284,11 @@ export const claudeAdapter: ToolAdapter = {
       const messages: ClaudeMessage[] = [];
       let previousUserPrompt: string | null = null;
       let previousAssistantId: string | null = null;
+      let previousAssistantText: string | null = null;
+      let recentDeliveryMessages: Array<{
+        role: string;
+        content: string;
+      }> = [];
       let previousAssistantFileMediaTypes: string[] = [];
 
       if (conversationId) {
@@ -287,11 +298,20 @@ export const claudeAdapter: ToolAdapter = {
         if (prErr) throw prErr;
 
         const priorMessages = orderPriorDeliveryMessages(prior ?? []);
+        recentDeliveryMessages = priorMessages.slice(-12).map((message) => ({
+          role: message.role,
+          content: message.content,
+        }));
         for (const m of priorMessages) {
           messages.push({ role: m.role, content: m.content });
         }
         ({ previousUserPrompt, previousAssistantId } =
           resolvePriorDeliveryTurn(priorMessages));
+        const immediatelyPrevious = priorMessages.at(-1);
+        previousAssistantText =
+          immediatelyPrevious?.role === "assistant"
+            ? immediatelyPrevious.content
+            : null;
 
         // Solo miramos archivos del assistant inmediatamente relevante. Nunca
         // heredamos "el último archivo de la conversación": ese atajo fue la
@@ -353,7 +373,11 @@ export const claudeAdapter: ToolAdapter = {
       // Detrás de DEBUG_BRAIN_VERBOSE (default off) suma el cerebro COMPLETO.
       // Nombre/privacidad ya vienen del proyecto validado pre-stream: el log no
       // agrega una query ni un RTT antes de Anthropic.
-      const textDeliveryIntent = detectTextDeliveryIntent(params.prompt);
+      const textDeliveryIntent = detectTextDeliveryIntent(params.prompt, {
+        previousUserPrompt,
+        previousAssistantText,
+        recentMessages: recentDeliveryMessages,
+      });
       try {
         const brainVerbose = process.env.DEBUG_BRAIN_VERBOSE === "true";
         logInfo("execute.context", {
@@ -400,13 +424,27 @@ export const claudeAdapter: ToolAdapter = {
       // medida que se generan (la respuesta no se corta por timeout aunque
       // el prompt sea grande). Igual acumulamos el texto completo.
       const callStartedAt = Date.now();
-      const response = await streamClaude(
+      let response = await streamClaude(
         fullSystem,
         messages,
         { model: systemPrompt.model, enableFileGeneration: fileGenEnabled },
         onText,
         onStatus,
       );
+      const repairedTextDelivery = repairMalformedTextDelivery(
+        response.text,
+        textDeliveryIntent,
+      );
+      if (repairedTextDelivery.repaired) {
+        response = { ...response, text: repairedTextDelivery.text };
+        logWarn("execute.text_delivery_repaired", {
+          userId,
+          projectId,
+          conversationId,
+          expectedOutput: textDeliveryIntent?.format ?? null,
+          source: repairedTextDelivery.source,
+        });
+      }
       const durationMs = Date.now() - callStartedAt;
       if (
         response.stopReason === "tool_use" &&
@@ -566,6 +604,7 @@ export const claudeAdapter: ToolAdapter = {
         toolUseFailReason: response.toolUseDelivery?.failReason ?? null,
         toolUseName: response.toolUseDelivery?.toolName ?? null,
         textDeliveryFailed,
+        textDeliveryRepaired: repairedTextDelivery.repaired,
         imagesReceived,
         attachmentsSource: imagesReceived > 0 ? "url" : undefined,
         durationMs,
