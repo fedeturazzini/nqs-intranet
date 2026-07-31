@@ -9,6 +9,15 @@ const state = vi.hoisted(() => ({
     created_at: "2026-07-30T00:00:00.000Z",
     updated_at: "2026-07-30T00:00:00.000Z",
   },
+  messages: [] as Array<{
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    images: string[];
+    tokens_input: number | null;
+    tokens_output: number | null;
+    created_at: string;
+  }>,
   gateAllowed: true,
   updateCalls: 0,
 }));
@@ -55,7 +64,7 @@ vi.mock("@/lib/db/supabase", () => ({
         const builder = {
           select: () => builder,
           eq: () => builder,
-          order: async () => ({ data: [], error: null }),
+          order: async () => ({ data: state.messages, error: null }),
         };
         return builder;
       }
@@ -84,6 +93,7 @@ beforeEach(() => {
   state.conversation.project_id = PROJECT_A;
   state.gateAllowed = true;
   state.updateCalls = 0;
+  state.messages = [];
   mocks.getSession.mockResolvedValue({ userId: USER });
   vi.clearAllMocks();
 });
@@ -109,6 +119,43 @@ describe("conversation project context", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.hasProjectGate).not.toHaveBeenCalled();
+  });
+
+  test("GET desempata un batch como user antes de assistant", async () => {
+    const createdAt = "2026-07-31T23:08:20.68781+00:00";
+    state.messages = [
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "Acá está el archivo",
+        images: [],
+        tokens_input: 10,
+        tokens_output: 20,
+        created_at: createdAt,
+      },
+      {
+        id: "user-1",
+        role: "user",
+        content: "pasame el txt",
+        images: [],
+        tokens_input: null,
+        tokens_output: null,
+        created_at: createdAt,
+      },
+    ];
+
+    const response = await GET(
+      new Request(`http://localhost/api/me/conversations/${CONVERSATION}`),
+      context,
+    );
+    const body = (await response.json()) as {
+      messages: Array<{ id: string; role: string }>;
+    };
+
+    expect(body.messages.map(({ id, role }) => ({ id, role }))).toEqual([
+      { id: "user-1", role: "user" },
+      { id: "assistant-1", role: "assistant" },
+    ]);
   });
 
   test("PATCH bloquea un proyecto privado sin gate antes de actualizar", async () => {

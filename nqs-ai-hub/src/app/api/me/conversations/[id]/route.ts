@@ -13,6 +13,7 @@ import { getSession } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
 import { signDownloadUrls } from "@/lib/storage/claude-uploads";
 import { hasProjectGate } from "@/lib/auth/project-gate";
+import { orderPriorDeliveryMessages } from "@/lib/adapters/claude-binary-delivery";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -71,13 +72,17 @@ export async function GET(
       { status: 500 },
     );
   }
+  // User y assistant se insertan en un mismo batch y reciben el mismo NOW().
+  // Postgres no garantiza el orden entre empates: normalizamos antes de firmar
+  // adjuntos y responder para que la reconciliación nunca invierta el turno.
+  const orderedMessages = orderPriorDeliveryMessages(messages ?? []);
 
   // Las imágenes se guardan como PATHS de Storage. Para mostrarlas hay
   // que firmar URLs de descarga on-demand (1h). Juntamos todos los paths
   // de la conversación, firmamos en un solo batch, y devolvemos
   // `imageUrls` por mensaje.
   const allPaths: string[] = [];
-  for (const m of messages ?? []) {
+  for (const m of orderedMessages) {
     const imgs = Array.isArray(m.images) ? (m.images as unknown[]) : [];
     for (const p of imgs) {
       if (typeof p === "string" && p.length > 0) allPaths.push(p);
@@ -129,8 +134,8 @@ export async function GET(
     filesByMessage.set(f.message_id, arr);
   }
   if (orphanFiles.length > 0) {
-    // `messages` viene ordenado ascendente por created_at.
-    const assistantMsgs = (messages ?? []).filter((m) => m.role === "assistant");
+    // `orderedMessages` viene ascendente por created_at con desempate por rol.
+    const assistantMsgs = orderedMessages.filter((m) => m.role === "assistant");
     for (const orphan of orphanFiles) {
       // La etapa 2 inserta el archivo DESPUÉS de su mensaje del assistant, en la
       // misma vuelta → su dueño es el ÚLTIMO assistant creado en o antes que el
@@ -155,7 +160,7 @@ export async function GET(
     }
   }
 
-  const messagesWithUrls = (messages ?? []).map((m) => {
+  const messagesWithUrls = orderedMessages.map((m) => {
     const imgs = Array.isArray(m.images) ? (m.images as unknown[]) : [];
     // Los paths mezclan imágenes y PDFs; se distinguen por extensión. El
     // nombre original del PDF no se persiste (solo el path uuid.pdf) → label
