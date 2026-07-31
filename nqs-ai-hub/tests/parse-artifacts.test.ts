@@ -8,6 +8,7 @@ import {
   hasIncompleteThinking,
   extractPartialArtifact,
   analyzeArtifactAttempt,
+  messageToPlainText,
 } from "@/lib/utils/parse-artifacts";
 
 const artifactBlock = (
@@ -110,6 +111,23 @@ describe("parseMessageWithArtifacts", () => {
     );
     const { segments } = parseMessageWithArtifacts(msg);
     expect(segments.every((s) => s.kind !== "artifact")).toBe(true);
+  });
+});
+
+describe("messageToPlainText", () => {
+  test("elimina el pseudo-XML pero conserva título y contenido descargable", () => {
+    const content =
+      "Listo.\n" +
+      artifactBlock(
+        `<parameter name="type">text/plain</parameter>\n` +
+          `<parameter name="title">prompt.txt</parameter>\n` +
+          `<parameter name="content">PROMPT FINAL</parameter>`,
+      );
+    const plain = messageToPlainText(content);
+    expect(plain).toContain("Listo.");
+    expect(plain).toContain("--- prompt.txt ---");
+    expect(plain).toContain("PROMPT FINAL");
+    expect(plain).not.toContain("<function_calls>");
   });
 });
 

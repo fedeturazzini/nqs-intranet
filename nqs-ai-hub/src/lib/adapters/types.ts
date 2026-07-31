@@ -122,6 +122,14 @@ export type ExecuteResult = {
    * persistir. Este caso antes quedaba MUDO (ver archivo-equivocado-audit.md).
    */
   filesMissing?: boolean;
+  /**
+   * Ambos intentos de entregar un `.txt`/`.md` explícitamente pedido terminaron
+   * sin artifact ni archivo real. La UI puede ofrecer descargar el texto
+   * visible como fallback honesto, sin persistirlo en `claude_files`.
+   */
+  textFileFallback?: {
+    filename: string;
+  };
 };
 
 // ============================================================

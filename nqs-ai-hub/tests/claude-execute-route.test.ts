@@ -96,6 +96,7 @@ describe("POST /api/tools/claude/execute preflight", () => {
         conversationId: CONVERSATION,
         messageId: "message-id",
         createdAt: null,
+        textFileFallback: { filename: "respuesta.txt" },
       },
     });
 
@@ -115,7 +116,9 @@ describe("POST /api/tools/claude/execute preflight", () => {
     expect(response.headers.get("content-type")).toContain(
       "application/x-ndjson",
     );
-    expect(await response.text()).toContain('"type":"done"');
+    const body = await response.text();
+    expect(body).toContain('"type":"done"');
+    expect(body).toContain('"textFileFallback":{"filename":"respuesta.txt"}');
     expect(mocks.execute).toHaveBeenCalledWith(
       USER,
       expect.objectContaining({

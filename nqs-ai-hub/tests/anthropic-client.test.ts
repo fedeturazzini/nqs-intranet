@@ -171,8 +171,16 @@ describe("callClaude — contentBlocks / anthropicMessageId (para execute.summar
     });
     const r = await callClaude("sys", [{ role: "user", content: "x" }]);
     expect(r.contentBlocks).toEqual([
-      { type: "server_tool_use" },
-      { type: "bash_code_execution_tool_result", files: 2 },
+      { type: "server_tool_use", toolName: "code_execution" },
+      {
+        type: "bash_code_execution_tool_result",
+        resultType: "bash_code_execution_result",
+        returnCode: undefined,
+        stdoutChars: 0,
+        stderrChars: 0,
+        errorCode: undefined,
+        files: 2,
+      },
     ]);
   });
 
