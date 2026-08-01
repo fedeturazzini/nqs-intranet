@@ -19,6 +19,7 @@ import type { ConversationListRow } from "@/lib/db/queries/conversations";
 import {
   CONVERSATION_DATE_GROUPS,
   getConversationDateMeta,
+  type ConversationDateGroup,
   type ConversationDateMeta,
 } from "@/components/tool/conversation-date";
 
@@ -48,6 +49,9 @@ export function ConversationsSidebar({
   );
   const [loading, setLoading] = useState(initialConversations === null);
   const [err, setErr] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Set<ConversationDateGroup>
+  >(() => new Set());
   const initialRefreshSignal = useRef(refreshSignal);
   const hasInitialConversations = useRef(initialConversations !== null);
   const groupedItems = useMemo(() => {
@@ -62,6 +66,33 @@ export function ConversationsSidebar({
         .filter(({ dateMeta }) => dateMeta.group === group.key),
     })).filter((group) => group.items.length > 0);
   }, [items]);
+
+  const toggleGroup = useCallback((group: ConversationDateGroup) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(group)) {
+        next.delete(group);
+      } else {
+        next.add(group);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const activeGroup = groupedItems.find((group) =>
+      group.items.some(({ conv }) => conv.id === activeId),
+    );
+    if (!activeGroup) return;
+
+    setCollapsedGroups((current) => {
+      if (!current.has(activeGroup.key)) return current;
+      const next = new Set(current);
+      next.delete(activeGroup.key);
+      return next;
+    });
+  }, [activeId, groupedItems]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -180,29 +211,67 @@ export function ConversationsSidebar({
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {groupedItems.map((group) => (
-          <section key={group.key} aria-labelledby={`conv-group-${group.key}`}>
-            <div
-              id={`conv-group-${group.key}`}
-              className="t-eyebrow"
-              style={{ marginBottom: 4, color: "var(--fg-mute)" }}
-            >
-              {group.label}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {group.items.map(({ conv, dateMeta }) => (
-                <ConvRow
-                  key={conv.id}
-                  conv={conv}
-                  dateMeta={dateMeta}
-                  active={conv.id === activeId}
-                  onSelect={() => onSelect(conv.id)}
-                  onRename={handleRename}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+        {groupedItems.map((group) => {
+          const isExpanded = !collapsedGroups.has(group.key);
+          const contentId = `conv-group-content-${group.key}`;
+
+          return (
+            <section key={group.key}>
+              <button
+                type="button"
+                id={`conv-group-${group.key}`}
+                aria-expanded={isExpanded}
+                aria-controls={contentId}
+                onClick={() => toggleGroup(group.key)}
+                style={{
+                  appearance: "none",
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: isExpanded ? 4 : 0,
+                  padding: "2px 0",
+                  border: 0,
+                  background: "transparent",
+                  color: "var(--fg)",
+                  cursor: "pointer",
+                  fontFamily: "var(--mono)",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.16em",
+                  lineHeight: 1.4,
+                  textAlign: "left",
+                }}
+              >
+                <span>{group.label}</span>
+                <span aria-hidden="true" style={{ letterSpacing: 0 }}>
+                  {isExpanded ? "▾" : "▸"}
+                </span>
+              </button>
+              <div
+                id={contentId}
+                aria-labelledby={`conv-group-${group.key}`}
+                hidden={!isExpanded}
+                style={{
+                  display: isExpanded ? "flex" : "none",
+                  flexDirection: "column",
+                  gap: 2,
+                }}
+              >
+                {group.items.map(({ conv, dateMeta }) => (
+                  <ConvRow
+                    key={conv.id}
+                    conv={conv}
+                    dateMeta={dateMeta}
+                    active={conv.id === activeId}
+                    onSelect={() => onSelect(conv.id)}
+                    onRename={handleRename}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </aside>
   );
