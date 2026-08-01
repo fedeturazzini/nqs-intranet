@@ -457,15 +457,18 @@ export function ChatInput({
         />
         <textarea
           ref={textareaRef}
-          value={text}
+          value={uploading ? "" : text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           placeholder={
-            isDragging
+            uploading
+              ? "Subiendo adjuntos…"
+              : isDragging
               ? "soltá los archivos acá…"
               : "Escribí tu mensaje… (Enter para enviar, Shift+Enter para nueva línea)"
           }
+          readOnly={uploading}
           rows={1}
           style={{
             flex: 1,
