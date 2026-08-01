@@ -13,6 +13,7 @@
  *      mientras se compone (no se sube, solo preview optimista).
  */
 import { createBrowserClient } from "@/lib/db/supabase";
+import { mapWithConcurrency } from "@/lib/utils/concurrency";
 
 // 30 MB = tope de ENTRADA de imágenes (como Claude online). Antes de subir,
 // `compressImageIfNeeded` comprime las grandes a ~4MB (Anthropic acepta 5MB/img).
@@ -30,6 +31,7 @@ export const ACCEPTED_MEDIA_TYPES = [
 ] as const;
 export type AcceptedMediaType = (typeof ACCEPTED_MEDIA_TYPES)[number];
 const CLAUDE_UPLOADS_BUCKET = "claude-uploads";
+export const ATTACHMENT_UPLOAD_CONCURRENCY = 3;
 
 /** True si el archivo (o path) es un PDF. */
 export function isPdfFile(file: File): boolean {
@@ -122,20 +124,22 @@ export async function uploadImages(
 
   // 2) subir cada file con su signed URL (directo a Storage)
   const supabase = createBrowserClient();
-  const paths: string[] = [];
-  for (let i = 0; i < files.length; i++) {
-    const target = targets[i];
-    const { error } = await supabase.storage
-      .from(CLAUDE_UPLOADS_BUCKET)
-      .uploadToSignedUrl(target.path, target.token, files[i], {
-        contentType: files[i].type,
-      });
-    if (error) {
-      throw new Error(`no pude subir ${files[i].name}: ${error.message}`);
-    }
-    paths.push(target.path);
-  }
-  return paths;
+  return mapWithConcurrency(
+    files,
+    ATTACHMENT_UPLOAD_CONCURRENCY,
+    async (file, index) => {
+      const target = targets[index];
+      const { error } = await supabase.storage
+        .from(CLAUDE_UPLOADS_BUCKET)
+        .uploadToSignedUrl(target.path, target.token, file, {
+          contentType: file.type,
+        });
+      if (error) {
+        throw new Error(`no pude subir ${file.name}: ${error.message}`);
+      }
+      return target.path;
+    },
+  );
 }
 
 /**

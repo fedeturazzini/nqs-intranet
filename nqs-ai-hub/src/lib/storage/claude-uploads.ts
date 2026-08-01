@@ -18,10 +18,12 @@
  * Server-only — usa service_role.
  */
 import { createServerClient } from "@/lib/db/supabase";
+import { mapWithConcurrency } from "@/lib/utils/concurrency";
 
 export const CLAUDE_UPLOADS_BUCKET = "claude-uploads";
 export const SIGNED_UPLOAD_EXPIRY_SECONDS = 120; // 2 min para subir
 export const SIGNED_DOWNLOAD_EXPIRY_SECONDS = 3600; // 1 hora (lo que pidió NQS)
+export const SIGNED_UPLOAD_CONCURRENCY = 3;
 
 const EXT_BY_MEDIA: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -52,22 +54,23 @@ export async function createUploadTargets(
 ): Promise<UploadTarget[]> {
   const db = createServerClient();
   const convSegment = conversationId ?? "new";
-  const targets: UploadTarget[] = [];
-
-  for (const media of mediaTypes) {
-    const ext = EXT_BY_MEDIA[media] ?? "bin";
-    const path = `user_${userId}/${convSegment}/${crypto.randomUUID()}.${ext}`;
-    const { data, error } = await db.storage
-      .from(CLAUDE_UPLOADS_BUCKET)
-      .createSignedUploadUrl(path);
-    if (error || !data) {
-      throw new Error(
-        `no pude crear signed upload url: ${error?.message ?? "unknown"}`,
-      );
-    }
-    targets.push({ path, signedUrl: data.signedUrl, token: data.token });
-  }
-  return targets;
+  return mapWithConcurrency(
+    mediaTypes,
+    SIGNED_UPLOAD_CONCURRENCY,
+    async (media) => {
+      const ext = EXT_BY_MEDIA[media] ?? "bin";
+      const path = `user_${userId}/${convSegment}/${crypto.randomUUID()}.${ext}`;
+      const { data, error } = await db.storage
+        .from(CLAUDE_UPLOADS_BUCKET)
+        .createSignedUploadUrl(path);
+      if (error || !data) {
+        throw new Error(
+          `no pude crear signed upload url: ${error?.message ?? "unknown"}`,
+        );
+      }
+      return { path, signedUrl: data.signedUrl, token: data.token };
+    },
+  );
 }
 
 /**
