@@ -1,5 +1,27 @@
 import { describe, expect, test } from "vitest";
-import { shouldFollowChatScroll } from "@/components/tool/chat-scroll-follow";
+import {
+  shouldAttachChatScrollListeners,
+  shouldFollowChatScroll,
+} from "@/components/tool/chat-scroll-follow";
+
+describe("scroll listener lifecycle", () => {
+  test("se habilita al pasar de chat vacío a mensajes y permite despegarse", () => {
+    expect(shouldAttachChatScrollListeners(0)).toBe(false);
+    expect(shouldAttachChatScrollListeners(1)).toBe(true);
+
+    const followsAfterUpwardIntent = shouldFollowChatScroll({
+      isFollowing: true,
+      previousScrollTop: 1_000,
+      scrollTop: 1_000,
+      distanceFromBottom: 4,
+      manualUp: true,
+    });
+
+    expect(followsAfterUpwardIntent).toBe(false);
+    const showJumpToBottom = !followsAfterUpwardIntent;
+    expect(showJumpToBottom).toBe(true);
+  });
+});
 
 describe("shouldFollowChatScroll", () => {
   test("deja de seguir apenas el usuario intenta subir", () => {

@@ -33,7 +33,10 @@ import {
   areMessageBubblePropsEqual,
   type MessageBubbleProps,
 } from "@/components/tool/chat-message-memo";
-import { shouldFollowChatScroll } from "@/components/tool/chat-scroll-follow";
+import {
+  shouldAttachChatScrollListeners,
+  shouldFollowChatScroll,
+} from "@/components/tool/chat-scroll-follow";
 
 type ChatMessagesProps = Readonly<{
   messages: ChatMessage[];
@@ -85,6 +88,9 @@ export function ChatMessages({
   const prevLenRef = useRef(messages.length);
   const previousScrollTopRef = useRef(0);
   const previousTouchYRef = useRef<number | null>(null);
+  const shouldAttachScrollListeners = shouldAttachChatScrollListeners(
+    messages.length,
+  );
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [jumpPosition, setJumpPosition] = useState<{
     left: number;
@@ -94,6 +100,7 @@ export function ChatMessages({
   // Detectar scroll manual sobre el contenedor scrolleable (vive en
   // ClaudeView). Si el user se aleja del fondo, dejamos de pegarlo abajo.
   useEffect(() => {
+    if (!shouldAttachScrollListeners) return;
     const scroller = getScrollParent(listRef.current);
     if (!scroller) return;
     scrollParentRef.current = scroller;
@@ -161,7 +168,7 @@ export function ChatMessages({
       resizeObserver.disconnect();
       if (scrollParentRef.current === scroller) scrollParentRef.current = null;
     };
-  }, []);
+  }, [shouldAttachScrollListeners]);
 
   // Autoscroll: instantáneo en cada chunk de streaming, suave al entrar un
   // mensaje nuevo. Si el user acaba de mandar un mensaje, forzamos ir al fondo.

@@ -1,5 +1,9 @@
 export const CHAT_BOTTOM_THRESHOLD_PX = 24;
 
+export function shouldAttachChatScrollListeners(messageCount: number): boolean {
+  return messageCount > 0;
+}
+
 type ScrollFollowInput = {
   isFollowing: boolean;
   previousScrollTop: number;
