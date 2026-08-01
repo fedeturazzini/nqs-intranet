@@ -19,6 +19,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NO_CREDITS_CODE } from "@/lib/anthropic/errors";
+import { createClaudeDeltaBatcher } from "@/lib/hooks/claude-delta-batcher";
 
 /** Mensaje al usuario cuando la API se quedó sin saldo (NO_CREDITS). NO le
  *  mostramos el texto de billing ni el request_id de Anthropic — es info del
@@ -505,6 +506,23 @@ export function resolveFinalResponseText(
   return doneText ?? streamedText;
 }
 
+export function applyStreamingText(
+  messages: ChatMessage[],
+  executionId: string,
+  content: string,
+): ChatMessage[] {
+  return messages.map((message) =>
+    message.clientExecutionId === executionId && message.role === "assistant"
+      ? {
+          ...message,
+          isPending: false,
+          streaming: true,
+          content,
+        }
+      : message,
+  );
+}
+
 const chatSessions = createClaudeChatSessionStore();
 const executionControllers = new Map<string, AbortController>();
 
@@ -742,10 +760,30 @@ export function useClaudeChat(projectId: string | null = null) {
 
       // Declarados afuera del try para que el handler de AbortError (botón
       // "Detener") conserve el texto que llegó hasta ese momento.
-      let acc = "";
       let started = false;
       const controller = new AbortController();
       executionControllers.set(executionId, controller);
+      const streamSessionKey = { current: sessionKey };
+      let streamGeneration = 1;
+      const batchGeneration = streamGeneration;
+      const deltaBatcher = createClaudeDeltaBatcher({
+        onFlush: (content) => {
+          if (streamGeneration !== batchGeneration) return;
+          chatSessions.update(streamSessionKey.current, (current) => ({
+            ...current,
+            messages: applyStreamingText(
+              current.messages,
+              executionId,
+              content,
+            ),
+          }));
+        },
+      });
+
+      const invalidateDeltaBatch = () => {
+        streamGeneration += 1;
+        deltaBatcher.cancel();
+      };
 
       try {
         // El POST al execute, envuelto para poder reintentarlo UNA vez tras
@@ -846,21 +884,7 @@ export function useClaudeChat(projectId: string | null = null) {
 
             if (ev.type === "delta" && ev.text) {
               started = true;
-              acc += ev.text;
-              chatSessions.update(sessionKey, (current) => ({
-                ...current,
-                messages: current.messages.map((message) =>
-                  message.clientExecutionId === executionId &&
-                  message.role === "assistant"
-                    ? {
-                        ...message,
-                        isPending: false,
-                        streaming: true,
-                        content: acc,
-                      }
-                    : message,
-                ),
-              }));
+              deltaBatcher.push(ev.text);
             } else if (
               ev.type === "status" &&
               (ev.status === "generating_file" ||
@@ -868,6 +892,7 @@ export function useClaudeChat(projectId: string | null = null) {
             ) {
               // Claude arrancó a generar un archivo → indicador "generando…".
               started = true;
+              deltaBatcher.flush();
               chatSessions.update(sessionKey, (current) => ({
                 ...current,
                 messages: current.messages.map((message) =>
@@ -883,6 +908,7 @@ export function useClaudeChat(projectId: string | null = null) {
                 ),
               }));
             } else if (ev.type === "error") {
+              invalidateDeltaBatch();
               const msg =
                 ev.code === NO_CREDITS_CODE
                   ? NO_CREDITS_MESSAGE
@@ -890,8 +916,13 @@ export function useClaudeChat(projectId: string | null = null) {
               setErrorOnPending(msg);
               return { ok: false, error: ev.code ?? msg };
             } else if (ev.type === "done") {
+              const accumulatedText = deltaBatcher.text();
+              invalidateDeltaBatch();
               const convId = ev.conversationId ?? "";
-              const finalText = resolveFinalResponseText(acc, ev.text);
+              const finalText = resolveFinalResponseText(
+                accumulatedText,
+                ev.text,
+              );
               // messageId "" (la persistencia del mensaje falló) se trata como
               // AUSENTE: `??` no atrapa el string vacío, así que no pisamos el id
               // local con "".
@@ -942,6 +973,7 @@ export function useClaudeChat(projectId: string | null = null) {
                   sessionKey,
                   convId,
                 );
+                streamSessionKey.current = sessionKey;
               }
               if (convId) {
                 // Siempre reconciliamos el mensaje final, no solo files: cubre
@@ -955,6 +987,8 @@ export function useClaudeChat(projectId: string | null = null) {
 
         // Stream terminó sin 'done' explícito.
         if (started) {
+          deltaBatcher.flush();
+          invalidateDeltaBatch();
           // Red de seguridad para el corte del canal: si la conversación ya
           // existía, traemos la verdad persistida sin tocar otra selección.
           const convId = sourceConversationId ?? "";
@@ -968,6 +1002,8 @@ export function useClaudeChat(projectId: string | null = null) {
       } catch (err) {
         // "Detener generación": no es un error — conservamos lo que llegó.
         if (err instanceof DOMException && err.name === "AbortError") {
+          const accumulatedText = deltaBatcher.text();
+          invalidateDeltaBatch();
           chatSessions.update(sessionKey, (current) => ({
             ...current,
             messages: current.messages.map((message) =>
@@ -977,17 +1013,19 @@ export function useClaudeChat(projectId: string | null = null) {
                     ...message,
                     isPending: false,
                     streaming: false,
-                    content: acc || "_(generación detenida)_",
+                    content: accumulatedText || "_(generación detenida)_",
                   }
                 : message,
             ),
           }));
           return { ok: true, conversationId: sourceConversationId ?? "" };
         }
+        invalidateDeltaBatch();
         const msg = err instanceof Error ? err.message : "error de red";
         setErrorOnPending(msg);
         return { ok: false, error: msg };
       } finally {
+        invalidateDeltaBatch();
         executionControllers.delete(executionId);
         chatSessions.update(sessionKey, (current) => ({
           ...current,

@@ -10,7 +10,7 @@
  * Auto-scroll al último mensaje cada vez que cambia la lista o entra un
  * mensaje en estado pending.
  */
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { showToast } from "@/lib/store/toast";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
@@ -29,6 +29,10 @@ import {
 } from "@/lib/utils/parse-artifacts";
 import { TOOL_DELIVERY_WARNING } from "@/lib/utils/tool-use-artifacts";
 import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
+import {
+  areMessageBubblePropsEqual,
+  type MessageBubbleProps,
+} from "@/components/tool/chat-message-memo";
 
 type ChatMessagesProps = Readonly<{
   messages: ChatMessage[];
@@ -189,13 +193,7 @@ function ConversationSkeleton() {
   );
 }
 
-type MessageBubbleProps = Readonly<{
-  msg: ChatMessage;
-  userInitials: string;
-  userFirstName: string;
-}>;
-
-function MessageBubble({
+const MessageBubble = memo(function MessageBubble({
   msg,
   userInitials,
   userFirstName,
@@ -422,7 +420,7 @@ function MessageBubble({
       />
     </div>
   );
-}
+}, areMessageBubblePropsEqual);
 
 /**
  * Indicador "Claude está pensando…" con un contador de segundos que sube,
@@ -450,7 +448,7 @@ function ThinkingIndicator() {
  * (cards). Durante el streaming, si hay un artifact a medio llegar, oculta su
  * XML parcial y muestra un placeholder "generando…".
  */
-function AssistantContent({
+const AssistantContent = memo(function AssistantContent({
   content,
   streaming,
 }: {
@@ -492,7 +490,7 @@ function AssistantContent({
       {partial && <ArtifactCard artifact={partial} incomplete />}
     </>
   );
-}
+});
 
 /**
  * Barra al pie de los mensajes de Claude (se revela al hover). "Copiar" copia

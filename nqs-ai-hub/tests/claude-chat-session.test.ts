@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  applyStreamingText,
   createClaudeChatSessionStore,
   createInFlightRequestDeduper,
   reconcileMessages,
@@ -138,6 +139,46 @@ describe("resolveFinalResponseText", () => {
     expect(resolveFinalResponseText("respuesta stream", undefined)).toBe(
       "respuesta stream",
     );
+  });
+});
+
+describe("applyStreamingText", () => {
+  test("actualiza solo el assistant activo y conserva referencias terminadas", () => {
+    const finished = message("old", "assistant", "respuesta terminada");
+    const user = message("user", "user", "pedido");
+    const active = message("pending", "assistant", "", {
+      clientExecutionId: "exec-stream",
+      isPending: true,
+    });
+
+    const result = applyStreamingText(
+      [finished, user, active],
+      "exec-stream",
+      "texto acumulado",
+    );
+
+    expect(result[0]).toBe(finished);
+    expect(result[1]).toBe(user);
+    expect(result[2]).not.toBe(active);
+    expect(result[2]).toMatchObject({
+      content: "texto acumulado",
+      isPending: false,
+      streaming: true,
+    });
+  });
+
+  test("nunca actualiza un assistant de otra ejecución", () => {
+    const assistant = message("other", "assistant", "sin cambios", {
+      clientExecutionId: "exec-other",
+    });
+
+    const result = applyStreamingText(
+      [assistant],
+      "exec-stream",
+      "texto incorrecto",
+    );
+
+    expect(result[0]).toBe(assistant);
   });
 });
 
