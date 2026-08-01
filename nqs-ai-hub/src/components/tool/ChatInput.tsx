@@ -313,7 +313,21 @@ export function ChatInput({
         transition: "border-color 0.15s",
       }}
     >
-      {attachments.length > 0 && (
+      {attachments.length > 0 && uploading && (
+        <div
+          className="t-meta dim"
+          style={{
+            padding: "8px 10px 0",
+            fontSize: 10,
+            fontFamily: "var(--mono)",
+          }}
+        >
+          ↑ subiendo {attachments.length}{" "}
+          {attachments.length === 1 ? "adjunto" : "adjuntos"}…
+        </div>
+      )}
+
+      {attachments.length > 0 && !uploading && (
         <div
           style={{
             display: "flex",
