@@ -33,6 +33,7 @@ import {
   areMessageBubblePropsEqual,
   type MessageBubbleProps,
 } from "@/components/tool/chat-message-memo";
+import { shouldFollowChatScroll } from "@/components/tool/chat-scroll-follow";
 
 type ChatMessagesProps = Readonly<{
   messages: ChatMessage[];
@@ -76,25 +77,90 @@ export function ChatMessages({
 }: ChatMessagesProps) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const scrollParentRef = useRef<HTMLElement | null>(null);
   // ¿El user está pegado al fondo? Si scrolleó arriba para leer mensajes
   // anteriores, NO autoscrolleamos (no lo interrumpimos mientras Claude
   // sigue streameando).
   const stickRef = useRef(true);
   const prevLenRef = useRef(messages.length);
+  const previousScrollTopRef = useRef(0);
+  const previousTouchYRef = useRef<number | null>(null);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [jumpPosition, setJumpPosition] = useState<{
+    left: number;
+    bottom: number;
+  } | null>(null);
 
   // Detectar scroll manual sobre el contenedor scrolleable (vive en
   // ClaudeView). Si el user se aleja del fondo, dejamos de pegarlo abajo.
   useEffect(() => {
     const scroller = getScrollParent(listRef.current);
     if (!scroller) return;
-    const onScroll = () => {
-      const dist =
+    scrollParentRef.current = scroller;
+    previousScrollTopRef.current = scroller.scrollTop;
+
+    const updateJumpPosition = () => {
+      const rect = scroller.getBoundingClientRect();
+      setJumpPosition({
+        left: rect.left + rect.width / 2,
+        bottom: Math.max(16, window.innerHeight - rect.bottom + 16),
+      });
+    };
+
+    const applyFollowState = (manualUp = false) => {
+      const distanceFromBottom =
         scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-      stickRef.current = dist < 80;
+      const follows =
+        scroller.scrollHeight <= scroller.clientHeight + 1
+          ? true
+          : shouldFollowChatScroll({
+              isFollowing: stickRef.current,
+              previousScrollTop: previousScrollTopRef.current,
+              scrollTop: scroller.scrollTop,
+              distanceFromBottom,
+              manualUp,
+            });
+      stickRef.current = follows;
+      setShowJumpToBottom(!follows);
+      if (!follows) updateJumpPosition();
+    };
+
+    const onScroll = () => {
+      applyFollowState();
+      previousScrollTopRef.current = scroller.scrollTop;
+    };
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) applyFollowState(true);
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      previousTouchYRef.current = event.touches[0]?.clientY ?? null;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches[0]?.clientY;
+      const previousY = previousTouchYRef.current;
+      if (currentY != null && previousY != null && currentY > previousY + 1) {
+        applyFollowState(true);
+      }
+      previousTouchYRef.current = currentY ?? null;
     };
     scroller.addEventListener("scroll", onScroll, { passive: true });
+    scroller.addEventListener("wheel", onWheel, { passive: true });
+    scroller.addEventListener("touchstart", onTouchStart, { passive: true });
+    scroller.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("resize", updateJumpPosition);
+    const resizeObserver = new ResizeObserver(updateJumpPosition);
+    resizeObserver.observe(scroller);
     onScroll();
-    return () => scroller.removeEventListener("scroll", onScroll);
+    updateJumpPosition();
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+      scroller.removeEventListener("wheel", onWheel);
+      scroller.removeEventListener("touchstart", onTouchStart);
+      scroller.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("resize", updateJumpPosition);
+      resizeObserver.disconnect();
+      if (scrollParentRef.current === scroller) scrollParentRef.current = null;
+    };
   }, []);
 
   // Autoscroll: instantáneo en cada chunk de streaming, suave al entrar un
@@ -103,7 +169,10 @@ export function ChatMessages({
     const grew = messages.length > prevLenRef.current;
     prevLenRef.current = messages.length;
     const last = messages[messages.length - 1];
-    if (grew && last?.role === "user") stickRef.current = true;
+    if (grew && last?.role === "user") {
+      stickRef.current = true;
+      setShowJumpToBottom(false);
+    }
     if (stickRef.current) {
       endRef.current?.scrollIntoView({
         behavior: grew ? "smooth" : "auto",
@@ -111,6 +180,14 @@ export function ChatMessages({
       });
     }
   }, [messages]);
+
+  const jumpToBottom = () => {
+    stickRef.current = true;
+    setShowJumpToBottom(false);
+    const scroller = scrollParentRef.current;
+    if (scroller) previousScrollTopRef.current = scroller.scrollTop;
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  };
 
   if (messages.length === 0 && isLoadingConversation) {
     return <ConversationSkeleton />;
@@ -142,6 +219,24 @@ export function ChatMessages({
         />
       ))}
       <div ref={endRef} />
+      {showJumpToBottom && jumpPosition && (
+        <button
+          type="button"
+          className="btn secondary sm"
+          aria-label="Ir al final de la conversación"
+          onClick={jumpToBottom}
+          style={{
+            position: "fixed",
+            left: jumpPosition.left,
+            bottom: jumpPosition.bottom,
+            transform: "translateX(-50%)",
+            zIndex: 20,
+            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.24)",
+          }}
+        >
+          ↓ IR AL FINAL
+        </button>
+      )}
     </div>
   );
 }
