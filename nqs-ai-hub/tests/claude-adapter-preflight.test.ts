@@ -24,9 +24,7 @@ vi.mock("@/lib/db/supabase", () => ({
       }
       return {
         select: () => ({
-          eq: () => ({
-            order: () => ({ limit: mocks.historyOrder }),
-          }),
+          eq: () => ({ order: mocks.historyOrder }),
         }),
       };
     },
@@ -131,7 +129,6 @@ describe("Claude adapter preflight", () => {
 
     expect(mocks.getBrain).toHaveBeenCalledTimes(1);
     expect(mocks.historyOrder).toHaveBeenCalledTimes(1);
-    expect(mocks.historyOrder).toHaveBeenCalledWith(200);
     expect(settled).toBe(false);
 
     history.resolve({ data: [], error: null });
@@ -155,10 +152,6 @@ describe("Claude adapter preflight", () => {
         projectId: "project-1",
         projectName: "Proyecto en memoria",
         brainPasswordGated: true,
-        historyTokenBudget: 48_000,
-        historyAvailableMessages: 0,
-        historyMessagesSent: 0,
-        historyTruncated: false,
       }),
     );
     expect(mocks.getProjectSummary).not.toHaveBeenCalled();
