@@ -137,12 +137,19 @@ type ChatSessionState = {
   isSending: boolean;
   loadError: string | null;
   loadRequest: number;
+  syncRequest: number;
 };
 
 type SessionLoad = {
   key: string;
   request: number;
+  syncRequest: number;
   selection: number;
+};
+
+type SessionSync = {
+  key: string;
+  request: number;
 };
 
 /**
@@ -174,6 +181,7 @@ export function createClaudeChatSessionStore() {
       isSending: false,
       loadError: null,
       loadRequest: 0,
+      syncRequest: 0,
     };
   }
 
@@ -254,20 +262,23 @@ export function createClaudeChatSessionStore() {
   ): SessionLoad {
     const selected = selectConversation(projectId, conversationId);
     const request = selected.loadRequest + 1;
+    const syncRequest = selected.syncRequest + 1;
     sessions.set(selected.key, {
       ...selected,
       loadRequest: request,
+      syncRequest,
       loadError: null,
     });
     emit();
-    return { key: selected.key, request, selection };
+    return { key: selected.key, request, syncRequest, selection };
   }
 
   function isCurrentLoad(load: SessionLoad): boolean {
     return (
       activeKey === load.key &&
       selection === load.selection &&
-      sessions.get(load.key)?.loadRequest === load.request
+      sessions.get(load.key)?.loadRequest === load.request &&
+      sessions.get(load.key)?.syncRequest === load.syncRequest
     );
   }
 
@@ -283,15 +294,32 @@ export function createClaudeChatSessionStore() {
 
   function failLoad(load: SessionLoad, message: string): boolean {
     if (!isCurrentLoad(load)) return false;
-    update(load.key, (session) => ({ ...session, loadError: message }));
+    update(load.key, (session) => ({
+      ...session,
+      loadError: message,
+    }));
     return true;
   }
 
-  function reconcile(key: string, messages: ChatMessage[]): void {
-    update(key, (session) => ({
+  function beginReconcile(key: string): SessionSync | null {
+    const current = sessions.get(key);
+    if (!current) return null;
+    const request = current.syncRequest + 1;
+    sessions.set(key, { ...current, syncRequest: request });
+    return { key, request };
+  }
+
+  function applyReconcile(
+    sync: SessionSync,
+    messages: ChatMessage[],
+  ): boolean {
+    const current = sessions.get(sync.key);
+    if (!current || current.syncRequest !== sync.request) return false;
+    update(sync.key, (session) => ({
       ...session,
       messages: reconcileMessages(messages, session.messages),
     }));
+    return true;
   }
 
   return {
@@ -310,7 +338,8 @@ export function createClaudeChatSessionStore() {
     isCurrentLoad,
     update,
     migrateToConversation,
-    reconcile,
+    beginReconcile,
+    applyReconcile,
   };
 }
 
@@ -346,6 +375,12 @@ export function reconcileMessages(
     if (!local) return serverMessage;
     return {
       ...serverMessage,
+      // `done.files` ya es autoritativo. Un GET iniciado inmediatamente puede
+      // observar un snapshot atrasado sin esos files; solo preservamos los del
+      // mismo message_id, nunca los trasladamos a otro assistant.
+      ...(local.files?.length && !serverMessage.files?.length
+        ? { files: local.files }
+        : {}),
       // Metadatos efímeros de entrega no viven en DB. Los preservamos solo por
       // id exacto; nunca se trasladan al "último mensaje".
       ...(local.filesPartialError !== undefined
@@ -546,10 +581,12 @@ export function useClaudeChat(projectId: string | null = null) {
         key: string,
       ): Promise<void> => {
         if (!convId) return;
+        const sync = chatSessions.beginReconcile(key);
+        if (!sync) return;
         try {
           const data = await fetchConversation(convId);
           if (data) {
-            chatSessions.reconcile(key, mapConversationMessages(data));
+            chatSessions.applyReconcile(sync, mapConversationMessages(data));
           }
         } catch {
           // Silencioso: red de seguridad, no interrumpe la respuesta.
@@ -762,7 +799,7 @@ export function useClaudeChat(projectId: string | null = null) {
               if (convId) {
                 // Siempre reconciliamos el mensaje final, no solo files: cubre
                 // placeholder desmontado/done tardío y mantiene files exactos.
-                await reconcileFromServer(convId, sessionKey);
+                void reconcileFromServer(convId, sessionKey);
               }
               return { ok: true, conversationId: convId };
             }

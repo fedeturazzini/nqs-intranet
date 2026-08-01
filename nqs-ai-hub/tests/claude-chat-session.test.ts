@@ -66,6 +66,17 @@ describe("reconcileMessages", () => {
     expect(reconciled[1].files).toEqual([fileB]);
   });
 
+  test("preserva files de done si el GET del mismo mensaje todavía está atrasado", () => {
+    const file = { id: "file-a", name: "entrega.txt", mediaType: "text/plain" };
+    const server = [message("assistant-a", "assistant", "respuesta A")];
+    const local = [
+      message("assistant-a", "assistant", "respuesta A", { files: [file] }),
+    ];
+
+    const reconciled = reconcileMessages(server, local);
+    expect(reconciled[0].files).toEqual([file]);
+  });
+
   test("preserva fallback TXT solo por message_id exacto al reconciliar", () => {
     const server = [
       message("assistant-a", "assistant", "respuesta A"),
@@ -176,5 +187,50 @@ describe("createClaudeChatSessionStore", () => {
 
     expect(store.active().conversationId).toBe(CONVERSATION_B);
     expect(store.active().messages[0].content).toBe("respuesta B");
+  });
+
+  test("solo aplica la reconciliación más reciente de una sesión", () => {
+    const store = createClaudeChatSessionStore();
+    const session = store.ensureProject(PROJECT_ID);
+    const oldSync = store.beginReconcile(session.key);
+    const latestSync = store.beginReconcile(session.key);
+
+    expect(oldSync).not.toBeNull();
+    expect(latestSync).not.toBeNull();
+    expect(
+      store.applyReconcile(oldSync!, [
+        message("old", "assistant", "snapshot viejo"),
+      ]),
+    ).toBe(false);
+    expect(
+      store.applyReconcile(latestSync!, [
+        message("new", "assistant", "snapshot nuevo"),
+      ]),
+    ).toBe(true);
+    expect(store.active().messages[0].content).toBe("snapshot nuevo");
+  });
+
+  test("reconcilia la sesión correcta aunque ya no esté activa", () => {
+    const store = createClaudeChatSessionStore();
+    const sessionA = store.ensureProject(PROJECT_ID);
+    const syncA = store.beginReconcile(sessionA.key);
+    const loadB = store.beginLoad(PROJECT_ID, CONVERSATION_B);
+    store.applyLoad(loadB, [message("b", "assistant", "respuesta B")]);
+
+    expect(syncA).not.toBeNull();
+    expect(
+      store.applyReconcile(syncA!, [
+        message("a", "assistant", "respuesta A"),
+      ]),
+    ).toBe(true);
+    expect(store.active().conversationId).toBe(CONVERSATION_B);
+    expect(store.active().messages[0].content).toBe("respuesta B");
+
+    let inactiveMessages: ChatMessage[] = [];
+    store.update(sessionA.key, (session) => {
+      inactiveMessages = session.messages;
+      return session;
+    });
+    expect(inactiveMessages[0].content).toBe("respuesta A");
   });
 });
