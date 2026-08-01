@@ -13,9 +13,14 @@
  * en la lista al instante (sin recargar); si el PATCH falla, se avisa y se
  * mantiene el título viejo.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showToast } from "@/lib/store/toast";
 import type { ConversationListRow } from "@/lib/db/queries/conversations";
+import {
+  CONVERSATION_DATE_GROUPS,
+  getConversationDateMeta,
+  type ConversationDateMeta,
+} from "@/components/tool/conversation-date";
 
 type ConversationsSidebarProps = Readonly<{
   /** ID de la conv actualmente activa (si la hay) para destacarla. */
@@ -38,12 +43,25 @@ export function ConversationsSidebar({
   onSelect,
   onNew,
 }: ConversationsSidebarProps) {
-  const [items, setItems] =
-    useState<ConversationListRow[]>(initialConversations ?? []);
+  const [items, setItems] = useState<ConversationListRow[]>(
+    initialConversations ?? [],
+  );
   const [loading, setLoading] = useState(initialConversations === null);
   const [err, setErr] = useState<string | null>(null);
   const initialRefreshSignal = useRef(refreshSignal);
   const hasInitialConversations = useRef(initialConversations !== null);
+  const groupedItems = useMemo(() => {
+    const now = new Date();
+    return CONVERSATION_DATE_GROUPS.map((group) => ({
+      ...group,
+      items: items
+        .map((conv) => ({
+          conv,
+          dateMeta: getConversationDateMeta(conv.updated_at, now),
+        }))
+        .filter(({ dateMeta }) => dateMeta.group === group.key),
+    })).filter((group) => group.items.length > 0);
+  }, [items]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -148,9 +166,7 @@ export function ConversationsSidebar({
         </button>
       </div>
 
-      {loading && (
-        <div className="t-meta dim">cargando…</div>
-      )}
+      {loading && <div className="t-meta dim">cargando…</div>}
 
       {err && (
         <div className="chat-block">
@@ -163,15 +179,29 @@ export function ConversationsSidebar({
         <div className="t-meta dim">↳ todavía no hay conversaciones</div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {items.map((c) => (
-          <ConvRow
-            key={c.id}
-            conv={c}
-            active={c.id === activeId}
-            onSelect={() => onSelect(c.id)}
-            onRename={handleRename}
-          />
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {groupedItems.map((group) => (
+          <section key={group.key} aria-labelledby={`conv-group-${group.key}`}>
+            <div
+              id={`conv-group-${group.key}`}
+              className="t-eyebrow"
+              style={{ marginBottom: 4, color: "var(--fg-mute)" }}
+            >
+              {group.label}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {group.items.map(({ conv, dateMeta }) => (
+                <ConvRow
+                  key={conv.id}
+                  conv={conv}
+                  dateMeta={dateMeta}
+                  active={conv.id === activeId}
+                  onSelect={() => onSelect(conv.id)}
+                  onRename={handleRename}
+                />
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     </aside>
@@ -180,13 +210,14 @@ export function ConversationsSidebar({
 
 type ConvRowProps = Readonly<{
   conv: ConversationListRow;
+  dateMeta: ConversationDateMeta;
   active: boolean;
   onSelect: () => void;
   /** Renombra en el server + lista. Devuelve true si guardó. */
   onRename: (id: string, title: string) => Promise<boolean>;
 }>;
 
-function ConvRow({ conv, active, onSelect, onRename }: ConvRowProps) {
+function ConvRow({ conv, dateMeta, active, onSelect, onRename }: ConvRowProps) {
   const [hovered, setHovered] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -295,6 +326,16 @@ function ConvRow({ conv, active, onSelect, onRename }: ConvRowProps) {
         type="button"
         onClick={onSelect}
         onDoubleClick={startEdit}
+        title={
+          dateMeta.exact
+            ? `${title} — Última actividad: ${dateMeta.exact}`
+            : title
+        }
+        aria-label={
+          dateMeta.exact
+            ? `${title}. Última actividad: ${dateMeta.exact}`
+            : title
+        }
         style={{
           appearance: "none",
           flex: 1,
@@ -302,7 +343,7 @@ function ConvRow({ conv, active, onSelect, onRename }: ConvRowProps) {
           textAlign: "left",
           background: "transparent",
           border: 0,
-          padding: "8px 4px 8px 10px",
+          padding: "7px 4px 7px 10px",
           cursor: "pointer",
           color: active ? "var(--fg)" : "var(--fg-mute)",
           fontSize: 12,
@@ -319,6 +360,18 @@ function ConvRow({ conv, active, onSelect, onRename }: ConvRowProps) {
         >
           {title}
         </div>
+        {dateMeta.compact && (
+          <div
+            style={{
+              marginTop: 2,
+              color: "var(--fg-mute)",
+              fontSize: 10,
+              lineHeight: 1.25,
+            }}
+          >
+            {dateMeta.compact}
+          </div>
+        )}
       </button>
       <button
         type="button"
