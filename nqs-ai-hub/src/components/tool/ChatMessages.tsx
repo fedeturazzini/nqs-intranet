@@ -268,6 +268,15 @@ function MessageBubble({
           <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
         )}
 
+        {!isAi && msg.uploadingAttachments && (
+          <div
+            className="t-meta dim pulse"
+            style={{ marginTop: 8, fontSize: 10 }}
+          >
+            ↑ subiendo adjuntos…
+          </div>
+        )}
+
         {/* Mientras Claude genera el archivo en el sandbox (espera silenciosa
             del code execution): indicador "generando archivo…". Desaparece
             cuando llega la card (o si falló). */}

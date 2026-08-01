@@ -14,7 +14,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { showToast } from "@/lib/store/toast";
 import { useClaudeChat } from "@/lib/hooks/useClaudeChat";
-import type { PdfAttachment } from "@/lib/hooks/useClaudeChat";
+import type {
+  PdfAttachment,
+  PreparedAttachmentTurn,
+} from "@/lib/hooks/useClaudeChat";
 import { ChatInput } from "@/components/tool/ChatInput";
 import { ChatMessages } from "@/components/tool/ChatMessages";
 import { ConversationsSidebar } from "@/components/tool/ConversationsSidebar";
@@ -116,12 +119,14 @@ export function ClaudeView({
       imagePaths: string[],
       previews: string[],
       pdfPreviews: PdfAttachment[],
+      preparedTurn?: PreparedAttachmentTurn,
     ) => {
       const result = await chat.sendMessage(
         prompt,
         imagePaths,
         previews,
         pdfPreviews,
+        preparedTurn,
       );
       if (!result.ok) {
         showToast({
@@ -282,6 +287,8 @@ export function ClaudeView({
             isSending={chat.isSending}
             conversationId={chat.conversationId}
             onSend={onSend}
+            onPrepareAttachments={chat.prepareAttachmentTurn}
+            onRollbackAttachments={chat.rollbackAttachmentTurn}
             onStop={chat.stop}
           />
         </main>

@@ -34,7 +34,10 @@ import {
   validateAttachment,
 } from "@/lib/utils/images";
 import { compressImageIfNeeded } from "@/lib/utils/image-compression";
-import type { PdfAttachment } from "@/lib/hooks/useClaudeChat";
+import type {
+  PdfAttachment,
+  PreparedAttachmentTurn,
+} from "@/lib/hooks/useClaudeChat";
 
 const TEXTAREA_MIN_ROWS = 1;
 const TEXTAREA_MAX_ROWS = 8;
@@ -61,7 +64,14 @@ type ChatInputProps = Readonly<{
     imagePaths: string[],
     previews: string[],
     pdfPreviews: PdfAttachment[],
+    preparedTurn?: PreparedAttachmentTurn,
   ) => void;
+  onPrepareAttachments: (
+    prompt: string,
+    previews: string[],
+    pdfPreviews: PdfAttachment[],
+  ) => PreparedAttachmentTurn;
+  onRollbackAttachments: (turn: PreparedAttachmentTurn) => void;
   /** Aborta la respuesta en curso (botón "Detener" mientras streamea). */
   onStop: () => void;
 }>;
@@ -70,6 +80,8 @@ export function ChatInput({
   isSending,
   conversationId,
   onSend,
+  onPrepareAttachments,
+  onRollbackAttachments,
   onStop,
 }: ChatInputProps) {
   const [text, setText] = useState("");
@@ -194,7 +206,20 @@ export function ChatInput({
     // recibe los paths (mixtos: imágenes + PDFs), no los bytes (esquiva el
     // límite de body de Vercel). Si la subida falla, no enviamos.
     let imagePaths: string[] = [];
+    const imagePreviews = attachments
+      .filter((a) => a.kind === "image")
+      .map((a) => a.previewUrl);
+    const pdfPreviews: PdfAttachment[] = attachments
+      .filter((a) => a.kind === "pdf")
+      .map((a) => ({ url: a.previewUrl, name: a.file.name }));
+    let preparedTurn: PreparedAttachmentTurn | undefined;
     if (attachments.length > 0) {
+      // Antes del primer await: el turno ya aparece en el hilo con sus previews.
+      preparedTurn = onPrepareAttachments(
+        trimmed,
+        imagePreviews,
+        pdfPreviews,
+      );
       setUploading(true);
       try {
         imagePaths = await uploadImages(
@@ -202,6 +227,7 @@ export function ChatInput({
           conversationId,
         );
       } catch (err) {
+        onRollbackAttachments(preparedTurn);
         showToast({
           title: "ERROR AL SUBIR",
           msg: err instanceof Error ? err.message : "no pude subir los adjuntos",
@@ -213,13 +239,13 @@ export function ChatInput({
       setUploading(false);
     }
 
-    const imagePreviews = attachments
-      .filter((a) => a.kind === "image")
-      .map((a) => a.previewUrl);
-    const pdfPreviews: PdfAttachment[] = attachments
-      .filter((a) => a.kind === "pdf")
-      .map((a) => ({ url: a.previewUrl, name: a.file.name }));
-    onSend(trimmed, imagePaths, imagePreviews, pdfPreviews);
+    onSend(
+      trimmed,
+      imagePaths,
+      imagePreviews,
+      pdfPreviews,
+      preparedTurn,
+    );
     setText("");
     setAttachments([]);
   }

@@ -64,6 +64,8 @@ export type ChatMessage = {
   imagePreviews?: string[];
   /** PDFs que adjuntó el user a este mensaje (se muestran como card). */
   pdfAttachments?: PdfAttachment[];
+  /** True mientras los adjuntos de este turno todavía se suben a Storage. */
+  uploadingAttachments?: boolean;
   /** Archivos generados por Claude adjuntos a este mensaje (assistant). */
   files?: ChatFile[];
   /** True si Claude generó un archivo que NO se pudo adjuntar (falló la etapa 2
@@ -153,6 +155,14 @@ type SessionSync = {
   request: number;
 };
 
+export type PreparedAttachmentTurn = {
+  sessionKey: string;
+  conversationId: string | null;
+  executionId: string;
+  userMessageId: string;
+  pendingMessageId: string;
+};
+
 /**
  * Estado efímero compartido entre mounts de ClaudeView.
  *
@@ -217,6 +227,73 @@ export function createClaudeChatSessionStore() {
 
   function startNew(projectId: string | null): ChatSessionState {
     return activate(createSession(projectId));
+  }
+
+  function prepareAttachmentTurn(
+    projectId: string | null,
+    prompt: string,
+    imagePreviews: string[],
+    pdfPreviews: PdfAttachment[],
+  ): PreparedAttachmentTurn {
+    const source = ensureProject(projectId);
+    const turn: PreparedAttachmentTurn = {
+      sessionKey: source.key,
+      conversationId: source.conversationId,
+      executionId: crypto.randomUUID(),
+      userMessageId: `local-${crypto.randomUUID()}`,
+      pendingMessageId: `local-${crypto.randomUUID()}`,
+    };
+    update(source.key, (current) => ({
+      ...current,
+      messages: [
+        ...current.messages,
+        {
+          id: turn.userMessageId,
+          clientExecutionId: turn.executionId,
+          role: "user",
+          content: prompt,
+          createdAt: new Date().toISOString(),
+          imagePreviews: imagePreviews.length > 0 ? imagePreviews : undefined,
+          pdfAttachments: pdfPreviews.length > 0 ? pdfPreviews : undefined,
+          uploadingAttachments: true,
+        },
+      ],
+    }));
+    return turn;
+  }
+
+  function promoteAttachmentTurn(turn: PreparedAttachmentTurn): boolean {
+    const promoted = update(turn.sessionKey, (current) => ({
+      ...current,
+      isSending: true,
+      messages: [
+        ...current.messages.map((message) =>
+          message.clientExecutionId === turn.executionId &&
+          message.role === "user"
+            ? { ...message, uploadingAttachments: false }
+            : message,
+        ),
+        {
+          id: turn.pendingMessageId,
+          clientExecutionId: turn.executionId,
+          role: "assistant",
+          content: "",
+          isPending: true,
+        },
+      ],
+    }));
+    return promoted !== null;
+  }
+
+  function rollbackAttachmentTurn(turn: PreparedAttachmentTurn): boolean {
+    return (
+      update(turn.sessionKey, (current) => ({
+        ...current,
+        messages: current.messages.filter(
+          (message) => message.clientExecutionId !== turn.executionId,
+        ),
+      })) !== null
+    );
   }
 
   function conversationSession(
@@ -338,6 +415,9 @@ export function createClaudeChatSessionStore() {
     active,
     ensureProject,
     startNew,
+    prepareAttachmentTurn,
+    promoteAttachmentTurn,
+    rollbackAttachmentTurn,
     beginLoad,
     applyLoad,
     failLoad,
@@ -362,9 +442,12 @@ export function reconcileMessages(
     localMessages
       .filter(
         (message) =>
-          message.role === "assistant" &&
           message.clientExecutionId &&
-          (message.isPending || message.streaming || message.generatingFile),
+          ((message.role === "assistant" &&
+            (message.isPending ||
+              message.streaming ||
+              message.generatingFile)) ||
+            (message.role === "user" && message.uploadingAttachments)),
       )
       .map((message) => message.clientExecutionId as string),
   );
@@ -534,6 +617,28 @@ export function useClaudeChat(projectId: string | null = null) {
     chatSessions.startNew(projectId);
   }, [projectId]);
 
+  const prepareAttachmentTurn = useCallback(
+    (
+      prompt: string,
+      imagePreviews: string[],
+      pdfPreviews: PdfAttachment[],
+    ) =>
+      chatSessions.prepareAttachmentTurn(
+        projectId,
+        prompt,
+        imagePreviews,
+        pdfPreviews,
+      ),
+    [projectId],
+  );
+
+  const rollbackAttachmentTurn = useCallback(
+    (turn: PreparedAttachmentTurn) => {
+      chatSessions.rollbackAttachmentTurn(turn);
+    },
+    [],
+  );
+
   /**
    * Envía un mensaje. Las imágenes ya fueron subidas a Storage por el
    * caller (ChatInput) — acá solo recibimos los `imagePaths` y los
@@ -546,42 +651,57 @@ export function useClaudeChat(projectId: string | null = null) {
       imagePaths: string[],
       imagePreviews: string[],
       pdfPreviews: PdfAttachment[] = [],
+      preparedTurn?: PreparedAttachmentTurn,
     ): Promise<
       { ok: true; conversationId: string } | { ok: false; error: string }
     > => {
-      const source = chatSessions.ensureProject(projectId);
-      let sessionKey = source.key;
-      const sourceConversationId = source.conversationId;
-      const executionId = crypto.randomUUID();
-      const userMsgId = `local-${crypto.randomUUID()}`;
-      const pendingMsgId = `local-${crypto.randomUUID()}`;
+      const source = preparedTurn
+        ? null
+        : chatSessions.ensureProject(projectId);
+      let sessionKey = preparedTurn?.sessionKey ?? source!.key;
+      const sourceConversationId = preparedTurn
+        ? preparedTurn.conversationId
+        : source!.conversationId;
+      const executionId = preparedTurn?.executionId ?? crypto.randomUUID();
+      const userMsgId =
+        preparedTurn?.userMessageId ?? `local-${crypto.randomUUID()}`;
+      const pendingMsgId =
+        preparedTurn?.pendingMessageId ?? `local-${crypto.randomUUID()}`;
 
-      // Optimistic: agregamos user + placeholder "pensando…" al toque.
-      chatSessions.update(sessionKey, (current) => ({
-        ...current,
-        isSending: true,
-        messages: [
-          ...current.messages,
-          {
-            id: userMsgId,
-            clientExecutionId: executionId,
-            role: "user",
-            content: prompt,
-            // Aproximado (no hay round-trip al server todavía): es el propio envío
-            // del user, pasando AHORA, así que la diferencia es milisegundos.
-            createdAt: new Date().toISOString(),
-            imagePreviews: imagePreviews.length > 0 ? imagePreviews : undefined,
-            pdfAttachments: pdfPreviews.length > 0 ? pdfPreviews : undefined,
-          },
-          {
-            id: pendingMsgId,
-            clientExecutionId: executionId,
-            role: "assistant",
-            content: "",
-            isPending: true,
-          },
-        ],
-      }));
+      if (preparedTurn) {
+        if (!chatSessions.promoteAttachmentTurn(preparedTurn)) {
+          return { ok: false, error: "el turno preparado ya no está disponible" };
+        }
+      } else {
+        // Sin adjuntos: user + placeholder "pensando…" aparecen al toque.
+        chatSessions.update(sessionKey, (current) => ({
+          ...current,
+          isSending: true,
+          messages: [
+            ...current.messages,
+            {
+              id: userMsgId,
+              clientExecutionId: executionId,
+              role: "user",
+              content: prompt,
+              // Aproximado (no hay round-trip al server todavía): es el propio
+              // envío del user, pasando AHORA.
+              createdAt: new Date().toISOString(),
+              imagePreviews:
+                imagePreviews.length > 0 ? imagePreviews : undefined,
+              pdfAttachments:
+                pdfPreviews.length > 0 ? pdfPreviews : undefined,
+            },
+            {
+              id: pendingMsgId,
+              clientExecutionId: executionId,
+              role: "assistant",
+              content: "",
+              isPending: true,
+            },
+          ],
+        }));
+      }
 
       const setErrorOnPending = (errMsg: string) =>
         chatSessions.update(sessionKey, (current) => ({
@@ -900,6 +1020,8 @@ export function useClaudeChat(projectId: string | null = null) {
     loadError: session.loadError,
     stop,
     sendMessage,
+    prepareAttachmentTurn,
+    rollbackAttachmentTurn,
     loadConversation,
     newConversation,
   };

@@ -36,6 +36,19 @@ describe("reconcileMessages", () => {
     expect(reconcileMessages(server, local)).toEqual([...server, ...local]);
   });
 
+  test("conserva el user mientras sus adjuntos todavía se están subiendo", () => {
+    const local = [
+      message("local-user", "user", "pedido con imagen", {
+        clientExecutionId: "exec-upload",
+        uploadingAttachments: true,
+        imagePreviews: ["data:image/png;base64,preview"],
+      }),
+    ];
+    const server = [message("old", "assistant", "respuesta anterior")];
+
+    expect(reconcileMessages(server, local)).toEqual([...server, ...local]);
+  });
+
   test("al completar usa la DB como verdad y elimina optimistas del turno", () => {
     const local = [
       message("local-user", "user", "pedido", {
@@ -129,6 +142,79 @@ describe("resolveFinalResponseText", () => {
 });
 
 describe("createClaudeChatSessionStore", () => {
+  test("prepara el user y recién agrega pensando al completar el upload", () => {
+    const store = createClaudeChatSessionStore();
+    const turn = store.prepareAttachmentTurn(
+      PROJECT_ID,
+      "analizá estas imágenes",
+      ["data:image/png;base64,preview"],
+      [],
+    );
+
+    expect(store.active().messages).toHaveLength(1);
+    expect(store.active().messages[0]).toMatchObject({
+      id: turn.userMessageId,
+      role: "user",
+      uploadingAttachments: true,
+    });
+    expect(store.active().isSending).toBe(false);
+
+    expect(store.promoteAttachmentTurn(turn)).toBe(true);
+    expect(store.active().messages).toHaveLength(2);
+    expect(store.active().messages[0].uploadingAttachments).toBe(false);
+    expect(store.active().messages[1]).toMatchObject({
+      id: turn.pendingMessageId,
+      role: "assistant",
+      isPending: true,
+    });
+    expect(store.active().isSending).toBe(true);
+  });
+
+  test("rollback elimina solo el turno cuyo upload falló", () => {
+    const store = createClaudeChatSessionStore();
+    const session = store.ensureProject(PROJECT_ID);
+    store.update(session.key, (current) => ({
+      ...current,
+      messages: [message("old", "assistant", "respuesta anterior")],
+    }));
+    const turn = store.prepareAttachmentTurn(
+      PROJECT_ID,
+      "pedido con adjuntos",
+      ["data:image/png;base64,preview"],
+      [],
+    );
+
+    expect(store.rollbackAttachmentTurn(turn)).toBe(true);
+    expect(store.active().messages).toEqual([
+      message("old", "assistant", "respuesta anterior"),
+    ]);
+  });
+
+  test("upload preparado en una sesión inactiva no contamina la activa", () => {
+    const store = createClaudeChatSessionStore();
+    const turn = store.prepareAttachmentTurn(
+      PROJECT_ID,
+      "pedido A",
+      ["data:image/png;base64,a"],
+      [],
+    );
+    const loadB = store.beginLoad(PROJECT_ID, CONVERSATION_B);
+    store.applyLoad(loadB, [message("b", "assistant", "respuesta B")]);
+
+    expect(store.promoteAttachmentTurn(turn)).toBe(true);
+    expect(store.active().conversationId).toBe(CONVERSATION_B);
+    expect(store.active().messages[0].content).toBe("respuesta B");
+
+    let inactiveMessages: ChatMessage[] = [];
+    store.update(turn.sessionKey, (session) => {
+      inactiveMessages = session.messages;
+      return session;
+    });
+    expect(inactiveMessages).toHaveLength(2);
+    expect(inactiveMessages[0].content).toBe("pedido A");
+    expect(inactiveMessages[1].isPending).toBe(true);
+  });
+
   test("un mount nuevo recupera la sesión pending del mismo proyecto", () => {
     const store = createClaudeChatSessionStore();
     const draft = store.ensureProject(PROJECT_ID);
