@@ -272,6 +272,7 @@ export function ClaudeView({
             )}
             <ChatMessages
               messages={chat.messages}
+              isLoadingConversation={chat.isLoadingConversation}
               userInitials={user.initials}
               userFirstName={firstName}
             />

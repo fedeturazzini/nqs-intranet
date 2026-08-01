@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   createClaudeChatSessionStore,
+  createInFlightRequestDeduper,
   reconcileMessages,
   resolveFinalResponseText,
   type ChatMessage,
@@ -163,6 +164,68 @@ describe("createClaudeChatSessionStore", () => {
     expect(store.active().messages[0].content).toBe("respuesta B");
   });
 
+  test("primera carga expone loading y lo limpia al aplicar mensajes", () => {
+    const store = createClaudeChatSessionStore();
+    const load = store.beginLoad(PROJECT_ID, CONVERSATION_A);
+
+    expect(store.active().conversationId).toBe(CONVERSATION_A);
+    expect(store.active().messages).toEqual([]);
+    expect(store.active().isLoadingConversation).toBe(true);
+
+    store.applyLoad(load, [message("a", "assistant", "respuesta A")]);
+    expect(store.active().isLoadingConversation).toBe(false);
+  });
+
+  test("al revalidar conserva inmediatamente el cache de esa conversación", () => {
+    const store = createClaudeChatSessionStore();
+    const initial = store.beginLoad(PROJECT_ID, CONVERSATION_A);
+    store.applyLoad(initial, [message("a", "assistant", "respuesta cacheada")]);
+
+    const revalidation = store.beginLoad(PROJECT_ID, CONVERSATION_A);
+    expect(store.active().isLoadingConversation).toBe(true);
+    expect(store.active().messages[0].content).toBe("respuesta cacheada");
+
+    store.applyLoad(revalidation, [
+      message("a", "assistant", "respuesta actualizada"),
+    ]);
+    expect(store.active().isLoadingConversation).toBe(false);
+    expect(store.active().messages[0].content).toBe("respuesta actualizada");
+  });
+
+  test("un error obsoleto no contamina ni finaliza la selección actual", () => {
+    const store = createClaudeChatSessionStore();
+    const loadA = store.beginLoad(PROJECT_ID, CONVERSATION_A);
+    const loadB = store.beginLoad(PROJECT_ID, CONVERSATION_B);
+
+    expect(store.failLoad(loadA, "falló A")).toBe(false);
+    expect(store.active().conversationId).toBe(CONVERSATION_B);
+    expect(store.active().isLoadingConversation).toBe(true);
+    expect(store.active().loadError).toBeNull();
+
+    expect(store.failLoad(loadB, "falló B")).toBe(true);
+    expect(store.active().isLoadingConversation).toBe(false);
+    expect(store.active().loadError).toBe("falló B");
+  });
+
+  test("A → B → A nunca aplica respuestas de una selección anterior", () => {
+    const store = createClaudeChatSessionStore();
+    const firstA = store.beginLoad(PROJECT_ID, CONVERSATION_A);
+    const loadB = store.beginLoad(PROJECT_ID, CONVERSATION_B);
+    const latestA = store.beginLoad(PROJECT_ID, CONVERSATION_A);
+
+    expect(
+      store.applyLoad(firstA, [message("a-old", "assistant", "A vieja")]),
+    ).toBe(false);
+    expect(
+      store.applyLoad(loadB, [message("b", "assistant", "respuesta B")]),
+    ).toBe(false);
+    expect(
+      store.applyLoad(latestA, [message("a-new", "assistant", "A nueva")]),
+    ).toBe(true);
+    expect(store.active().conversationId).toBe(CONVERSATION_A);
+    expect(store.active().messages[0].content).toBe("A nueva");
+  });
+
   test("un done tardío de un draft inactivo no roba la conversación visible", () => {
     const store = createClaudeChatSessionStore();
     const draftA = store.ensureProject(PROJECT_ID);
@@ -232,5 +295,34 @@ describe("createClaudeChatSessionStore", () => {
       return session;
     });
     expect(inactiveMessages[0].content).toBe("respuesta A");
+  });
+});
+
+describe("createInFlightRequestDeduper", () => {
+  test("comparte un request simultáneo y permite revalidar después", async () => {
+    const dedupe = createInFlightRequestDeduper<string>();
+    let calls = 0;
+    let resolve!: (value: string) => void;
+    const loader = () => {
+      calls += 1;
+      return new Promise<string>((done) => {
+        resolve = done;
+      });
+    };
+
+    const first = dedupe(CONVERSATION_A, loader);
+    const second = dedupe(CONVERSATION_A, loader);
+    expect(first).toBe(second);
+    expect(calls).toBe(1);
+
+    resolve("ok");
+    await expect(Promise.all([first, second])).resolves.toEqual(["ok", "ok"]);
+    await expect(
+      dedupe(CONVERSATION_A, async () => {
+        calls += 1;
+        return "fresh";
+      }),
+    ).resolves.toBe("fresh");
+    expect(calls).toBe(2);
   });
 });

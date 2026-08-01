@@ -32,6 +32,7 @@ import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
 
 type ChatMessagesProps = Readonly<{
   messages: ChatMessage[];
+  isLoadingConversation: boolean;
   userInitials: string;
   userFirstName: string;
 }>;
@@ -65,6 +66,7 @@ function getScrollParent(node: HTMLElement | null): HTMLElement | null {
 
 export function ChatMessages({
   messages,
+  isLoadingConversation,
   userInitials,
   userFirstName,
 }: ChatMessagesProps) {
@@ -106,6 +108,10 @@ export function ChatMessages({
     }
   }, [messages]);
 
+  if (messages.length === 0 && isLoadingConversation) {
+    return <ConversationSkeleton />;
+  }
+
   if (messages.length === 0) {
     return (
       <div
@@ -132,6 +138,53 @@ export function ChatMessages({
         />
       ))}
       <div ref={endRef} />
+    </div>
+  );
+}
+
+function ConversationSkeleton() {
+  return (
+    <div
+      className="claude-mock"
+      role="status"
+      aria-label="Cargando conversación"
+      style={{ maxWidth: "none", margin: 0, gap: 12 }}
+    >
+      {[72, 46, 64].map((width, index) => (
+        <div
+          key={width}
+          className={`chat-msg ${index === 1 ? "user" : "ai"}`}
+          aria-hidden="true"
+        >
+          <div
+            className={`av pulse ${index === 1 ? "" : "ai"}`}
+            style={{ opacity: 0.28 }}
+          />
+          <div className="body" style={{ paddingTop: 2 }}>
+            <div
+              className="pulse"
+              style={{
+                width: index === 1 ? 90 : 64,
+                height: 8,
+                borderRadius: 4,
+                background: "var(--line-strong)",
+                marginBottom: 12,
+                opacity: 0.45,
+              }}
+            />
+            <div
+              className="pulse"
+              style={{
+                width: `${width}%`,
+                height: 12,
+                borderRadius: 5,
+                background: "var(--line-strong)",
+                opacity: 0.32,
+              }}
+            />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

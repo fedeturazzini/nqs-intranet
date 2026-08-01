@@ -135,6 +135,7 @@ type ChatSessionState = {
   conversationId: string | null;
   messages: ChatMessage[];
   isSending: boolean;
+  isLoadingConversation: boolean;
   loadError: string | null;
   loadRequest: number;
   syncRequest: number;
@@ -179,6 +180,7 @@ export function createClaudeChatSessionStore() {
       conversationId,
       messages: [],
       isSending: false,
+      isLoadingConversation: false,
       loadError: null,
       loadRequest: 0,
       syncRequest: 0,
@@ -217,17 +219,15 @@ export function createClaudeChatSessionStore() {
     return activate(createSession(projectId));
   }
 
-  function selectConversation(
+  function conversationSession(
     projectId: string | null,
     conversationId: string,
   ): ChatSessionState {
     const key = conversationKey(conversationId);
     const existing = sessions.get(key);
-    return activate(
-      existing?.projectId === projectId
-        ? existing
-        : createSession(projectId, conversationId),
-    );
+    return existing?.projectId === projectId
+      ? existing
+      : createSession(projectId, conversationId);
   }
 
   function update(
@@ -260,16 +260,18 @@ export function createClaudeChatSessionStore() {
     projectId: string | null,
     conversationId: string,
   ): SessionLoad {
-    const selected = selectConversation(projectId, conversationId);
+    const selected = conversationSession(projectId, conversationId);
     const request = selected.loadRequest + 1;
     const syncRequest = selected.syncRequest + 1;
-    sessions.set(selected.key, {
+    // Activamos una sola vez con el estado de carga ya aplicado: una
+    // conversación no cacheada nunca alcanza a pintar el empty state.
+    activate({
       ...selected,
       loadRequest: request,
       syncRequest,
+      isLoadingConversation: true,
       loadError: null,
     });
-    emit();
     return { key: selected.key, request, syncRequest, selection };
   }
 
@@ -287,6 +289,7 @@ export function createClaudeChatSessionStore() {
     update(load.key, (session) => ({
       ...session,
       messages: reconcileMessages(messages, session.messages),
+      isLoadingConversation: false,
       loadError: null,
     }));
     return true;
@@ -296,6 +299,7 @@ export function createClaudeChatSessionStore() {
     if (!isCurrentLoad(load)) return false;
     update(load.key, (session) => ({
       ...session,
+      isLoadingConversation: false,
       loadError: message,
     }));
     return true;
@@ -318,6 +322,8 @@ export function createClaudeChatSessionStore() {
     update(sync.key, (session) => ({
       ...session,
       messages: reconcileMessages(messages, session.messages),
+      isLoadingConversation: false,
+      loadError: null,
     }));
     return true;
   }
@@ -454,6 +460,25 @@ async function fetchConversation(
   return (await res.json()) as ConversationDetailResponse;
 }
 
+export function createInFlightRequestDeduper<T>() {
+  const inFlight = new Map<string, Promise<T>>();
+  return (key: string, load: () => Promise<T>): Promise<T> => {
+    const existing = inFlight.get(key);
+    if (existing) return existing;
+
+    const request = load().finally(() => {
+      if (inFlight.get(key) === request) inFlight.delete(key);
+    });
+    inFlight.set(key, request);
+    return request;
+  };
+}
+
+// Solo deduplica selecciones del sidebar. Las reconciliaciones post-done deben
+// pedir snapshots nuevos y se ordenan mediante syncRequest.
+const fetchConversationForSelection =
+  createInFlightRequestDeduper<ConversationDetailResponse | null>();
+
 // ============================================================
 // Hook
 // ============================================================
@@ -470,7 +495,9 @@ export function useClaudeChat(projectId: string | null = null) {
     async (id: string) => {
       const load = chatSessions.beginLoad(projectId, id);
       try {
-        const data = await fetchConversation(id);
+        const data = await fetchConversationForSelection(id, () =>
+          fetchConversation(id),
+        );
         if (!data) {
           chatSessions.failLoad(load, "no pude cargar la conversación");
           return;
@@ -869,6 +896,7 @@ export function useClaudeChat(projectId: string | null = null) {
     messages: session.messages,
     conversationId: session.conversationId,
     isSending: session.isSending,
+    isLoadingConversation: session.isLoadingConversation,
     loadError: session.loadError,
     stop,
     sendMessage,
