@@ -18,7 +18,6 @@ import { ClaudeView } from "@/components/screens/ClaudeView";
 import { requireAuth } from "@/lib/auth/server";
 import { canUseTool } from "@/lib/middleware/permissions";
 import {
-  hasProjectGate,
   projectGateCookieName,
   verifyProjectGateToken,
 } from "@/lib/auth/project-gate";
@@ -26,6 +25,11 @@ import {
   getActiveProjectForUser,
   listActiveProjects,
 } from "@/lib/db/queries/projects";
+import {
+  listConversationsForProject,
+  type ConversationListRow,
+} from "@/lib/db/queries/conversations";
+import { logWarn } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +45,7 @@ export default async function ToolPage({ params }: ToolPageProps) {
     redirect("/hub");
   }
 
-  const perm = await canUseTool(session.userId, toolId);
+  const perm = await canUseTool(session.userId, toolId, { user: session });
   if (!perm.allowed) {
     redirect("/hub");
   }
@@ -54,15 +58,6 @@ export default async function ToolPage({ params }: ToolPageProps) {
     getActiveProjectForUser(session.userId),
   ]);
 
-  // Gate de proyecto privado (migration 0016): NO forzamos el gate al entrar a
-  // Claude. Si el proyecto activo es privado y está bloqueado, lo tratamos como
-  // "sin proyecto activo" → ClaudeView muestra el picker y la contraseña se pide
-  // (modal) SOLO si el user elige ese proyecto. Así apretar Claude no obliga a
-  // desbloquear un privado que quizás no querés abrir. El backend (adapter) igual
-  // revalida el gate en cada execute, así que no cargar el cerebro sigue protegido.
-  const activeLocked =
-    !!activeProject?.is_private && !(await hasProjectGate(activeProject.id));
-
   // Cada proyecto privado está "locked" si no hay cookie de gate válida — así el
   // selector/picker pide la contraseña (modal) recién cuando el user elige uno
   // (usa el gate_version ya cargado, sin queries extra; no se envía al cliente).
@@ -74,6 +69,28 @@ export default async function ToolPage({ params }: ToolPageProps) {
       p.id,
       p.gate_version,
     );
+  // Gate de proyecto privado (migration 0016): NO forzamos el gate al entrar a
+  // Claude. Reusamos is_private/gate_version de la fila ya cargada; la firma,
+  // expiración y versión de la cookie se validan igual que en hasProjectGate.
+  const activeLocked = activeProject ? isLocked(activeProject) : false;
+  let initialConversations: ConversationListRow[] | null = [];
+  if (activeProject && !activeLocked) {
+    try {
+      initialConversations = await listConversationsForProject(
+        session.userId,
+        activeProject.id,
+      );
+    } catch (error) {
+      // El sidebar es complementario: una falla de su lista no debe tirar toda
+      // la pantalla. null hace que el cliente use el endpoint como fallback.
+      initialConversations = null;
+      logWarn("claude SSR: no se pudo precargar conversaciones", {
+        userId: session.userId,
+        projectId: activeProject.id,
+        error,
+      });
+    }
+  }
 
   return (
     <ClaudeView
@@ -97,6 +114,7 @@ export default async function ToolPage({ params }: ToolPageProps) {
             }
           : null
       }
+      initialConversations={initialConversations}
     />
   );
 }

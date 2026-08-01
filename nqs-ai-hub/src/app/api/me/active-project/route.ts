@@ -58,7 +58,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  if (project.is_private && !(await hasProjectGate(project.id))) {
+  if (
+    project.is_private &&
+    !(await hasProjectGate(project.id, {
+      is_private: project.is_private,
+      gate_version: project.gate_version,
+    }))
+  ) {
     return NextResponse.json(
       {
         error: "project_locked",

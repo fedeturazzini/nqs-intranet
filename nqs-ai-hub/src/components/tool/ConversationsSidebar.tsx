@@ -15,13 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { showToast } from "@/lib/store/toast";
-
-type ConversationRow = {
-  id: string;
-  title: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
+import type { ConversationListRow } from "@/lib/db/queries/conversations";
 
 type ConversationsSidebarProps = Readonly<{
   /** ID de la conv actualmente activa (si la hay) para destacarla. */
@@ -30,6 +24,8 @@ type ConversationsSidebarProps = Readonly<{
   refreshSignal?: number;
   /** Nombre del proyecto activo (FIX 17.5) — para el título del sidebar. */
   projectName?: string;
+  /** Lista resuelta por el SSR; evita repetir sesión/proyecto/gate al montar. */
+  initialConversations: ConversationListRow[] | null;
   onSelect: (id: string) => void;
   onNew: () => void;
 }>;
@@ -38,12 +34,16 @@ export function ConversationsSidebar({
   activeId,
   refreshSignal,
   projectName,
+  initialConversations,
   onSelect,
   onNew,
 }: ConversationsSidebarProps) {
-  const [items, setItems] = useState<ConversationRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] =
+    useState<ConversationListRow[]>(initialConversations ?? []);
+  const [loading, setLoading] = useState(initialConversations === null);
   const [err, setErr] = useState<string | null>(null);
+  const initialRefreshSignal = useRef(refreshSignal);
+  const hasInitialConversations = useRef(initialConversations !== null);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -55,7 +55,9 @@ export function ConversationsSidebar({
         setItems([]);
         return;
       }
-      const data = (await res.json()) as { conversations: ConversationRow[] };
+      const data = (await res.json()) as {
+        conversations: ConversationListRow[];
+      };
       setItems(data.conversations);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "error de red");
@@ -65,6 +67,15 @@ export function ConversationsSidebar({
   }, []);
 
   useEffect(() => {
+    // El SSR ya entregó la primera lista. Solo consultamos el endpoint cuando
+    // una acción posterior (nuevo chat/cambio de proyecto) pide refrescarla.
+    if (
+      hasInitialConversations.current &&
+      refreshSignal === initialRefreshSignal.current
+    ) {
+      return;
+    }
+    hasInitialConversations.current = true;
     void fetchList();
   }, [fetchList, refreshSignal]);
 
@@ -168,7 +179,7 @@ export function ConversationsSidebar({
 }
 
 type ConvRowProps = Readonly<{
-  conv: ConversationRow;
+  conv: ConversationListRow;
   active: boolean;
   onSelect: () => void;
   /** Renombra en el server + lista. Devuelve true si guardó. */

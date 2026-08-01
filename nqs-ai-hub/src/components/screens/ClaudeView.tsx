@@ -19,6 +19,7 @@ import { ChatInput } from "@/components/tool/ChatInput";
 import { ChatMessages } from "@/components/tool/ChatMessages";
 import { ConversationsSidebar } from "@/components/tool/ConversationsSidebar";
 import { ProjectPasswordGate } from "@/components/screens/ProjectPasswordGate";
+import type { ConversationListRow } from "@/lib/db/queries/conversations";
 
 type ProjectLite = {
   id: string;
@@ -34,12 +35,15 @@ type ClaudeViewProps = Readonly<{
   user: { name: string; initials: string };
   projects: ProjectLite[];
   activeProject: ProjectLite | null;
+  /** null = el preload SSR falló; el sidebar reintenta por su endpoint. */
+  initialConversations: ConversationListRow[] | null;
 }>;
 
 export function ClaudeView({
   user,
   projects,
   activeProject: initialProject,
+  initialConversations,
 }: ClaudeViewProps) {
   const [activeProject, setActiveProject] = useState<ProjectLite | null>(
     initialProject,
@@ -247,6 +251,7 @@ export function ClaudeView({
           activeId={chat.conversationId}
           refreshSignal={sidebarRefresh}
           projectName={activeProject.name}
+          initialConversations={initialConversations}
           onSelect={onSelectConversation}
           onNew={onNew}
         />

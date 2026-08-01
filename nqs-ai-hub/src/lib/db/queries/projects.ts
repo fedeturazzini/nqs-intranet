@@ -138,11 +138,20 @@ export async function getActiveProjectId(
 export async function getActiveProjectForUser(
   userId: string,
 ): Promise<PublicProject | null> {
-  const projectId = await getActiveProjectId(userId);
-  if (!projectId) return null;
-  const project = await getProjectById(projectId);
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("user_active_project")
+    .select(
+      "project:projects!user_active_project_project_id_fkey(*)",
+    )
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+
+  const relation = data?.project;
+  const project = Array.isArray(relation) ? relation[0] : relation;
   if (!project || !project.is_active) return null;
-  return project;
+  return toPublic(project);
 }
 
 /**

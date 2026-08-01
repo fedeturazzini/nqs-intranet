@@ -7,11 +7,9 @@
  */
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/server";
-import { createServerClient } from "@/lib/db/supabase";
-import { getActiveProjectId } from "@/lib/db/queries/projects";
+import { listConversationsForProject } from "@/lib/db/queries/conversations";
+import { getActiveProjectForUser } from "@/lib/db/queries/projects";
 import { hasProjectGate } from "@/lib/auth/project-gate";
-
-const LIMIT = 20;
 
 export async function GET(): Promise<NextResponse> {
   const session = await getSession();
@@ -21,32 +19,35 @@ export async function GET(): Promise<NextResponse> {
 
   // FIX 17.5: el historial se filtra por el proyecto activo del user. Sin
   // proyecto activo, no hay conversaciones que mostrar.
-  const activeProjectId = await getActiveProjectId(session.userId);
-  if (!activeProjectId) {
+  const activeProject = await getActiveProjectForUser(session.userId);
+  if (!activeProject) {
     return NextResponse.json({ conversations: [] });
   }
 
   // Gate de proyecto privado (migration 0016): sin cookie de gate válida no
   // listamos las conversaciones del proyecto (defensa server-side, no solo UI).
-  if (!(await hasProjectGate(activeProjectId))) {
+  if (
+    !(await hasProjectGate(activeProject.id, {
+      is_private: activeProject.is_private,
+      gate_version: activeProject.gate_version,
+    }))
+  ) {
     return NextResponse.json({ conversations: [] });
   }
 
-  const db = createServerClient();
-  const { data, error } = await db
-    .from("claude_conversations")
-    .select("id, title, created_at, updated_at")
-    .eq("user_id", session.userId)
-    .eq("project_id", activeProjectId)
-    .order("updated_at", { ascending: false })
-    .limit(LIMIT);
-
-  if (error) {
+  try {
+    const conversations = await listConversationsForProject(
+      session.userId,
+      activeProject.id,
+    );
+    return NextResponse.json({ conversations });
+  } catch (error) {
     return NextResponse.json(
-      { error: "db_error", message: error.message },
+      {
+        error: "db_error",
+        message: error instanceof Error ? error.message : "error desconocido",
+      },
       { status: 500 },
     );
   }
-
-  return NextResponse.json({ conversations: data ?? [] });
 }
