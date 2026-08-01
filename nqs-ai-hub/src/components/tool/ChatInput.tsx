@@ -426,7 +426,6 @@ export function ChatInput({
               ? "soltá los archivos acá…"
               : "Escribí tu mensaje… (Enter para enviar, Shift+Enter para nueva línea)"
           }
-          disabled={isSending}
           rows={1}
           style={{
             flex: 1,
