@@ -83,8 +83,10 @@ export function ProjectsScreen({
         setBusyId(null);
         return;
       }
-      // Hard nav para que el hub/Claude relean el proyecto activo en limpio.
-      window.location.href = "/tool/claude";
+      // El POST ya esperó el upsert del proyecto activo. La ruta de Claude es
+      // force-dynamic, así que el App Router la resuelve con ese valor nuevo sin
+      // recargar JS/estilos ni perder el shell del dashboard.
+      router.push("/tool/claude");
     } catch {
       showToast({
         title: "ERROR",

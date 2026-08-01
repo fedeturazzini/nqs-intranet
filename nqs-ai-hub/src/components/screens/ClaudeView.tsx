@@ -117,7 +117,6 @@ export function ClaudeView({
       previews: string[],
       pdfPreviews: PdfAttachment[],
     ) => {
-      const wasNew = chat.conversationId === null;
       const result = await chat.sendMessage(
         prompt,
         imagePaths,
@@ -132,7 +131,6 @@ export function ClaudeView({
         });
         return;
       }
-      if (wasNew) setSidebarRefresh((n) => n + 1);
     },
     [chat],
   );
