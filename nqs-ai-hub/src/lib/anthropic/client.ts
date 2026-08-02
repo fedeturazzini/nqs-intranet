@@ -399,6 +399,8 @@ export type ClaudeResponse = {
   cacheReadTokens: number;
 };
 
+export type ClaudeTimingPhase = "first_delta" | "sandbox_start" | "sandbox_end";
+
 /**
  * Llama al modelo. Tira excepción si la API falla — el caller la
  * captura y la envuelve en su propio `Result`.
@@ -479,6 +481,8 @@ export async function streamClaude(
   onText?: (delta: string) => void,
   /** Señales de estado (ej. "generating_file"). Solo aplica al path beta. */
   onStatus?: (status: string) => void,
+  /** Marcas de observabilidad; no emite logs ni altera el stream. */
+  onTiming?: (phase: ClaudeTimingPhase) => void,
 ): Promise<ClaudeResponse> {
   const client = getClient();
   const model = options.model ?? DEFAULT_MODEL;
@@ -494,6 +498,7 @@ export async function streamClaude(
       messages,
       onText,
       onStatus,
+      onTiming,
     );
   }
 
@@ -505,6 +510,7 @@ export async function streamClaude(
     systemPrompt,
     messages,
     onText,
+    onTiming,
   );
 }
 
@@ -519,6 +525,7 @@ async function streamTextOnly(
   systemPrompt: string,
   messages: ClaudeMessage[],
   onText?: (delta: string) => void,
+  onTiming?: (phase: ClaudeTimingPhase) => void,
 ): Promise<ClaudeResponse> {
   const stream = client.messages.stream({
     model,
@@ -535,8 +542,20 @@ async function streamTextOnly(
     messages,
   });
 
-  if (onText) {
-    stream.on("text", (delta) => onText(delta));
+  let firstDeltaSeen = false;
+  const markFirstDelta = () => {
+    if (firstDeltaSeen) return;
+    firstDeltaSeen = true;
+    onTiming?.("first_delta");
+  };
+  if (onTiming) {
+    stream.on("streamEvent", markFirstDelta);
+  }
+  if (onText || onTiming) {
+    stream.on("text", (delta) => {
+      markFirstDelta();
+      onText?.(delta);
+    });
   }
 
   const final = await stream.finalMessage();
@@ -585,6 +604,7 @@ async function streamWithFileGeneration(
   messages: ClaudeMessage[],
   onText?: (delta: string) => void,
   onStatus?: (status: string) => void,
+  onTiming?: (phase: ClaudeTimingPhase) => void,
 ): Promise<ClaudeResponse> {
   // Historia mutable: el loop de pause_turn le appendea el turno del assistant
   // para que la API resuma desde donde quedó. (MessageParam ⊆ BetaMessageParam.)
@@ -602,6 +622,8 @@ async function streamWithFileGeneration(
   // Con pause_turn puede haber varias vueltas — acumulamos los bloques de TODAS
   // (no solo la última), así el resumen refleja la respuesta completa.
   const contentBlocks: ContentBlockSummary[] = [];
+  let firstDeltaSeen = false;
+  let sandboxStarted = false;
 
   for (let turn = 0; turn < MAX_FILE_GEN_TURNS; turn++) {
     const stream = client.beta.messages.stream({
@@ -622,24 +644,38 @@ async function streamWithFileGeneration(
       betas: FILE_GEN_BETAS,
     });
 
-    if (onText) {
-      stream.on("text", (delta) => onText(delta));
+    if (onText || onTiming) {
+      stream.on("text", (delta) => {
+        if (!firstDeltaSeen) {
+          firstDeltaSeen = true;
+          onTiming?.("first_delta");
+        }
+        onText?.(delta);
+      });
     }
     // Señal para la UI: cuando Claude ARRANCA a usar el tool (server_tool_use),
     // avisamos "generando archivo" para mostrar un indicador durante la espera
     // del sandbox (que es silenciosa y puede tardar).
-    if (onStatus) {
+    if (onStatus || onTiming) {
       stream.on("streamEvent", (event) => {
+        if (!firstDeltaSeen) {
+          firstDeltaSeen = true;
+          onTiming?.("first_delta");
+        }
         if (
           event.type === "content_block_start" &&
           event.content_block.type === "server_tool_use"
         ) {
-          onStatus("generating_file");
+          if (!sandboxStarted) {
+            sandboxStarted = true;
+            onTiming?.("sandbox_start");
+          }
+          onStatus?.("generating_file");
         } else if (
           event.type === "content_block_start" &&
           event.content_block.type === "tool_use"
         ) {
-          onStatus("generating_artifact");
+          onStatus?.("generating_artifact");
         }
       });
     }
@@ -668,6 +704,9 @@ async function streamWithFileGeneration(
           : materialized.delivery;
     }
     generatedFiles.push(...extractGeneratedFilesFromBlocks(final.content));
+    if (generatedFiles.length > capturedBefore) {
+      onTiming?.("sandbox_end");
+    }
 
     // Parte 4.2: instrumentación shape-agnóstica. Las skills (pdf/docx/xlsx/pptx)
     // pueden devolver el archivo con OTRA forma de bloque que la rama de arriba no

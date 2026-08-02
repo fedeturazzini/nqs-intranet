@@ -32,6 +32,7 @@ import {
   modelSupportsCodeExecution,
   streamClaude,
   type ClaudeMessage,
+  type ClaudeTimingPhase,
 } from "@/lib/anthropic/client";
 import { isNoCreditsError, NO_CREDITS_CODE } from "@/lib/anthropic/errors";
 import { logInfo, logWarn } from "@/lib/log";
@@ -227,6 +228,10 @@ export const claudeAdapter: ToolAdapter = {
   ): Promise<Result<ExecuteResult>> {
     try {
       const db = createServerClient();
+      const requestStartedAt = params.telemetry?.requestStartedAt ?? Date.now();
+      let firstDeltaAt: number | null = null;
+      let sandboxStartedAt: number | null = null;
+      let sandboxEndedAt: number | null = null;
 
       // 0. Contexto canónico resuelto por la route ANTES de abrir el stream.
       //    Para una conversación existente viene de conversation.project_id;
@@ -424,13 +429,27 @@ export const claudeAdapter: ToolAdapter = {
       // medida que se generan (la respuesta no se corta por timeout aunque
       // el prompt sea grande). Igual acumulamos el texto completo.
       const callStartedAt = Date.now();
+      const markTiming = (phase: ClaudeTimingPhase) => {
+        const now = Date.now();
+        if (phase === "first_delta" && firstDeltaAt === null) {
+          firstDeltaAt = now;
+        } else if (phase === "sandbox_start" && sandboxStartedAt === null) {
+          sandboxStartedAt = now;
+        } else if (phase === "sandbox_end") {
+          // Con pause_turn puede haber más de un resultado: conservamos el
+          // último que efectivamente entregó file_id.
+          sandboxEndedAt = now;
+        }
+      };
       let response = await streamClaude(
         fullSystem,
         messages,
         { model: systemPrompt.model, enableFileGeneration: fileGenEnabled },
         onText,
         onStatus,
+        markTiming,
       );
+      const anthropicEndedAt = Date.now();
       const repairedTextDelivery = repairMalformedTextDelivery(
         response.text,
         textDeliveryIntent,
@@ -616,8 +635,11 @@ export const claudeAdapter: ToolAdapter = {
       // la respuesta por un archivo. Necesita conversationId + messageId (de
       // arriba). Solo corre con file-gen activo y si hubo file_id capturados.
       let persistedFiles: ExecuteResult["files"];
+      let filePersistStartedAt: number | null = null;
+      let filePersistEndedAt: number | null = null;
       const fileIds = response.generatedFiles?.map((f) => f.fileId) ?? [];
       if (fileGenEnabled && fileIds.length > 0 && conversationId) {
+        filePersistStartedAt = Date.now();
         persistedFiles = [];
         for (const fileId of fileIds) {
           try {
@@ -669,6 +691,7 @@ export const claudeAdapter: ToolAdapter = {
             );
           }
         }
+        filePersistEndedAt = Date.now();
       }
 
       // Parte 3.2: cuántos archivos se capturaron pero NO se pudieron persistir.
@@ -737,6 +760,32 @@ export const claudeAdapter: ToolAdapter = {
           memoryLength: memoryText.length,
         },
         tokensConsumed: response.tokensInput + response.tokensOutput,
+      });
+
+      const doneReadyAt = Date.now();
+      logInfo("execute.timings", {
+        route: "tools/claude/execute",
+        requestId: params.telemetry?.requestId,
+        anthropicMessageId: response.anthropicMessageId ?? undefined,
+        userId,
+        conversationId,
+        model: systemPrompt.model,
+        generatedFile: fileIds.length > 0,
+        fileCount: fileIds.length,
+        fileType:
+          binaryDeliveryIntent?.format ?? textDeliveryIntent?.format ?? null,
+        preflightMs: callStartedAt - requestStartedAt,
+        ttftMs: firstDeltaAt === null ? null : firstDeltaAt - callStartedAt,
+        sandboxMs:
+          sandboxStartedAt === null || sandboxEndedAt === null
+            ? null
+            : sandboxEndedAt - sandboxStartedAt,
+        filePersistMs:
+          filePersistStartedAt === null || filePersistEndedAt === null
+            ? null
+            : filePersistEndedAt - filePersistStartedAt,
+        anthropicTotalMs: anthropicEndedAt - callStartedAt,
+        totalMs: doneReadyAt - requestStartedAt,
       });
 
       return {

@@ -51,6 +51,7 @@ const ExecuteSchema = z.object({
 });
 
 export async function POST(request: Request): Promise<Response> {
+  const requestStartedAt = Date.now();
   const requestId = requestIdFrom(request);
   // 1) sesión
   const session = await getSession();
@@ -134,6 +135,10 @@ export async function POST(request: Request): Promise<Response> {
   const params = {
     ...parsed.data,
     projectContext: resolved.value,
+    telemetry: {
+      requestId,
+      requestStartedAt,
+    },
   };
 
   // Respuesta NDJSON (una línea JSON por evento):

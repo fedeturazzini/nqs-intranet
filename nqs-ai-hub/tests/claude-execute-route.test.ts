@@ -91,6 +91,7 @@ describe("POST /api/tools/claude/execute preflight", () => {
   });
 
   test("inyecta el contexto canónico y recién entonces inicia NDJSON", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
     mocks.resolve.mockResolvedValue({
       ok: true,
       value: {
@@ -132,6 +133,7 @@ describe("POST /api/tools/claude/execute preflight", () => {
     );
     const body = await response.text();
     expect(body).toContain('"type":"done"');
+    expect(body).not.toContain("telemetry");
     expect(body).toContain('"textFileFallback":{"filename":"respuesta.txt"}');
     expect(body).toContain('"toolDeliveryFailed":{"toolName":"otra_tool"}');
     expect(mocks.requireToolAccess).toHaveBeenCalledWith(USER, "claude", {
@@ -147,9 +149,14 @@ describe("POST /api/tools/claude/execute preflight", () => {
           isPrivate: false,
           source: "conversation",
         },
+        telemetry: {
+          requestId: "test-request",
+          requestStartedAt: 1_000,
+        },
       }),
       expect.any(Function),
       expect.any(Function),
     );
+    now.mockRestore();
   });
 });

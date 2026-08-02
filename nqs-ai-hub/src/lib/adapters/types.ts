@@ -78,6 +78,14 @@ export type ExecuteParams = {
       | "legacy_request"
       | "legacy_global_fallback";
   };
+  /**
+   * Metadata interna de observabilidad agregada por la route. No forma parte
+   * del body HTTP ni modifica el resultado del execute.
+   */
+  telemetry?: {
+    requestId?: string;
+    requestStartedAt: number;
+  };
 };
 
 export type ExecuteResult = {

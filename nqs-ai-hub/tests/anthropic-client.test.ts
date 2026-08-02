@@ -12,20 +12,36 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TOOL_DELIVERY_WARNING } from "@/lib/utils/tool-use-artifacts";
 
 type CreateFn = (...args: unknown[]) => Promise<unknown>;
+type StreamFn = (...args: unknown[]) => unknown;
 let mockCreate: CreateFn = async () => ({
   content: [{ type: "text", text: "respuesta default" }],
   usage: { input_tokens: 10, output_tokens: 5 },
   stop_reason: "end_turn",
 });
+let mockStream: StreamFn = () => {
+  throw new Error("messages.stream no configurado");
+};
+let mockBetaStream: StreamFn = () => {
+  throw new Error("beta.messages.stream no configurado");
+};
 const constructorArgs: Record<string, unknown>[] = [];
 
 vi.mock("@anthropic-ai/sdk", () => {
   return {
     default: class MockAnthropic {
-      messages: { create: CreateFn };
+      messages: { create: CreateFn; stream: StreamFn };
+      beta: { messages: { stream: StreamFn } };
       constructor(opts: Record<string, unknown>) {
         constructorArgs.push(opts);
-        this.messages = { create: (...a: unknown[]) => mockCreate(...a) };
+        this.messages = {
+          create: (...a: unknown[]) => mockCreate(...a),
+          stream: (...a: unknown[]) => mockStream(...a),
+        };
+        this.beta = {
+          messages: {
+            stream: (...a: unknown[]) => mockBetaStream(...a),
+          },
+        };
       }
     },
   };
@@ -35,8 +51,31 @@ beforeEach(() => {
   process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
 });
 
-const { callClaude, buildUserContent, maxTokensFor } =
+const { callClaude, buildUserContent, maxTokensFor, streamClaude } =
   await import("@/lib/anthropic/client");
+
+function fakeStream(
+  finalMessage: Record<string, unknown>,
+  events: Array<[event: string, value: unknown]>,
+) {
+  const handlers = new Map<string, Array<(value: never) => void>>();
+  return {
+    on(event: string, handler: (value: never) => void) {
+      const current = handlers.get(event) ?? [];
+      current.push(handler);
+      handlers.set(event, current);
+      return this;
+    },
+    async finalMessage() {
+      for (const [event, value] of events) {
+        for (const handler of handlers.get(event) ?? []) {
+          handler(value as never);
+        }
+      }
+      return finalMessage;
+    },
+  };
+}
 
 describe("callClaude", () => {
   test("llamada exitosa devuelve texto + tokens", async () => {
@@ -87,6 +126,115 @@ describe("callClaude", () => {
     expect(opts).toBeDefined();
     expect(opts.maxRetries).toBe(3);
     expect(typeof opts.timeout).toBe("number");
+  });
+});
+
+describe("streamClaude — marcas de timing", () => {
+  test("marca solamente el primer evento/delta en el path de texto", async () => {
+    mockStream = () =>
+      fakeStream(
+        {
+          id: "msg_text",
+          content: [{ type: "text", text: "primero segundo" }],
+          usage: { input_tokens: 2, output_tokens: 2 },
+          stop_reason: "end_turn",
+        },
+        [
+          ["streamEvent", { type: "message_start" }],
+          ["text", "primero"],
+          ["text", " segundo"],
+        ],
+      );
+    const phases: string[] = [];
+
+    await streamClaude(
+      "sys",
+      [{ role: "user", content: "hola" }],
+      {},
+      undefined,
+      undefined,
+      (phase) => phases.push(phase),
+    );
+
+    expect(phases).toEqual(["first_delta"]);
+  });
+
+  test("marca primer sandbox y cada último resultado con file_id entre pause_turns", async () => {
+    const resultBlock = (fileId: string) => ({
+      type: "bash_code_execution_tool_result",
+      tool_use_id: `tool_${fileId}`,
+      content: {
+        type: "bash_code_execution_result",
+        content: [{ type: "bash_code_execution_output", file_id: fileId }],
+      },
+    });
+    const turns = [
+      fakeStream(
+        {
+          id: "msg_turn_1",
+          content: [resultBlock("file_1")],
+          usage: { input_tokens: 2, output_tokens: 2 },
+          stop_reason: "pause_turn",
+        },
+        [
+          [
+            "streamEvent",
+            {
+              type: "content_block_start",
+              content_block: {
+                type: "server_tool_use",
+                name: "code_execution",
+              },
+            },
+          ],
+          ["text", "procesando"],
+        ],
+      ),
+      fakeStream(
+        {
+          id: "msg_turn_2",
+          content: [resultBlock("file_2")],
+          usage: { input_tokens: 1, output_tokens: 1 },
+          stop_reason: "end_turn",
+        },
+        [
+          [
+            "streamEvent",
+            {
+              type: "content_block_start",
+              content_block: {
+                type: "server_tool_use",
+                name: "code_execution",
+              },
+            },
+          ],
+          ["text", "listo"],
+        ],
+      ),
+    ];
+    let turn = 0;
+    mockBetaStream = () => turns[turn++];
+    const phases: string[] = [];
+
+    const response = await streamClaude(
+      "sys",
+      [{ role: "user", content: "generá un PDF" }],
+      { enableFileGeneration: true },
+      undefined,
+      undefined,
+      (phase) => phases.push(phase),
+    );
+
+    expect(response.generatedFiles).toEqual([
+      { fileId: "file_1" },
+      { fileId: "file_2" },
+    ]);
+    expect(phases).toEqual([
+      "first_delta",
+      "sandbox_start",
+      "sandbox_end",
+      "sandbox_end",
+    ]);
   });
 });
 
