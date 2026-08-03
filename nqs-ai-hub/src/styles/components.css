@@ -218,21 +218,26 @@ button { font-family: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  transition: transform .12s, background .12s;
+  transition: transform .12s, background .12s, opacity .12s;
 }
-.btn:hover { transform: translateY(-1px); }
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
 .btn.secondary {
   background: transparent;
   color: var(--fg);
   border: 1px solid var(--line-strong);
 }
-.btn.secondary:hover { background: var(--bg-elev); }
+.btn.secondary:hover:not(:disabled) { background: var(--bg-elev); }
 .btn.ghost {
   background: transparent;
   color: var(--fg-mute);
   padding: 6px 10px;
 }
-.btn.ghost:hover { color: var(--fg); background: var(--bg-elev); }
+.btn.ghost:hover:not(:disabled) { color: var(--fg); background: var(--bg-elev); }
 .btn.sm { padding: 7px 11px; font-size: 10px; }
 .btn.danger { background: var(--danger); color: white; }
 
