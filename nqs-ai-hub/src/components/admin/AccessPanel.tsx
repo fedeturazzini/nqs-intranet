@@ -98,40 +98,66 @@ export function AccessPanel({
   }, [users]);
 
   const updateAccessStatus = useCallback(
-    async (toolId: string, status: "active" | "locked") => {
+    async (
+      toolId: string,
+      status: "active" | "locked",
+      opts?: {
+        durationMinutes?: number;
+        customExpiresAt?: string | null;
+      },
+    ) => {
       if (!selectedId) return;
+      const body: Record<string, unknown> = {
+        userId: selectedId,
+        toolId,
+        status,
+      };
+      if (opts?.customExpiresAt !== undefined) {
+        body.custom_expires_at = opts.customExpiresAt;
+      } else if (opts?.durationMinutes != null) {
+        body.duration_minutes = opts.durationMinutes;
+      }
+
       const res = await fetch("/api/admin/tools/access", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ userId: selectedId, toolId, status }),
+        body: JSON.stringify(body),
       });
-      if (res.ok) {
-        // Update local state en vez de refresh completo. El endpoint siempre
-        // deja expires_at=null (acceso permanente).
-        setAccesses((prev) => {
-          const idx = prev.findIndex(
-            (a) => a.user_id === selectedId && a.tool_id === toolId,
-          );
-          if (idx >= 0) {
-            const next = [...prev];
-            next[idx] = { ...next[idx], status, expires_at: null };
-            return next;
-          }
-          return [
-            ...prev,
-            {
-              user_id: selectedId,
-              tool_id: toolId,
-              status,
-              schedule: null,
-              granted_at: new Date().toISOString(),
-              expires_at: null,
-            },
-          ];
-        });
-      } else {
+      if (!res.ok) {
         throw new Error(`access_update_failed_${res.status}`);
       }
+
+      const data = (await res.json().catch(() => ({}))) as {
+        expires_at?: string | null;
+      };
+      const expiresAt =
+        status === "locked"
+          ? null
+          : opts?.customExpiresAt !== undefined
+            ? opts.customExpiresAt
+            : (data.expires_at ?? null);
+
+      setAccesses((prev) => {
+        const idx = prev.findIndex(
+          (a) => a.user_id === selectedId && a.tool_id === toolId,
+        );
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = { ...next[idx], status, expires_at: expiresAt };
+          return next;
+        }
+        return [
+          ...prev,
+          {
+            user_id: selectedId,
+            tool_id: toolId,
+            status,
+            schedule: null,
+            granted_at: new Date().toISOString(),
+            expires_at: expiresAt,
+          },
+        ];
+      });
     },
     [selectedId],
   );
@@ -319,8 +345,8 @@ export function AccessPanel({
                         : null
                     }
                     onStatusToggle={(next) => updateAccessStatus(tool.id, next)}
-                    onMakePermanent={() =>
-                      updateAccessStatus(tool.id, "active")
+                    onSetDuration={(opts) =>
+                      updateAccessStatus(tool.id, "active", opts)
                     }
                     onScheduleSave={(sched) => updateSchedule(tool.id, sched)}
                   />

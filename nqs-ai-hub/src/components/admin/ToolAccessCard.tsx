@@ -11,6 +11,11 @@ import { ScheduleEditor, defaultSchedule } from "./ScheduleEditor";
 import { getAccessExpiryMeta } from "@/lib/access/effective-status";
 import type { ToolSchedule } from "@/types/db-aliases";
 
+export type AccessDurationOpts = {
+  durationMinutes?: number;
+  customExpiresAt?: string | null;
+};
+
 type ToolAccessCardProps = Readonly<{
   tool: {
     id: string;
@@ -26,11 +31,25 @@ type ToolAccessCardProps = Readonly<{
     expires_at: string | null;
   } | null;
   onStatusToggle: (next: "active" | "locked") => Promise<void> | void;
-  onMakePermanent: () => Promise<void> | void;
+  onSetDuration: (opts: AccessDurationOpts) => Promise<void> | void;
   onScheduleSave: (schedule: ToolSchedule | null) => Promise<void> | void;
 }>;
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
+
+type DurationOption = {
+  label: string;
+  durationMinutes?: number;
+  permanent?: boolean;
+};
+
+const DURATION_OPTIONS: DurationOption[] = [
+  { label: "1 día", durationMinutes: 1440 },
+  { label: "3 días", durationMinutes: 4320 },
+  { label: "1 semana", durationMinutes: 10080 },
+  { label: "1 mes", durationMinutes: 43200 },
+  { label: "permanente", permanent: true },
+];
 
 function schedulesEqual(
   a: ToolSchedule | null,
@@ -43,7 +62,7 @@ export function ToolAccessCard({
   tool,
   access,
   onStatusToggle,
-  onMakePermanent,
+  onSetDuration,
   onScheduleSave,
 }: ToolAccessCardProps) {
   const status = access?.status ?? "locked";
@@ -56,7 +75,10 @@ export function ToolAccessCard({
   const toggleOn = status === "active" && expiry.kind !== "expired";
 
   const [busy, setBusy] = useState(false);
-  const [makingPermanent, setMakingPermanent] = useState(false);
+  const [durationBusy, setDurationBusy] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customValue, setCustomValue] = useState("");
+  const [customError, setCustomError] = useState<string | null>(null);
   const [showSchedule, setShowSchedule] = useState(savedSchedule != null);
   const [draftSchedule, setDraftSchedule] = useState<ToolSchedule | null>(
     savedSchedule,
@@ -82,15 +104,44 @@ export function ToolAccessCard({
     }
   }
 
-  async function makePermanent() {
-    setMakingPermanent(true);
+  async function applyDuration(opts: AccessDurationOpts) {
+    setDurationBusy(true);
+    setCustomError(null);
     try {
-      await onMakePermanent();
+      await onSetDuration(opts);
+      setCustomOpen(false);
+      setCustomValue("");
     } catch {
-      // El estado local no se toca si el PATCH falla.
+      setCustomError("no se pudo guardar la duración");
     } finally {
-      setMakingPermanent(false);
+      setDurationBusy(false);
     }
+  }
+
+  function handleDurationOption(opt: DurationOption) {
+    if (opt.permanent) {
+      void applyDuration({ customExpiresAt: null });
+      return;
+    }
+    void applyDuration({ durationMinutes: opt.durationMinutes });
+  }
+
+  function confirmCustomDuration() {
+    setCustomError(null);
+    if (!customValue) {
+      setCustomError("elegí una fecha y hora");
+      return;
+    }
+    const dt = new Date(customValue);
+    if (Number.isNaN(dt.getTime())) {
+      setCustomError("fecha inválida");
+      return;
+    }
+    if (dt.getTime() <= Date.now()) {
+      setCustomError("tiene que ser a futuro");
+      return;
+    }
+    void applyDuration({ customExpiresAt: dt.toISOString() });
   }
 
   function openScheduleEditor() {
@@ -193,42 +244,109 @@ export function ToolAccessCard({
         </div>
       )}
 
-      {isActive && tool.is_active && (
+      {tool.is_active && (
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 10,
+            flexDirection: "column",
+            gap: 8,
             borderTop: "1px solid var(--line)",
             paddingTop: 10,
           }}
         >
-          <div className="t-meta" style={{ color: expiryColor, fontSize: 11 }}>
-            ↳ {expiry.label.toUpperCase()}
-            {expiry.expiresAtLabel
-              ? ` · ${expiry.kind === "expired" ? "venció" : "vence"} ${expiry.expiresAtLabel}`
-              : ""}
-          </div>
-          {(expiry.kind === "temporary" || expiry.kind === "expired") && (
+          {isActive ? (
+            <div className="t-meta" style={{ color: expiryColor, fontSize: 11 }}>
+              ↳ {expiry.label.toUpperCase()}
+              {expiry.expiresAtLabel
+                ? ` · ${expiry.kind === "expired" ? "venció" : "vence"} ${expiry.expiresAtLabel}`
+                : ""}
+            </div>
+          ) : (
+            <div className="t-meta dim" style={{ fontSize: 11 }}>
+              ↳ sin acceso · elegí duración para habilitar
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <span
+              className="t-meta dim"
+              style={{ fontSize: 10, marginRight: 2 }}
+            >
+              {isActive ? "↳ duración:" : "↳ habilitar:"}
+            </span>
+            {DURATION_OPTIONS.map((opt) => (
+              <button
+                key={opt.label}
+                type="button"
+                className="btn sm secondary"
+                disabled={durationBusy || busy}
+                onClick={() => handleDurationOption(opt)}
+                style={{ fontSize: 11 }}
+              >
+                {opt.label}
+              </button>
+            ))}
             <button
               type="button"
-              className="t-meta"
-              onClick={() => void makePermanent()}
-              disabled={makingPermanent || busy}
+              className="btn sm secondary"
+              disabled={durationBusy || busy}
+              onClick={() => {
+                setCustomOpen((v) => !v);
+                setCustomError(null);
+              }}
+              style={{ fontSize: 11 }}
+            >
+              custom
+            </button>
+          </div>
+
+          {customOpen && (
+            <div
               style={{
-                background: "transparent",
-                border: 0,
-                color: "var(--accent)",
-                cursor: makingPermanent ? "wait" : "pointer",
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                flexShrink: 0,
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                flexWrap: "wrap",
               }}
             >
-              {makingPermanent ? "guardando…" : "hacer permanente"}
-            </button>
+              <span className="t-eyebrow">↳ VENCE EL</span>
+              <input
+                type="datetime-local"
+                value={customValue}
+                onChange={(e) => setCustomValue(e.target.value)}
+                disabled={durationBusy || busy}
+                style={{
+                  background: "var(--bg)",
+                  border: "1px solid var(--line-strong)",
+                  borderRadius: 6,
+                  color: "var(--fg)",
+                  fontFamily: "var(--mono)",
+                  fontSize: 12,
+                  padding: "6px 8px",
+                  outline: "none",
+                }}
+              />
+              {customError && (
+                <span className="t-meta" style={{ color: "var(--danger)" }}>
+                  {customError}
+                </span>
+              )}
+              <button
+                type="button"
+                className="btn sm"
+                disabled={durationBusy || busy}
+                onClick={confirmCustomDuration}
+              >
+                {durationBusy ? "guardando…" : "aplicar →"}
+              </button>
+            </div>
           )}
         </div>
       )}
