@@ -23,8 +23,10 @@
  */
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
+import { isEffectivelyActiveAccess } from "@/lib/access/effective-status";
 import { getSession } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
+import { logError, logInfo } from "@/lib/log";
 import { notifySlack } from "@/lib/notifications/slack";
 
 const BodySchema = z.object({
@@ -82,27 +84,30 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // 2) el user NO tiene ya acceso activo
+  // 2) el user NO tiene ya acceso efectivo. Un row `active` con
+  // `expires_at` vencido cuenta como expirado (puede pedir renovación).
   const { data: access } = await db
     .from("tool_access")
-    .select("status")
+    .select("status, expires_at")
     .eq("user_id", session.userId)
     .eq("tool_id", toolId)
     .maybeSingle();
-  if (access?.status === "active") {
+  if (isEffectivelyActiveAccess(access?.status, access?.expires_at)) {
     // Observabilidad (fase 1): este path NO avisa a Slack (el user ya tiene la
     // tool). Lo logueamos porque, si aparece seguido en prod, es un pedido que
     // "no llegó" explicado por tener acceso activo — no un webhook caído.
-    console.log(
-      JSON.stringify({
-        level: "info",
-        msg: "access-request corto: already_has_access (sin Slack)",
-        userId: session.userId,
-        toolId,
-      }),
-    );
+    logInfo("access-request corto: already_has_access (sin Slack)", {
+      route: "me/access-request",
+      userId: session.userId,
+      toolId,
+      status: 400,
+      reason: "already_has_access",
+    });
     return NextResponse.json(
-      { error: "already_has_access", message: "Ya tenés acceso a esta herramienta" },
+      {
+        error: "already_has_access",
+        message: "Ya tenés acceso a esta herramienta",
+      },
       { status: 400 },
     );
   }
@@ -120,15 +125,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Observabilidad (fase 1): hoy este path NO re-emite el aviso — esa es la
     // fase 2 (re-emisión con throttle, ver slack-intermitente-audit.md). El log
     // deja medir en prod cuántas veces se choca una fila pendiente sin avisar.
-    console.log(
-      JSON.stringify({
-        level: "info",
-        msg: "access-request corto: already_pending (sin Slack)",
-        userId: session.userId,
-        toolId,
-        pendingId: pending.id,
-      }),
-    );
+    logInfo("access-request corto: already_pending (sin Slack)", {
+      route: "me/access-request",
+      userId: session.userId,
+      toolId,
+      status: 400,
+      reason: "already_pending",
+      pendingId: pending.id,
+    });
     return NextResponse.json(
       {
         error: "already_pending",
@@ -183,13 +187,13 @@ export async function POST(request: Request): Promise<NextResponse> {
       adminUrl,
     });
     if (!sent) {
-      console.error(
-        JSON.stringify({
-          level: "error",
-          msg: "access_request aviso NO confirmado (notified_at queda null)",
-          requestId: created.id,
-        }),
-      );
+      logError("access_request aviso NO confirmado (notified_at queda null)", {
+        route: "me/access-request",
+        userId: session.userId,
+        toolId,
+        requestId: created.id,
+        reason: "slack_unconfirmed",
+      });
       return;
     }
     const { error: markErr } = await db
@@ -197,15 +201,22 @@ export async function POST(request: Request): Promise<NextResponse> {
       .update({ notified_at: new Date().toISOString() })
       .eq("id", created.id);
     if (markErr) {
-      console.error(
-        JSON.stringify({
-          level: "error",
-          msg: "notified_at update falló (el aviso sí salió)",
-          requestId: created.id,
-          error: markErr.message,
-        }),
-      );
+      logError("notified_at update falló (el aviso sí salió)", {
+        route: "me/access-request",
+        userId: session.userId,
+        toolId,
+        requestId: created.id,
+        err: markErr,
+      });
     }
+  });
+
+  logInfo("access-request creada", {
+    route: "me/access-request",
+    userId: session.userId,
+    toolId,
+    requestId: created.id,
+    reason: access ? "renewal" : "new_access",
   });
 
   return NextResponse.json({ ok: true, requestId: created.id });

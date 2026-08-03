@@ -13,11 +13,7 @@
  * desde `credit_allocations`.
  */
 import { createServerClient } from "@/lib/db/supabase";
-import type {
-  AccessStatus,
-  ToolId,
-  ToolSchedule,
-} from "@/types/db-aliases";
+import type { AccessStatus, ToolId, ToolSchedule } from "@/types/db-aliases";
 
 export type ToolWithAccess = {
   id: ToolId;
@@ -48,18 +44,25 @@ export async function listToolsWithAccess(
 ): Promise<ToolWithAccess[]> {
   const db = createServerClient();
 
-  // 3 queries en paralelo — son independientes.
-  const [toolsRes, accessRes, allocRes] = await Promise.all([
+  // 4 queries en paralelo — son independientes.
+  const [toolsRes, accessRes, allocRes, pendingRes] = await Promise.all([
     // `tutoriales` se gestiona vía tool_access pero NO es una card del hub
     // (es una sección del navbar). Lo excluimos del catálogo del hub.
     db.from("tools").select("*").neq("id", "tutoriales"),
     db.from("tool_access").select("*").eq("user_id", userId),
     db.from("credit_allocations").select("*").eq("user_id", userId),
+    db
+      .from("access_requests")
+      .select("tool_id, created_at")
+      .eq("user_id", userId)
+      .eq("request_type", "access")
+      .eq("status", "pending"),
   ]);
 
   if (toolsRes.error) throw toolsRes.error;
   if (accessRes.error) throw accessRes.error;
   if (allocRes.error) throw allocRes.error;
+  if (pendingRes.error) throw pendingRes.error;
 
   const tools = toolsRes.data ?? [];
   const accessByToolId = new Map(
@@ -67,6 +70,9 @@ export async function listToolsWithAccess(
   );
   const allocByToolId = new Map(
     (allocRes.data ?? []).map((a) => [a.tool_id, a]),
+  );
+  const pendingByToolId = new Map(
+    (pendingRes.data ?? []).map((r) => [r.tool_id, r.created_at]),
   );
 
   // Orden estable: primero las que el cliente trabaja activamente, después
@@ -97,6 +103,14 @@ export async function listToolsWithAccess(
       status = access.status;
     }
 
+    // Si el user ya pidió renovación/acceso y sigue pendiente, la card
+    // debe mostrar "esperando confirmación" en vez de seguir invitando
+    // a pedir otra vez. Un acceso efectivo aún activo conserva prioridad.
+    const pendingAt = pendingByToolId.get(tool.id) ?? null;
+    if (pendingAt && (status === "locked" || status === "expired")) {
+      status = "pending";
+    }
+
     const creditsInfo =
       tool.uses_credits && alloc
         ? {
@@ -122,6 +136,9 @@ export async function listToolsWithAccess(
         // venía "expired" en DB como si lo derivamos por `expires_at` vencido).
         ...(status === "expired" && access?.expires_at
           ? { expiredAt: formatExpiredAt(access.expires_at) }
+          : {}),
+        ...(status === "pending" && pendingAt
+          ? { requestedAt: pendingAt }
           : {}),
         schedule: (access?.schedule ?? null) as ToolSchedule | null,
       },

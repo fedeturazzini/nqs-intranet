@@ -91,19 +91,11 @@ export function AccessPanel({
       arr.sort((x, y) => x.name.localeCompare(y.name, "es"));
     }
     entries.sort(
-      (a, b) => deptOrder(a[0]) - deptOrder(b[0]) || a[0].localeCompare(b[0], "es"),
+      (a, b) =>
+        deptOrder(a[0]) - deptOrder(b[0]) || a[0].localeCompare(b[0], "es"),
     );
     return entries;
   }, [users]);
-
-  const refreshAccesses = useCallback(async () => {
-    // Reload completo desde un endpoint genérico — no creamos endpoint
-    // dedicado: hacemos query directa al cliente vía el endpoint que ya
-    // existe. Para evitar agregar otro, refetchamos esta página con
-    // router. Más simple y barato: re-disparamos al fetch directo a la
-    // tabla via REST. Para MVP, recargamos la página por simplicidad.
-    window.location.reload();
-  }, []);
 
   const updateAccessStatus = useCallback(
     async (toolId: string, status: "active" | "locked") => {
@@ -114,14 +106,15 @@ export function AccessPanel({
         body: JSON.stringify({ userId: selectedId, toolId, status }),
       });
       if (res.ok) {
-        // Update local state en vez de refresh completo.
+        // Update local state en vez de refresh completo. El endpoint siempre
+        // deja expires_at=null (acceso permanente).
         setAccesses((prev) => {
           const idx = prev.findIndex(
             (a) => a.user_id === selectedId && a.tool_id === toolId,
           );
           if (idx >= 0) {
             const next = [...prev];
-            next[idx] = { ...next[idx], status };
+            next[idx] = { ...next[idx], status, expires_at: null };
             return next;
           }
           return [
@@ -137,15 +130,15 @@ export function AccessPanel({
           ];
         });
       } else {
-        await refreshAccesses();
+        throw new Error(`access_update_failed_${res.status}`);
       }
     },
-    [selectedId, refreshAccesses],
+    [selectedId],
   );
 
   const updateSchedule = useCallback(
     async (toolId: string, schedule: ToolSchedule | null) => {
-      if (!selectedId) return;
+      if (!selectedId) throw new Error("no_user_selected");
       const res = await fetch("/api/admin/tools/schedule", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -173,11 +166,11 @@ export function AccessPanel({
             },
           ];
         });
-      } else {
-        await refreshAccesses();
+        return;
       }
+      throw new Error(`schedule_update_failed_${res.status}`);
     },
-    [selectedId, refreshAccesses],
+    [selectedId],
   );
 
   return (
@@ -254,7 +247,7 @@ export function AccessPanel({
                       className="t-meta dim"
                       style={{ fontSize: 10, marginTop: 1 }}
                     >
-                      {u.role === "admin" ? "admin" : u.dept ?? "—"}
+                      {u.role === "admin" ? "admin" : (u.dept ?? "—")}
                     </div>
                   </div>
                 </button>
@@ -281,9 +274,14 @@ export function AccessPanel({
                 letterSpacing: "-0.01em",
               }}
             >
-              <em style={{ fontFamily: "var(--serif)" }}>{selectedUser.name}</em>
+              <em style={{ fontFamily: "var(--serif)" }}>
+                {selectedUser.name}
+              </em>
             </h1>
-            <p className="t-meta dim" style={{ marginTop: 6, marginBottom: 24 }}>
+            <p
+              className="t-meta dim"
+              style={{ marginTop: 6, marginBottom: 24 }}
+            >
               {selectedUser.email}
               {selectedUser.role === "admin"
                 ? " · admin (pasa por arriba de todos los checks)"
@@ -311,13 +309,20 @@ export function AccessPanel({
                   <ToolAccessCard
                     key={`${selectedUser.id}::${tool.id}`}
                     tool={tool}
-                    access={access ?? null}
-                    onStatusToggle={(next) =>
-                      updateAccessStatus(tool.id, next)
+                    access={
+                      access
+                        ? {
+                            status: access.status,
+                            schedule: access.schedule,
+                            expires_at: access.expires_at,
+                          }
+                        : null
                     }
-                    onScheduleChange={(sched) =>
-                      updateSchedule(tool.id, sched)
+                    onStatusToggle={(next) => updateAccessStatus(tool.id, next)}
+                    onMakePermanent={() =>
+                      updateAccessStatus(tool.id, "active")
                     }
+                    onScheduleSave={(sched) => updateSchedule(tool.id, sched)}
                   />
                 );
               })}

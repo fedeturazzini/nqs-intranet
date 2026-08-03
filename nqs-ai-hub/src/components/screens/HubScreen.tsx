@@ -64,10 +64,7 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
   // Order persistido. Inicializamos con el orden que llegó del server
   // (que ya viene ordenado por status). En el primer render del cliente
   // intentamos hidratar desde localStorage.
-  const defaultOrder = useMemo<ToolId[]>(
-    () => tools.map((t) => t.id),
-    [tools],
-  );
+  const defaultOrder = useMemo<ToolId[]>(() => tools.map((t) => t.id), [tools]);
   const [order, setOrder] = useState<ToolId[]>(defaultOrder);
 
   useEffect(() => {
@@ -123,10 +120,7 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
   }, [layout]);
 
   // Mapa para lookup rápido por id.
-  const byId = useMemo(
-    () => new Map(tools.map((t) => [t.id, t])),
-    [tools],
-  );
+  const byId = useMemo(() => new Map(tools.map((t) => [t.id, t])), [tools]);
 
   // Aplicamos order primero, después filter + search.
   const orderedTools = useMemo(() => {
@@ -189,32 +183,30 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
       if (id !== dragOverId) setDragOverId(id);
     };
 
-  const handleDrop =
-    (id: ToolId) => (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      if (!dragId || dragId === id) {
-        setDragId(null);
-        setDragOverId(null);
-        return;
-      }
-      setOrder((prev) => {
-        const next = prev.filter((x) => x !== dragId);
-        const idx = next.indexOf(id);
-        const safeIdx = idx < 0 ? next.length : idx;
-        next.splice(safeIdx, 0, dragId);
-        return next;
-      });
+  const handleDrop = (id: ToolId) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!dragId || dragId === id) {
       setDragId(null);
       setDragOverId(null);
-    };
+      return;
+    }
+    setOrder((prev) => {
+      const next = prev.filter((x) => x !== dragId);
+      const idx = next.indexOf(id);
+      const safeIdx = idx < 0 ? next.length : idx;
+      next.splice(safeIdx, 0, dragId);
+      return next;
+    });
+    setDragId(null);
+    setDragOverId(null);
+  };
 
   // ─── handlers de acción ──────────────────────────────────
   // Si la tool tiene schedule configurado y estamos fuera de horario,
   // abrimos el modal en lugar de redirigir. Server igual valida con
   // canUseTool, así que esto es una mejora UX (no de seguridad).
-  const [outsideHoursTool, setOutsideHoursTool] = useState<ToolWithAccess | null>(
-    null,
-  );
+  const [outsideHoursTool, setOutsideHoursTool] =
+    useState<ToolWithAccess | null>(null);
   const [requestAccessTool, setRequestAccessTool] =
     useState<ToolWithAccess | null>(null);
 
@@ -265,12 +257,10 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
             ↳ TU WORKSPACE
           </div>
           <h1 className="page-title">
-            {header.greeting},{" "}
-            <em>{userFirstName}.</em>
+            {header.greeting}, <em>{userFirstName}.</em>
           </h1>
           <div className="page-sub">
-            Tu suite del día. Arrastrá las cards para reordenarlas a tu
-            gusto.
+            Tu suite del día. Arrastrá las cards para reordenarlas a tu gusto.
           </div>
         </div>
         {/* FIX 17.5: se removió el indicador "Proyecto activo" del hub —
@@ -404,13 +394,14 @@ export function HubScreen({ tools, userFirstName }: HubScreenProps) {
         // FEEDBACK NQS v2.0: si la tool está expirada, el modal usa la
         // copy de renovación; si está locked, la de solicitud normal.
         variant={
-          requestAccessTool?.access.status === "expired"
-            ? "renewal"
-            : "request"
+          requestAccessTool?.access.status === "expired" ? "renewal" : "request"
         }
         onClose={() => setRequestAccessTool(null)}
         onSubmitted={() => {
           setRequestAccessTool(null);
+          // Refrescamos el hub para que la card pase de "pedir renovación"
+          // a "esperando confirmación" y no invite a reenviar.
+          router.refresh();
         }}
       />
     </div>
@@ -426,11 +417,7 @@ type FilterButtonProps = Readonly<{
 
 function FilterButton({ active, onClick, label, count }: FilterButtonProps) {
   return (
-    <button
-      type="button"
-      className={active ? "active" : ""}
-      onClick={onClick}
-    >
+    <button type="button" className={active ? "active" : ""} onClick={onClick}>
       {label}
       {count != null ? ` · ${count}` : ""}
     </button>

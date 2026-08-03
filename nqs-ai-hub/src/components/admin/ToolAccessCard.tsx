@@ -3,10 +3,12 @@
 /**
  * Card por tool en la página de accesos. Combina:
  *   - Toggle status (active/locked)
- *   - Editor de schedule (solo si está active)
+ *   - Estado efectivo permanente / temporal / vencido
+ *   - Editor de schedule con guardado explícito
  */
-import { useState } from "react";
-import { ScheduleEditor } from "./ScheduleEditor";
+import { useEffect, useMemo, useState } from "react";
+import { ScheduleEditor, defaultSchedule } from "./ScheduleEditor";
+import { getAccessExpiryMeta } from "@/lib/access/effective-status";
 import type { ToolSchedule } from "@/types/db-aliases";
 
 type ToolAccessCardProps = Readonly<{
@@ -21,32 +23,117 @@ type ToolAccessCardProps = Readonly<{
   access: {
     status: "active" | "pending" | "locked" | "expired";
     schedule: unknown;
+    expires_at: string | null;
   } | null;
   onStatusToggle: (next: "active" | "locked") => Promise<void> | void;
-  onScheduleChange: (schedule: ToolSchedule | null) => Promise<void> | void;
+  onMakePermanent: () => Promise<void> | void;
+  onScheduleSave: (schedule: ToolSchedule | null) => Promise<void> | void;
 }>;
+
+type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
+
+function schedulesEqual(
+  a: ToolSchedule | null,
+  b: ToolSchedule | null,
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 export function ToolAccessCard({
   tool,
   access,
   onStatusToggle,
-  onScheduleChange,
+  onMakePermanent,
+  onScheduleSave,
 }: ToolAccessCardProps) {
   const status = access?.status ?? "locked";
-  const isActive = status === "active";
-  const [busy, setBusy] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(
-    access?.schedule != null,
+  const savedSchedule = (access?.schedule as ToolSchedule | null) ?? null;
+  const expiry = useMemo(
+    () => getAccessExpiryMeta(status, access?.expires_at ?? null),
+    [status, access?.expires_at],
   );
+  const isActive = status === "active" || expiry.kind === "expired";
+  const toggleOn = status === "active" && expiry.kind !== "expired";
+
+  const [busy, setBusy] = useState(false);
+  const [makingPermanent, setMakingPermanent] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(savedSchedule != null);
+  const [draftSchedule, setDraftSchedule] = useState<ToolSchedule | null>(
+    savedSchedule,
+  );
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+
+  useEffect(() => {
+    setDraftSchedule(savedSchedule);
+    setShowSchedule(savedSchedule != null);
+    setSaveState("idle");
+  }, [savedSchedule]);
+
+  const dirty = !schedulesEqual(draftSchedule, savedSchedule);
 
   async function toggle() {
     setBusy(true);
     try {
-      await onStatusToggle(isActive ? "locked" : "active");
+      await onStatusToggle(toggleOn ? "locked" : "active");
+    } catch {
+      // El estado local no se toca si el PATCH falla.
     } finally {
       setBusy(false);
     }
   }
+
+  async function makePermanent() {
+    setMakingPermanent(true);
+    try {
+      await onMakePermanent();
+    } catch {
+      // El estado local no se toca si el PATCH falla.
+    } finally {
+      setMakingPermanent(false);
+    }
+  }
+
+  function openScheduleEditor() {
+    setShowSchedule(true);
+    if (draftSchedule == null) {
+      const next = defaultSchedule();
+      setDraftSchedule(next);
+      setSaveState("dirty");
+    }
+  }
+
+  function clearScheduleRestriction() {
+    setShowSchedule(false);
+    setDraftSchedule(null);
+    setSaveState(schedulesEqual(null, savedSchedule) ? "idle" : "dirty");
+  }
+
+  function discardSchedule() {
+    setDraftSchedule(savedSchedule);
+    setShowSchedule(savedSchedule != null);
+    setSaveState("idle");
+  }
+
+  async function saveSchedule() {
+    if (!dirty || saveState === "saving") return;
+    setSaveState("saving");
+    try {
+      await onScheduleSave(draftSchedule);
+      setSaveState("saved");
+      window.setTimeout(() => {
+        setSaveState((current) => (current === "saved" ? "idle" : current));
+      }, 2000);
+    } catch {
+      setSaveState("error");
+    }
+  }
+
+  const expiryColor =
+    expiry.kind === "expired"
+      ? "var(--danger, #ff5c5c)"
+      : expiry.kind === "temporary"
+        ? "var(--accent)"
+        : "var(--fg-mute)";
 
   return (
     <div
@@ -97,20 +184,62 @@ export function ToolAccessCard({
           </div>
         </div>
 
-        <Toggle on={isActive} busy={busy} onClick={toggle} />
+        <Toggle on={toggleOn} busy={busy} onClick={toggle} />
       </div>
 
       {!tool.is_active && (
-        <div
-          className="t-meta dim"
-          style={{ fontStyle: "italic" }}
-        >
+        <div className="t-meta dim" style={{ fontStyle: "italic" }}>
           ↳ esta tool todavía no está habilitada en la plataforma
         </div>
       )}
 
-      {/* Tutoriales: contenido educativo 24/7, sin sección de horarios. */}
-      {isActive && tool.is_active && tool.id === "tutoriales" && (
+      {isActive && tool.is_active && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            borderTop: "1px solid var(--line)",
+            paddingTop: 10,
+          }}
+        >
+          <div className="t-meta" style={{ color: expiryColor, fontSize: 11 }}>
+            ↳ {expiry.label.toUpperCase()}
+            {expiry.expiresAtLabel
+              ? ` · ${expiry.kind === "expired" ? "venció" : "vence"} ${expiry.expiresAtLabel}`
+              : ""}
+          </div>
+          {(expiry.kind === "temporary" || expiry.kind === "expired") && (
+            <button
+              type="button"
+              className="t-meta"
+              onClick={() => void makePermanent()}
+              disabled={makingPermanent || busy}
+              style={{
+                background: "transparent",
+                border: 0,
+                color: "var(--accent)",
+                cursor: makingPermanent ? "wait" : "pointer",
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                flexShrink: 0,
+              }}
+            >
+              {makingPermanent ? "guardando…" : "hacer permanente"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {toggleOn && tool.is_active && (
+        <div className="t-meta dim" style={{ fontSize: 10, marginTop: -4 }}>
+          ↳ el horario limita cuándo se usa; no extiende el vencimiento
+        </div>
+      )}
+
+      {toggleOn && tool.is_active && tool.id === "tutoriales" && (
         <div
           className="t-meta dim"
           style={{
@@ -123,7 +252,7 @@ export function ToolAccessCard({
         </div>
       )}
 
-      {isActive && tool.is_active && tool.id !== "tutoriales" && (
+      {toggleOn && tool.is_active && tool.id !== "tutoriales" && (
         <div style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }}>
           <div
             style={{
@@ -139,13 +268,8 @@ export function ToolAccessCard({
               type="button"
               className="t-meta"
               onClick={() => {
-                if (showSchedule) {
-                  // limpiar = guardar null + ocultar editor
-                  void onScheduleChange(null);
-                  setShowSchedule(false);
-                } else {
-                  setShowSchedule(true);
-                }
+                if (showSchedule) clearScheduleRestriction();
+                else openScheduleEditor();
               }}
               style={{
                 background: "transparent",
@@ -161,20 +285,73 @@ export function ToolAccessCard({
             </button>
           </div>
 
-          {showSchedule && (
+          {showSchedule && draftSchedule && (
             <ScheduleEditor
-              value={(access?.schedule as ToolSchedule | null) ?? null}
-              onChange={onScheduleChange}
+              value={draftSchedule}
+              onChange={(next) => {
+                setDraftSchedule(next);
+                setSaveState(
+                  schedulesEqual(next, savedSchedule) ? "idle" : "dirty",
+                );
+              }}
             />
           )}
           {!showSchedule && (
-            <div
-              className="t-meta dim"
-              style={{ marginTop: 6, fontSize: 11 }}
-            >
+            <div className="t-meta dim" style={{ marginTop: 6, fontSize: 11 }}>
               acceso 24/7
             </div>
           )}
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+              marginTop: 12,
+            }}
+          >
+            <div
+              className="t-meta"
+              style={{
+                fontSize: 10,
+                color:
+                  saveState === "error"
+                    ? "var(--danger, #ff5c5c)"
+                    : saveState === "saved"
+                      ? "var(--ok, #3ecf8e)"
+                      : "var(--fg-mute)",
+              }}
+            >
+              {saveState === "saving"
+                ? "↳ guardando…"
+                : saveState === "saved"
+                  ? "↳ guardado"
+                  : saveState === "error"
+                    ? "↳ error al guardar"
+                    : dirty
+                      ? "↳ cambios sin guardar"
+                      : "↳ sin cambios"}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="btn sm secondary"
+                onClick={discardSchedule}
+                disabled={!dirty || saveState === "saving"}
+              >
+                descartar
+              </button>
+              <button
+                type="button"
+                className="btn sm"
+                onClick={() => void saveSchedule()}
+                disabled={!dirty || saveState === "saving"}
+              >
+                {saveState === "saving" ? "guardando…" : "guardar horarios"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

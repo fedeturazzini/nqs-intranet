@@ -5,18 +5,12 @@
  *
  * UX:
  *   - Por cada día: checkbox enabled + inputs from / to (HH:MM)
- *   - Botón "copiar este horario a todos los días" (usa el primer día
- *     habilitado como template)
- *   - El estado se debounce (300ms) antes de pegar al endpoint para
- *     no spamear PATCH en cada keystroke.
+ *   - Botón "copiar este horario a todos los días"
+ *   - Solo edita un borrador local; el padre decide cuándo guardar.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DAYS_OF_WEEK } from "@/types/db-aliases";
-import type {
-  DayOfWeek,
-  DaySchedule,
-  ToolSchedule,
-} from "@/types/db-aliases";
+import type { DayOfWeek, DaySchedule, ToolSchedule } from "@/types/db-aliases";
 
 const DAY_LABEL: Record<DayOfWeek, string> = {
   monday: "lun",
@@ -36,33 +30,18 @@ const DEFAULT_DAY: DaySchedule = {
 
 type ScheduleEditorProps = Readonly<{
   value: ToolSchedule | null;
-  onChange: (next: ToolSchedule | null) => Promise<void> | void;
+  onChange: (next: ToolSchedule) => void;
 }>;
 
 export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
-  // Local copy para edición sin pegar al server en cada keystroke.
-  const [local, setLocal] = useState<ToolSchedule>(() =>
-    value ?? defaultSchedule(),
+  const [local, setLocal] = useState<ToolSchedule>(
+    () => value ?? defaultSchedule(),
   );
 
-  // Re-sincronizar si el padre cambia el value (ej. después de un
-  // refresh).
   useEffect(() => {
     setLocal(value ?? defaultSchedule());
   }, [value]);
 
-  // Debounce 400ms para mandar updates al server.
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function pushDebounced(next: ToolSchedule) {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      void onChange(next);
-    }, 400);
-  }
-
-  // Patch flexible — el discriminated union de DaySchedule no permite
-  // `Partial<DaySchedule>` con `from`/`to` cuando la variante es
-  // `{enabled:false}`. Usamos un tipo más permisivo y validamos en runtime.
   type DayPatch = {
     enabled?: boolean;
     from?: string;
@@ -90,16 +69,14 @@ export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
       }
 
       const next: ToolSchedule = { ...prev, [day]: nextDay };
-      pushDebounced(next);
+      onChange(next);
       return next;
     });
   }
 
   function copyToAll() {
-    // Encontrar el primer día habilitado como template.
     const template = DAYS_OF_WEEK.map((d) => local[d]).find(
-      (d): d is Extract<DaySchedule, { enabled: true }> =>
-        Boolean(d?.enabled),
+      (d): d is Extract<DaySchedule, { enabled: true }> => Boolean(d?.enabled),
     );
     if (!template) return;
     const next: ToolSchedule = {};
@@ -107,17 +84,14 @@ export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
       next[d] = { ...template };
     }
     setLocal(next);
-    pushDebounced(next);
+    onChange(next);
   }
 
   const summary = useMemo(() => buildSummary(local), [local]);
 
   return (
     <div style={{ marginTop: 12 }}>
-      <div
-        className="t-meta dim"
-        style={{ fontSize: 11, marginBottom: 8 }}
-      >
+      <div className="t-meta dim" style={{ fontSize: 11, marginBottom: 8 }}>
         {summary}
       </div>
 
@@ -155,9 +129,7 @@ export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
                 <input
                   type="checkbox"
                   checked={day.enabled === true}
-                  onChange={(e) =>
-                    updateDay(d, { enabled: e.target.checked })
-                  }
+                  onChange={(e) => updateDay(d, { enabled: e.target.checked })}
                 />
                 {DAY_LABEL[d]}
               </label>
@@ -181,13 +153,7 @@ export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
         })}
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          marginTop: 10,
-        }}
-      >
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button
           type="button"
           onClick={copyToAll}
@@ -201,7 +167,7 @@ export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
   );
 }
 
-function defaultSchedule(): ToolSchedule {
+export function defaultSchedule(): ToolSchedule {
   return {
     monday: { enabled: true, from: "09:00", to: "18:00" },
     tuesday: { enabled: true, from: "09:00", to: "18:00" },

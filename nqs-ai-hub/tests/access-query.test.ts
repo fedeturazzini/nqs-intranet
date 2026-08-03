@@ -57,6 +57,7 @@ describe("listToolsWithAccess — expires_at", () => {
     tableData = {
       tools: [CLAUDE_TOOL],
       tool_access: [{ tool_id: "claude", status: "active", expires_at: past }],
+      access_requests: [],
     };
     const tools = await listToolsWithAccess("u1");
     const claude = tools.find((t) => t.id === "claude");
@@ -70,7 +71,10 @@ describe("listToolsWithAccess — expires_at", () => {
     const future = new Date(Date.now() + 3_600_000).toISOString();
     tableData = {
       tools: [CLAUDE_TOOL],
-      tool_access: [{ tool_id: "claude", status: "active", expires_at: future }],
+      tool_access: [
+        { tool_id: "claude", status: "active", expires_at: future },
+      ],
+      access_requests: [],
     };
     const tools = await listToolsWithAccess("u1");
     expect(tools.find((t) => t.id === "claude")?.access.status).toBe("active");
@@ -80,14 +84,33 @@ describe("listToolsWithAccess — expires_at", () => {
     tableData = {
       tools: [CLAUDE_TOOL],
       tool_access: [{ tool_id: "claude", status: "active", expires_at: null }],
+      access_requests: [],
     };
     const tools = await listToolsWithAccess("u1");
     expect(tools.find((t) => t.id === "claude")?.access.status).toBe("active");
   });
 
   test("sin row de acceso → status 'locked'", async () => {
-    tableData = { tools: [CLAUDE_TOOL], tool_access: [] };
+    tableData = { tools: [CLAUDE_TOOL], tool_access: [], access_requests: [] };
     const tools = await listToolsWithAccess("u1");
     expect(tools.find((t) => t.id === "claude")?.access.status).toBe("locked");
+  });
+
+  test("acceso vencido con solicitud pending → status 'pending'", async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    tableData = {
+      tools: [CLAUDE_TOOL],
+      tool_access: [{ tool_id: "claude", status: "active", expires_at: past }],
+      access_requests: [
+        {
+          tool_id: "claude",
+          created_at: "2026-08-03T12:00:00.000Z",
+        },
+      ],
+    };
+    const tools = await listToolsWithAccess("u1");
+    const claude = tools.find((t) => t.id === "claude");
+    expect(claude?.access.status).toBe("pending");
+    expect(claude?.access.requestedAt).toBe("2026-08-03T12:00:00.000Z");
   });
 });
