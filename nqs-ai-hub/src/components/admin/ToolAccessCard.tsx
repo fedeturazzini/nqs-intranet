@@ -6,9 +6,12 @@
  *   - Estado efectivo permanente / temporal / vencido
  *   - Editor de schedule con guardado explícito
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ScheduleEditor, defaultSchedule } from "./ScheduleEditor";
-import { getAccessExpiryMeta } from "@/lib/access/effective-status";
+import {
+  getAccessExpiryMeta,
+  type AccessExpiryKind,
+} from "@/lib/access/effective-status";
 import type { ToolSchedule } from "@/types/db-aliases";
 
 export type AccessDurationOpts = {
@@ -37,18 +40,17 @@ type ToolAccessCardProps = Readonly<{
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
-type DurationOption = {
-  label: string;
-  durationMinutes?: number;
-  permanent?: boolean;
-};
+type DurationValue = "1d" | "3d" | "1w" | "1m" | "permanent" | "custom" | "";
 
-const DURATION_OPTIONS: DurationOption[] = [
-  { label: "1 día", durationMinutes: 1440 },
-  { label: "3 días", durationMinutes: 4320 },
-  { label: "1 semana", durationMinutes: 10080 },
-  { label: "1 mes", durationMinutes: 43200 },
-  { label: "permanente", permanent: true },
+const DURATION_PRESETS: ReadonlyArray<{
+  value: Exclude<DurationValue, "custom" | "permanent" | "">;
+  label: string;
+  durationMinutes: number;
+}> = [
+  { value: "1d", label: "1 día", durationMinutes: 1440 },
+  { value: "3d", label: "3 días", durationMinutes: 4320 },
+  { value: "1w", label: "1 semana", durationMinutes: 10080 },
+  { value: "1m", label: "1 mes", durationMinutes: 43200 },
 ];
 
 function schedulesEqual(
@@ -57,6 +59,36 @@ function schedulesEqual(
 ): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
+
+/** Valor mostrado en el select según el acceso actual. */
+function currentDurationValue(
+  expiryKind: AccessExpiryKind,
+  expiresAt: string | null,
+): DurationValue {
+  if (expiryKind === "none") return "";
+  if (expiryKind === "permanent" || !expiresAt) return "permanent";
+  return "custom";
+}
+
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const selectStyle: CSSProperties = {
+  background: "var(--bg)",
+  border: "1px solid var(--line-strong)",
+  borderRadius: 6,
+  color: "var(--fg)",
+  fontFamily: "var(--mono)",
+  fontSize: 12,
+  padding: "6px 8px",
+  outline: "none",
+  minWidth: 180,
+  cursor: "pointer",
+};
 
 export function ToolAccessCard({
   tool,
@@ -85,11 +117,28 @@ export function ToolAccessCard({
   );
   const [saveState, setSaveState] = useState<SaveState>("idle");
 
+  const durationValue = currentDurationValue(
+    expiry.kind,
+    access?.expires_at ?? null,
+  );
+  const customOptionLabel = expiry.expiresAtLabel
+    ? `custom · ${expiry.kind === "expired" ? "venció" : "vence"} ${expiry.expiresAtLabel}`
+    : "custom…";
+
   useEffect(() => {
     setDraftSchedule(savedSchedule);
     setShowSchedule(savedSchedule != null);
     setSaveState("idle");
   }, [savedSchedule]);
+
+  useEffect(() => {
+    // Si el acceso dejó de ser custom (ej. pasó a permanente), cerrar el picker.
+    if (durationValue !== "custom") {
+      setCustomOpen(false);
+      setCustomValue("");
+      setCustomError(null);
+    }
+  }, [durationValue]);
 
   const dirty = !schedulesEqual(draftSchedule, savedSchedule);
 
@@ -109,8 +158,6 @@ export function ToolAccessCard({
     setCustomError(null);
     try {
       await onSetDuration(opts);
-      setCustomOpen(false);
-      setCustomValue("");
     } catch {
       setCustomError("no se pudo guardar la duración");
     } finally {
@@ -118,12 +165,25 @@ export function ToolAccessCard({
     }
   }
 
-  function handleDurationOption(opt: DurationOption) {
-    if (opt.permanent) {
+  function handleDurationSelect(value: DurationValue) {
+    setCustomError(null);
+    if (value === "") return;
+    if (value === "permanent") {
+      setCustomOpen(false);
       void applyDuration({ customExpiresAt: null });
       return;
     }
-    void applyDuration({ durationMinutes: opt.durationMinutes });
+    if (value === "custom") {
+      setCustomOpen(true);
+      setCustomValue(
+        access?.expires_at ? toDatetimeLocalValue(access.expires_at) : "",
+      );
+      return;
+    }
+    const preset = DURATION_PRESETS.find((p) => p.value === value);
+    if (!preset) return;
+    setCustomOpen(false);
+    void applyDuration({ durationMinutes: preset.durationMinutes });
   }
 
   function confirmCustomDuration() {
@@ -270,41 +330,64 @@ export function ToolAccessCard({
           <div
             style={{
               display: "flex",
-              gap: 6,
-              flexWrap: "wrap",
+              gap: 8,
               alignItems: "center",
+              flexWrap: "wrap",
             }}
           >
-            <span
-              className="t-meta dim"
-              style={{ fontSize: 10, marginRight: 2 }}
-            >
+            <span className="t-meta dim" style={{ fontSize: 10 }}>
               {isActive ? "↳ duración:" : "↳ habilitar:"}
             </span>
-            {DURATION_OPTIONS.map((opt) => (
-              <button
-                key={opt.label}
-                type="button"
-                className="btn sm secondary"
-                disabled={durationBusy || busy}
-                onClick={() => handleDurationOption(opt)}
-                style={{ fontSize: 11 }}
-              >
-                {opt.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="btn sm secondary"
+            <select
+              aria-label="Duración del acceso"
+              value={customOpen && durationValue !== "custom" ? "custom" : durationValue}
               disabled={durationBusy || busy}
-              onClick={() => {
-                setCustomOpen((v) => !v);
-                setCustomError(null);
+              onChange={(e) =>
+                handleDurationSelect(e.target.value as DurationValue)
+              }
+              style={{
+                ...selectStyle,
+                cursor: durationBusy || busy ? "wait" : "pointer",
+                opacity: durationBusy || busy ? 0.7 : 1,
               }}
-              style={{ fontSize: 11 }}
             >
-              custom
-            </button>
+              {durationValue === "" && (
+                <option value="" disabled>
+                  elegí duración…
+                </option>
+              )}
+              <option value="permanent">permanente</option>
+              {DURATION_PRESETS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+              <option value="custom">{customOptionLabel}</option>
+            </select>
+            {durationValue === "custom" && !customOpen && (
+              <button
+                type="button"
+                className="t-meta"
+                disabled={durationBusy || busy}
+                onClick={() => handleDurationSelect("custom")}
+                style={{
+                  background: "transparent",
+                  border: 0,
+                  color: "var(--accent)",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                editar fecha
+              </button>
+            )}
+            {durationBusy && (
+              <span className="t-meta dim" style={{ fontSize: 10 }}>
+                guardando…
+              </span>
+            )}
           </div>
 
           {customOpen && (
