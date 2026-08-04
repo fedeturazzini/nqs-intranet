@@ -31,7 +31,7 @@ import { NO_CREDITS_CODE } from "@/lib/anthropic/errors";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const MAX_PROMPT_CHARS = 10_000;
+const MAX_PROMPT_CHARS = 50_000;
 // Máximo de adjuntos por mensaje (imágenes + PDFs). `imagePaths` lleva paths
 // mixtos; el adapter decide el tipo de bloque por la extensión.
 const MAX_ATTACHMENTS = 10;
