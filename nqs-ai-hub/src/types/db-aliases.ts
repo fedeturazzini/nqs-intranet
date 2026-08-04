@@ -87,7 +87,11 @@ export type DayOfWeek =
   | "saturday"
   | "sunday";
 
-/** Ventana horaria por día. `enabled=false` → bloqueado ese día. */
+/**
+ * Ventana horaria por día. `enabled=false` → bloqueado ese día.
+ * Si `from > to` (ej. "08:00"/"01:00"), cruza medianoche hasta `to`
+ * del día siguiente.
+ */
 export type DaySchedule =
   | { enabled: true; from: string /* "HH:MM" */; to: string /* "HH:MM" */ }
   | { enabled: false };

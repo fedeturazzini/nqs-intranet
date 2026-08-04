@@ -163,6 +163,10 @@ export function ScheduleEditor({ value, onChange }: ScheduleEditorProps) {
           ↳ copiar a todos los días
         </button>
       </div>
+      <div className="t-meta dim" style={{ fontSize: 10, marginTop: 8, lineHeight: 1.4 }}>
+        Si la hora de fin es menor que la de inicio, el acceso cruza medianoche
+        (ej. 08:00→01:00 = hasta la 1 AM del día siguiente).
+      </div>
     </div>
   );
 }

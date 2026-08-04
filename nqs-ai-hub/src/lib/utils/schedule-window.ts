@@ -4,8 +4,10 @@
  * `checkSchedule` (en ./schedule.ts) responde si pasa o no la ventana.
  * Acá calculamos cosas para la UI: cuándo es la próxima ventana, qué
  * resumen humano mostrar.
+ *
+ * Overnight (`from > to`): la ventana sigue hasta `to` del día siguiente.
  */
-import { nowInArgentina } from "./schedule";
+import { isOvernightWindow, nowInArgentina } from "./schedule";
 import type {
   DayOfWeek,
   DaySchedule,
@@ -47,9 +49,8 @@ export type NextWindow = {
 };
 
 /**
- * Dada una schedule + el "ahora", devuelve la próxima ventana habilitada.
- * `null` si no hay ningún día con `enabled:true` en la schedule (estado
- * inválido pero lo cubrimos).
+ * Dada una schedule + el "ahora", devuelve la próxima ventana habilitada
+ * (o la que está en curso). `null` si no hay ningún día con `enabled:true`.
  */
 export function nextScheduleWindow(
   schedule: ToolSchedule,
@@ -58,13 +59,59 @@ export function nextScheduleWindow(
   const { day, time } = nowInArgentina(now);
   const startIdx = DAY_ORDER.indexOf(day);
 
+  // Spill overnight del día anterior (todavía en curso).
+  const prev = DAY_ORDER[(startIdx + 6) % 7]!;
+  const prevSched = schedule[prev];
+  if (
+    prevSched?.enabled &&
+    isOvernightWindow(prevSched.from, prevSched.to) &&
+    time < prevSched.to
+  ) {
+    return {
+      day: prev,
+      from: prevSched.from,
+      to: prevSched.to,
+      daysAhead: 0,
+      humanLabel: `hoy (en curso hasta ${prevSched.to})`,
+    };
+  }
+
   for (let offset = 0; offset < 7; offset++) {
-    const checkDay = DAY_ORDER[(startIdx + offset) % 7];
+    const checkDay = DAY_ORDER[(startIdx + offset) % 7]!;
     const sched: DaySchedule | undefined = schedule[checkDay];
     if (!sched || !sched.enabled) continue;
 
-    // Si es hoy y ya pasamos la ventana, saltamos al siguiente match.
-    if (offset === 0 && time >= sched.to) continue;
+    if (offset === 0) {
+      if (isOvernightWindow(sched.from, sched.to)) {
+        if (time >= sched.from) {
+          return {
+            day: checkDay,
+            from: sched.from,
+            to: sched.to,
+            daysAhead: 0,
+            humanLabel: `hoy (en curso hasta ${sched.to} del día siguiente)`,
+          };
+        }
+        return {
+          day: checkDay,
+          from: sched.from,
+          to: sched.to,
+          daysAhead: 0,
+          humanLabel: `hoy a las ${sched.from}`,
+        };
+      }
+
+      // Misma ventana del día: si ya cerró, buscar el próximo.
+      if (time >= sched.to) continue;
+
+      return {
+        day: checkDay,
+        from: sched.from,
+        to: sched.to,
+        daysAhead: 0,
+        humanLabel: buildHumanLabel(checkDay, sched.from, 0, time),
+      };
+    }
 
     return {
       day: checkDay,
@@ -96,6 +143,7 @@ function buildHumanLabel(
 /**
  * Resumen para mostrar arriba del módulo: "Lun-Vie 9-18hs".
  * Agrupa días contiguos con la misma ventana.
+ * Overnight se muestra como "08:00–01:00" (fin = día siguiente).
  */
 export function summarizeSchedule(schedule: ToolSchedule): string {
   // Recopilar (día, "from-to") solo de los habilitados.

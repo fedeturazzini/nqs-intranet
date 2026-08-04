@@ -8,8 +8,8 @@
  *
  * Validamos forma del schedule con Zod — cada día opcional con
  * { enabled: true, from: "HH:MM", to: "HH:MM" } o { enabled: false }.
- * Horario "from < to" obligatorio (no soportamos ventanas que cruzan
- * medianoche por ahora).
+ * Si `from > to` la ventana cruza medianoche (ej. 08:00–01:00 = hasta
+ * la 1 AM del día siguiente). `from === to` se rechaza (ventana vacía).
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -23,8 +23,8 @@ const DayScheduleSchema = z.union([
     enabled: z.literal(true),
     from: z.string().regex(HHMM, "from debe ser HH:MM"),
     to: z.string().regex(HHMM, "to debe ser HH:MM"),
-  }).refine((d) => d.from < d.to, {
-    message: "from debe ser menor que to (no soportamos ventanas cruzando medianoche)",
+  }).refine((d) => d.from !== d.to, {
+    message: "from y to no pueden ser iguales",
   }),
   z.object({ enabled: z.literal(false) }),
 ]);

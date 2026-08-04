@@ -5,8 +5,16 @@
  * (timezone del estudio). Server-side validamos siempre contra esa TZ —
  * el server puede correr en UTC en Vercel, no podemos confiar en
  * `new Date().getDay()`/`getHours()` server-locale.
+ *
+ * Ventanas overnight: si `from > to` (ej. 08:00–01:00), el acceso corre
+ * desde `from` hasta medianoche y sigue hasta `to` del día siguiente.
  */
-import type { DayOfWeek, DaySchedule, ToolSchedule } from "@/types/db-aliases";
+import {
+  DAYS_OF_WEEK,
+  type DayOfWeek,
+  type DaySchedule,
+  type ToolSchedule,
+} from "@/types/db-aliases";
 
 const TZ = "America/Argentina/Buenos_Aires";
 
@@ -57,9 +65,44 @@ export function nowInArgentina(now: Date = new Date()): {
   };
 }
 
+function previousDay(day: DayOfWeek): DayOfWeek {
+  const idx = DAYS_OF_WEEK.indexOf(day);
+  return DAYS_OF_WEEK[(idx + 6) % 7]!;
+}
+
+/** `from > to` → cruza medianoche hasta `to` del día siguiente. */
+export function isOvernightWindow(from: string, to: string): boolean {
+  return from > to;
+}
+
+/**
+ * ¿Está `time` dentro de la porción del día de inicio de la ventana?
+ * Overnight solo cubre desde `from` hasta fin de día (el tramo post-medianoche
+ * se evalúa vía spill del día anterior).
+ */
+function timeInStartDayWindow(
+  time: string,
+  from: string,
+  to: string,
+): boolean {
+  if (from < to) return time >= from && time < to;
+  if (from > to) return time >= from;
+  return false;
+}
+
+function inOvernightSpill(
+  time: string,
+  prev: Extract<DaySchedule, { enabled: true }>,
+): boolean {
+  return isOvernightWindow(prev.from, prev.to) && time < prev.to;
+}
+
 /**
  * Validador puro: dada una schedule + el "ahora", responde si pasa el
  * filtro horario. Si la schedule está vacía/null, allow.
+ *
+ * Overnight (`from > to`): permite desde `from` el día de inicio y hasta
+ * `to` (exclusivo) del día siguiente, aunque ese día esté disabled.
  */
 export function checkSchedule(
   schedule: ToolSchedule | null | undefined,
@@ -70,6 +113,16 @@ export function checkSchedule(
   }
 
   const { day, time } = nowInArgentina(now);
+
+  const prev = previousDay(day);
+  const prevSchedule = schedule[prev];
+  if (
+    prevSchedule?.enabled &&
+    inOvernightSpill(time, prevSchedule)
+  ) {
+    return { allowed: true };
+  }
+
   const daySchedule: DaySchedule | undefined = schedule[day];
 
   if (!daySchedule || !daySchedule.enabled) {
@@ -80,15 +133,22 @@ export function checkSchedule(
     };
   }
 
-  if (time < daySchedule.from || time >= daySchedule.to) {
-    return {
-      allowed: false,
-      reason: "outside_hours",
-      humanMessage: `Acceso permitido entre ${daySchedule.from} y ${daySchedule.to} (${dayLabel(day)}).`,
-    };
+  if (timeInStartDayWindow(time, daySchedule.from, daySchedule.to)) {
+    return { allowed: true };
   }
 
-  return { allowed: true };
+  return {
+    allowed: false,
+    reason: "outside_hours",
+    humanMessage: windowHumanMessage(day, daySchedule.from, daySchedule.to),
+  };
+}
+
+function windowHumanMessage(day: DayOfWeek, from: string, to: string): string {
+  if (isOvernightWindow(from, to)) {
+    return `Acceso permitido entre ${from} y ${to} del día siguiente (${dayLabel(day)}).`;
+  }
+  return `Acceso permitido entre ${from} y ${to} (${dayLabel(day)}).`;
 }
 
 const DAY_LABELS: Record<DayOfWeek, string> = {
@@ -106,7 +166,67 @@ function dayLabel(d: DayOfWeek): string {
 }
 
 /**
+ * Días habilitados con `from === to` (ventana vacía — inválida).
+ */
+export function zeroLengthScheduleDays(
+  schedule: ToolSchedule | null | undefined,
+): DayOfWeek[] {
+  if (!schedule) return [];
+  return DAYS_OF_WEEK.filter((day) => {
+    const d = schedule[day];
+    return Boolean(d?.enabled && d.from === d.to);
+  });
+}
+
+function joinDayLabels(days: DayOfWeek[]): string {
+  const labels = days.map(dayLabel);
+  if (labels.length === 1) return labels[0]!;
+  if (labels.length === 2) return `${labels[0]} y ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")} y ${labels.at(-1)}`;
+}
+
+/** Mensaje claro cuando from === to. */
+export function describeZeroLengthScheduleError(days: DayOfWeek[]): string {
+  if (days.length === 0) {
+    return "La hora de inicio y de fin no pueden ser iguales.";
+  }
+  return `El horario de ${joinDayLabels(days)} no es válido: la hora de inicio y de fin no pueden ser iguales.`;
+}
+
+/**
+ * Traduce el `message` del PATCH /api/admin/tools/schedule a texto usable
+ * en la UI. Si no reconoce el patrón, cae a un fallback genérico.
+ */
+export function describeScheduleSaveError(
+  raw: string | null | undefined,
+): string {
+  const msg = (raw ?? "").trim();
+  if (!msg) {
+    return "No se pudo guardar el horario. Revisá los datos e intentá de nuevo.";
+  }
+
+  const equalMatch = msg.match(
+    /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday):\s*.*(?:iguales|from y to)/i,
+  );
+  if (equalMatch) {
+    return describeZeroLengthScheduleError([
+      equalMatch[1]!.toLowerCase() as DayOfWeek,
+    ]);
+  }
+
+  if (/HH:MM/i.test(msg)) {
+    return "Usá horarios en formato HH:MM (ej. 08:00).";
+  }
+
+  if (/no_user_selected|schedule_update_failed/i.test(msg)) {
+    return "No se pudo guardar el horario. Revisá los datos e intentá de nuevo.";
+  }
+
+  return msg;
+}
+
+/**
  * Helper expuesto solo para tests: pemite forzar el día/hora.
  * NO usar en código de producción.
  */
-export const __testing = { DAY_INDEX_TO_NAME };
+export const __testing = { DAY_INDEX_TO_NAME, previousDay };

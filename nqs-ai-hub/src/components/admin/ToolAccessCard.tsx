@@ -12,6 +12,11 @@ import {
   getAccessExpiryMeta,
   type AccessExpiryKind,
 } from "@/lib/access/effective-status";
+import {
+  describeScheduleSaveError,
+  describeZeroLengthScheduleError,
+  zeroLengthScheduleDays,
+} from "@/lib/utils/schedule";
 import type { ToolSchedule } from "@/types/db-aliases";
 
 export type AccessDurationOpts = {
@@ -116,6 +121,7 @@ export function ToolAccessCard({
     savedSchedule,
   );
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const durationValue = currentDurationValue(
     expiry.kind,
@@ -129,6 +135,7 @@ export function ToolAccessCard({
     setDraftSchedule(savedSchedule);
     setShowSchedule(savedSchedule != null);
     setSaveState("idle");
+    setSaveError(null);
   }, [savedSchedule]);
 
   useEffect(() => {
@@ -216,25 +223,39 @@ export function ToolAccessCard({
   function clearScheduleRestriction() {
     setShowSchedule(false);
     setDraftSchedule(null);
+    setSaveError(null);
     setSaveState(schedulesEqual(null, savedSchedule) ? "idle" : "dirty");
   }
 
   function discardSchedule() {
     setDraftSchedule(savedSchedule);
     setShowSchedule(savedSchedule != null);
+    setSaveError(null);
     setSaveState("idle");
   }
 
   async function saveSchedule() {
     if (!dirty || saveState === "saving") return;
+
+    const zeroLength = zeroLengthScheduleDays(draftSchedule);
+    if (zeroLength.length > 0) {
+      setSaveError(describeZeroLengthScheduleError(zeroLength));
+      setSaveState("error");
+      return;
+    }
+
     setSaveState("saving");
+    setSaveError(null);
     try {
       await onScheduleSave(draftSchedule);
       setSaveState("saved");
+      setSaveError(null);
       window.setTimeout(() => {
         setSaveState((current) => (current === "saved" ? "idle" : current));
       }, 2000);
-    } catch {
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : null;
+      setSaveError(describeScheduleSaveError(raw));
       setSaveState("error");
     }
   }
@@ -491,6 +512,7 @@ export function ToolAccessCard({
               value={draftSchedule}
               onChange={(next) => {
                 setDraftSchedule(next);
+                setSaveError(null);
                 setSaveState(
                   schedulesEqual(next, savedSchedule) ? "idle" : "dirty",
                 );
@@ -507,7 +529,7 @@ export function ToolAccessCard({
             style={{
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "center",
+              alignItems: "flex-start",
               gap: 10,
               marginTop: 12,
             }}
@@ -516,6 +538,9 @@ export function ToolAccessCard({
               className="t-meta"
               style={{
                 fontSize: 10,
+                lineHeight: 1.4,
+                flex: 1,
+                minWidth: 0,
                 color:
                   saveState === "error"
                     ? "var(--danger, #ff5c5c)"
@@ -529,7 +554,7 @@ export function ToolAccessCard({
                 : saveState === "saved"
                   ? "↳ guardado"
                   : saveState === "error"
-                    ? "↳ error al guardar"
+                    ? `↳ ${saveError ?? "No se pudo guardar el horario."}`
                     : dirty
                       ? "↳ cambios sin guardar"
                       : "↳ sin cambios"}

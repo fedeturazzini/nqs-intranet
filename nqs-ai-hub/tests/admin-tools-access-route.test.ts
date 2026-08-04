@@ -203,4 +203,49 @@ describe("PATCH /api/admin/tools/schedule", () => {
       { onConflict: "user_id,tool_id" },
     );
   });
+
+  test("acepta ventanas overnight (from > to)", async () => {
+    const schedule = {
+      monday: { enabled: true, from: "08:00", to: "01:00" },
+      tuesday: { enabled: true, from: "08:00", to: "01:00" },
+    };
+    const res = await patchSchedule(
+      new Request("http://localhost/api/admin/tools/schedule", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          userId: "11111111-1111-4111-8111-111111111111",
+          toolId: "claude",
+          schedule,
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ schedule }),
+      { onConflict: "user_id,tool_id" },
+    );
+  });
+
+  test("rechaza from === to", async () => {
+    const res = await patchSchedule(
+      new Request("http://localhost/api/admin/tools/schedule", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          userId: "11111111-1111-4111-8111-111111111111",
+          toolId: "claude",
+          schedule: {
+            monday: { enabled: true, from: "08:00", to: "08:00" },
+          },
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { message?: string };
+    expect(body.message).toMatch(/iguales/i);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
 });

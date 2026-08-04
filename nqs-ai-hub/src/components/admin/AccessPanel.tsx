@@ -194,7 +194,16 @@ export function AccessPanel({
         });
         return;
       }
-      throw new Error(`schedule_update_failed_${res.status}`);
+      let apiMessage: string | undefined;
+      try {
+        const body = (await res.json()) as { message?: unknown };
+        if (typeof body.message === "string" && body.message.trim()) {
+          apiMessage = body.message.trim();
+        }
+      } catch {
+        // ignore JSON parse errors — caemos al fallback
+      }
+      throw new Error(apiMessage ?? `schedule_update_failed_${res.status}`);
     },
     [selectedId],
   );
