@@ -46,7 +46,7 @@ export default async function AdminLogsDetailPage({
   const { userId } = await params;
   const sp = await searchParams;
   const period: PeriodKey =
-    sp.period && isPeriodKey(sp.period) ? sp.period : "this-month";
+    sp.period && isPeriodKey(sp.period) ? sp.period : "today";
   const { fromIso, toIso } = resolvePeriod(period, sp.from, sp.to);
 
   const detail = await getUsdDetailForUser(userId, fromIso, toIso);

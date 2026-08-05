@@ -33,7 +33,7 @@ const PERIOD_ORDER: PeriodKey[] = [
 
 export function UsdLogsView({ initial }: UsdLogsViewProps) {
   const router = useRouter();
-  const [period, setPeriod] = useState<PeriodKey>("this-month");
+  const [period, setPeriod] = useState<PeriodKey>("today");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [query, setQuery] = useState("");

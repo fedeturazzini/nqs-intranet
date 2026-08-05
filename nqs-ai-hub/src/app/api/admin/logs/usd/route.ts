@@ -14,8 +14,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   if (guard instanceof NextResponse) return guard;
 
   const url = new URL(request.url);
-  const periodParam = url.searchParams.get("period") ?? "this-month";
-  const period = isPeriodKey(periodParam) ? periodParam : "this-month";
+  const periodParam = url.searchParams.get("period") ?? "today";
+  const period = isPeriodKey(periodParam) ? periodParam : "today";
   const { fromIso, toIso } = resolvePeriod(
     period,
     url.searchParams.get("from"),
