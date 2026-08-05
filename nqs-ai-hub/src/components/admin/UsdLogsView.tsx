@@ -3,7 +3,7 @@
 /**
  * Vista de gasto en Claude (USD) por usuario.
  *
- * Selector de período (este mes / mes anterior / 7 días / custom) +
+ * Selector de período (hoy / este mes / mes anterior / 7 días / custom) +
  * búsqueda por nombre + total del período + tabla con "Detalle".
  */
 import { useState } from "react";
@@ -24,6 +24,7 @@ type UsdLogsViewProps = Readonly<{
 }>;
 
 const PERIOD_ORDER: PeriodKey[] = [
+  "today",
   "this-month",
   "last-month",
   "7days",

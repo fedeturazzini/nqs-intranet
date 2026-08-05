@@ -2,7 +2,7 @@
  * GET /api/admin/logs/usd
  *
  * Resumen de gasto en Claude (USD) por usuario para un período.
- * Query: ?period=this-month|last-month|7days|custom [&from=&to=]
+ * Query: ?period=today|this-month|last-month|7days|custom [&from=&to=]
  */
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth/admin-guard";

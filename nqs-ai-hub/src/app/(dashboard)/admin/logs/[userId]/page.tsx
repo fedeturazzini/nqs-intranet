@@ -27,7 +27,12 @@ const DT = new Intl.DateTimeFormat("es-AR", {
   timeZone: "America/Argentina/Buenos_Aires",
 });
 
-const PRESET_PERIODS: PeriodKey[] = ["this-month", "last-month", "7days"];
+const PRESET_PERIODS: PeriodKey[] = [
+  "today",
+  "this-month",
+  "last-month",
+  "7days",
+];
 
 type PageProps = {
   params: Promise<{ userId: string }>;

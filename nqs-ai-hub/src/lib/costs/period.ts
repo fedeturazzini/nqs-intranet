@@ -6,9 +6,15 @@
  * Vercel), "este mes" arrancaría 3hs antes y podría bucketear mal los pedidos
  * hechos cerca de la medianoche de fin de mes.
  */
-export type PeriodKey = "this-month" | "last-month" | "7days" | "custom";
+export type PeriodKey =
+  | "today"
+  | "this-month"
+  | "last-month"
+  | "7days"
+  | "custom";
 
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
+  today: "Hoy",
   "this-month": "Este mes",
   "last-month": "Mes anterior",
   "7days": "Últimos 7 días",
@@ -17,7 +23,11 @@ export const PERIOD_LABELS: Record<PeriodKey, string> = {
 
 export function isPeriodKey(v: string): v is PeriodKey {
   return (
-    v === "this-month" || v === "last-month" || v === "7days" || v === "custom"
+    v === "today" ||
+    v === "this-month" ||
+    v === "last-month" ||
+    v === "7days" ||
+    v === "custom"
   );
 }
 
@@ -56,7 +66,12 @@ export function resolvePeriod(
   toParam?: string | null,
 ): { fromIso: string; toIso: string } {
   const now = new Date();
-  const { y, m } = argParts(now);
+  const { y, m, day } = argParts(now);
+
+  if (period === "today") {
+    // Desde 00:00 ART de hoy hasta ahora.
+    return { fromIso: argMidnightIso(y, m, day), toIso: now.toISOString() };
+  }
 
   if (period === "last-month") {
     const prevY = m === 0 ? y - 1 : y;

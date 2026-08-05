@@ -2,7 +2,7 @@
  * GET /api/admin/logs/usd/[userId]
  *
  * Detalle de gasto de un usuario para un período (lista de llamadas).
- * Query: ?period=this-month|last-month|7days|custom [&from=&to=]
+ * Query: ?period=today|this-month|last-month|7days|custom [&from=&to=]
  */
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
