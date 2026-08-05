@@ -21,7 +21,13 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { showToast } from "@/lib/store/toast";
+import {
+  defaultThinkingModeFor,
+  isThinkingMode,
+  type ThinkingMode,
+} from "@/lib/anthropic/thinking-mode";
 import { ModelSelector, type ClaudeModel } from "./ModelSelector";
+import { ThinkingModeSelector } from "./ThinkingModeSelector";
 
 const ALLOWED_MODELS: readonly ClaudeModel[] = [
   "claude-haiku-4-5",
@@ -37,6 +43,7 @@ type VersionRow = {
   id: string;
   name: string;
   model: string;
+  thinking_mode?: string | null;
   is_active: boolean | null;
   version: number | null;
   created_at: string | null;
@@ -51,6 +58,7 @@ type PromptManagerProps = Readonly<{
   activeId: string | null;
   activeContent: string | null;
   activeModel: string;
+  activeThinkingMode?: string;
   /** Si es "memory", oculta el ModelSelector y permite content vacío. */
   type?: PromptKind;
   /** Proyecto al que pertenecen estas versiones (migration 0008). */
@@ -70,11 +78,19 @@ function isClaudeModel(s: string): s is ClaudeModel {
   return (ALLOWED_MODELS as readonly string[]).includes(s);
 }
 
+function resolveThinkingMode(
+  model: string,
+  raw: string | null | undefined,
+): ThinkingMode {
+  return isThinkingMode(raw) ? raw : defaultThinkingModeFor(model);
+}
+
 export function PromptManager({
   versions: initialVersions,
   activeId,
   activeContent,
   activeModel,
+  activeThinkingMode,
   type = "system",
   projectId,
 }: PromptManagerProps) {
@@ -85,12 +101,19 @@ export function PromptManager({
   const [selectedId, setSelectedId] = useState<string | null>(activeId);
   const [content, setContent] = useState(activeContent ?? "");
   const [savedContent, setSavedContent] = useState(activeContent ?? "");
-  const [model, setModel] = useState<ClaudeModel>(
-    isClaudeModel(activeModel) ? activeModel : "claude-sonnet-4-6",
+  const initialModel: ClaudeModel = isClaudeModel(activeModel)
+    ? activeModel
+    : "claude-sonnet-4-6";
+  const initialThinking = resolveThinkingMode(
+    initialModel,
+    activeThinkingMode,
   );
-  const [savedModel, setSavedModel] = useState<ClaudeModel>(
-    isClaudeModel(activeModel) ? activeModel : "claude-sonnet-4-6",
-  );
+  const [model, setModel] = useState<ClaudeModel>(initialModel);
+  const [savedModel, setSavedModel] = useState<ClaudeModel>(initialModel);
+  const [thinkingMode, setThinkingMode] =
+    useState<ThinkingMode>(initialThinking);
+  const [savedThinkingMode, setSavedThinkingMode] =
+    useState<ThinkingMode>(initialThinking);
   const [activateOnSave, setActivateOnSave] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -98,6 +121,23 @@ export function PromptManager({
   const isViewingActive = selectedVersion?.is_active === true;
   const contentDirty = content !== savedContent;
   const modelDirty = model !== savedModel;
+  const thinkingDirty = thinkingMode !== savedThinkingMode;
+  const settingsDirty = modelDirty || thinkingDirty;
+
+  function handleModelChange(next: ClaudeModel) {
+    setModel(next);
+    // Al pasar a Sonnet 5 sugerimos off (el default seguro). Si sale de
+    // Sonnet 5 y estaba en off, volvemos a auto.
+    if (next === "claude-sonnet-5" && thinkingMode === "auto") {
+      setThinkingMode("off");
+    } else if (
+      model === "claude-sonnet-5" &&
+      next !== "claude-sonnet-5" &&
+      thinkingMode === "off"
+    ) {
+      setThinkingMode("auto");
+    }
+  }
 
   // Cargar contenido cuando el admin selecciona una version distinta.
   const loadVersion = useCallback(async (id: string) => {
@@ -115,7 +155,12 @@ export function PromptManager({
         return;
       }
       const data = (await res.json()) as {
-        prompt: { id: string; content: string; model: string };
+        prompt: {
+          id: string;
+          content: string;
+          model: string;
+          thinkingMode?: string;
+        };
       };
       setSelectedId(data.prompt.id);
       setContent(data.prompt.content);
@@ -123,8 +168,11 @@ export function PromptManager({
       const m = isClaudeModel(data.prompt.model)
         ? data.prompt.model
         : "claude-sonnet-4-6";
+      const t = resolveThinkingMode(m, data.prompt.thinkingMode);
       setModel(m);
       setSavedModel(m);
+      setThinkingMode(t);
+      setSavedThinkingMode(t);
     } finally {
       setBusy(false);
     }
@@ -169,6 +217,7 @@ export function PromptManager({
           name: `${namePrefix} v${(versions[0]?.version ?? 0) + 1}`,
           content,
           model,
+          thinkingMode,
           activate: activateOnSave,
         }),
       });
@@ -191,6 +240,7 @@ export function PromptManager({
       });
       setSavedContent(content);
       setSavedModel(model);
+      setSavedThinkingMode(thinkingMode);
       setSelectedId(data.prompt.id);
       await refreshVersions();
     } finally {
@@ -230,7 +280,7 @@ export function PromptManager({
     }
   }
 
-  async function saveModelOnly() {
+  async function saveSettingsOnly() {
     if (!selectedId) return;
     setBusy(true);
     try {
@@ -239,7 +289,7 @@ export function PromptManager({
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ model }),
+          body: JSON.stringify({ model, thinkingMode }),
         },
       );
       const data = (await res.json().catch(() => null)) as
@@ -254,17 +304,18 @@ export function PromptManager({
         const msg =
           data != null && "message" in data && data.message
             ? data.message
-            : "no pude cambiar el modelo";
+            : "no pude guardar modelo/thinking";
         showToast({ title: "ERROR", msg, color: "var(--danger)" });
         setBusy(false);
         return;
       }
       showToast({
-        title: "MODELO ACTUALIZADO",
-        msg: `Próximas llamadas usan ${model}.`,
+        title: "CONFIG ACTUALIZADA",
+        msg: `Próximas llamadas: ${model} · thinking ${thinkingMode}.`,
         color: "var(--ok)",
       });
       setSavedModel(model);
+      setSavedThinkingMode(thinkingMode);
       await refreshVersions();
     } finally {
       setBusy(false);
@@ -295,17 +346,22 @@ export function PromptManager({
             <ModelSelector
               value={model}
               currentlyActive={savedModel}
-              onChange={setModel}
+              onChange={handleModelChange}
             />
-            {modelDirty && !contentDirty && selectedId && (
+            <ThinkingModeSelector
+              value={thinkingMode}
+              currentlyActive={savedThinkingMode}
+              onChange={setThinkingMode}
+            />
+            {settingsDirty && !contentDirty && selectedId && (
               <button
                 type="button"
                 className="btn sm"
-                onClick={saveModelOnly}
+                onClick={saveSettingsOnly}
                 disabled={busy}
                 style={{ marginTop: 10 }}
               >
-                guardar cambio de modelo →
+                guardar modelo / thinking →
               </button>
             )}
           </div>

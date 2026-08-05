@@ -23,7 +23,7 @@ async function loadStateForType(type: PromptType, projectId: string) {
   const { data: versions } = await db
     .from("system_prompts")
     .select(
-      "id, tool_id, type, name, model, is_active, version, created_by, created_at, users!system_prompts_created_by_fkey(name)",
+      "id, tool_id, type, name, model, thinking_mode, is_active, version, created_by, created_at, users!system_prompts_created_by_fkey(name)",
     )
     .eq("tool_id", "claude")
     .eq("type", type)
@@ -47,6 +47,7 @@ async function loadStateForType(type: PromptType, projectId: string) {
     activeId: active?.id ?? null,
     activeContent,
     activeModel: active?.model ?? "claude-sonnet-4-6",
+    activeThinkingMode: active?.thinking_mode ?? "auto",
   };
 }
 

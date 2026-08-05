@@ -152,6 +152,7 @@ describe("Claude adapter preflight", () => {
         id: string;
         content: string;
         model: string;
+        thinkingMode: "off" | "auto";
         version: number;
       };
       memory: null;
@@ -197,6 +198,7 @@ describe("Claude adapter preflight", () => {
         id: "brain-1",
         content: "System",
         model: "claude-sonnet-4-5",
+        thinkingMode: "auto",
         version: 7,
       },
       memory: null,
@@ -220,6 +222,7 @@ describe("Claude adapter preflight", () => {
         id: "brain-1",
         content: "System",
         model: "claude-sonnet-4-5",
+        thinkingMode: "auto",
         version: 7,
       },
       memory: null,
@@ -291,6 +294,7 @@ describe("Claude adapter preflight", () => {
         id: "brain-1",
         content: "System",
         model: "claude-sonnet-4-5",
+        thinkingMode: "auto",
         version: 7,
       },
       memory: null,

@@ -14,6 +14,7 @@ import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
 import { createServerClient } from "@/lib/db/supabase";
 import { encrypt } from "@/lib/utils/crypto";
+import { defaultThinkingModeFor } from "@/lib/anthropic/thinking-mode";
 
 const ALLOWED_MODELS = [
   "claude-haiku-4-5",
@@ -35,6 +36,7 @@ const NewPromptSchema = z.object({
   // memory puede ser vacía (ej. "no hay contexto activo"); system no
   content: z.string().min(0).max(50_000),
   model: z.enum(ALLOWED_MODELS),
+  thinkingMode: z.enum(["off", "auto"]).optional(),
   activate: z.boolean().optional().default(false),
 });
 
@@ -63,7 +65,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   let q = db
     .from("system_prompts")
     .select(
-      "id, tool_id, type, name, model, is_active, version, created_by, created_at, updated_at, users!system_prompts_created_by_fkey(name)",
+      "id, tool_id, type, name, model, thinking_mode, is_active, version, created_by, created_at, updated_at, users!system_prompts_created_by_fkey(name)",
     )
     .eq("tool_id", toolId)
     .order("version", { ascending: false })
@@ -97,7 +99,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       { status: 400 },
     );
   }
-  const { toolId, type, projectId, name, content, model, activate } =
+  const { toolId, type, projectId, name, content, model, thinkingMode, activate } =
     parsed.data;
 
   const db = createServerClient();
@@ -116,6 +118,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     .maybeSingle();
   const nextVersion = (last?.version ?? 0) + 1;
 
+  // Si no mandaron thinkingMode: Sonnet 5 → off; resto → auto.
+  const resolvedThinking = thinkingMode ?? defaultThinkingModeFor(model);
+
   const { data: inserted, error: insErr } = await db
     .from("system_prompts")
     .insert({
@@ -125,11 +130,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       name,
       content_encrypted: encrypt(content),
       model,
+      thinking_mode: resolvedThinking,
       is_active: false, // siempre false al crear; activate aparte si pidieron
       version: nextVersion,
       created_by: guard.userId,
     })
-    .select("id, tool_id, type, name, model, is_active, version, created_at")
+    .select(
+      "id, tool_id, type, name, model, thinking_mode, is_active, version, created_at",
+    )
     .single();
   if (insErr || !inserted) {
     return NextResponse.json(

@@ -9,6 +9,10 @@ import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
 import { createServerClient } from "@/lib/db/supabase";
 import { decrypt } from "@/lib/utils/crypto";
+import {
+  defaultThinkingModeFor,
+  isThinkingMode,
+} from "@/lib/anthropic/thinking-mode";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -30,7 +34,7 @@ export async function GET(
   const { data, error } = await db
     .from("system_prompts")
     .select(
-      "id, tool_id, type, name, content_encrypted, model, is_active, version, created_by, created_at, updated_at",
+      "id, tool_id, type, name, content_encrypted, model, thinking_mode, is_active, version, created_by, created_at, updated_at",
     )
     .eq("id", id)
     .maybeSingle();
@@ -53,6 +57,9 @@ export async function GET(
       // Empty content_encrypted (ej. memoria recién creada) → plaintext "".
       content: data.content_encrypted ? decrypt(data.content_encrypted) : "",
       model: data.model,
+      thinkingMode: isThinkingMode(data.thinking_mode)
+        ? data.thinking_mode
+        : defaultThinkingModeFor(data.model),
       isActive: data.is_active,
       version: data.version,
       createdBy: data.created_by,

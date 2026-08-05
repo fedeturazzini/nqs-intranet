@@ -20,10 +20,21 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import {
+  thinkingParamFor,
+  type ThinkingMode,
+} from "@/lib/anthropic/thinking-mode";
+import {
   materializeToolUseArtifacts,
   redactToolInput,
   type ToolUseDelivery,
 } from "@/lib/utils/tool-use-artifacts";
+
+export {
+  defaultThinkingModeFor,
+  isThinkingMode,
+  thinkingParamFor,
+  type ThinkingMode,
+} from "@/lib/anthropic/thinking-mode";
 
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
 // max_tokens es un TECHO de salida por request (se paga solo lo realmente
@@ -153,6 +164,11 @@ export type CallClaudeOptions = {
   model?: string;
   /** Override del techo de salida. Default: `maxTokensFor(model)` (por modelo). */
   maxTokens?: number;
+  /**
+   * Modo thinking del System Brain (`off` | `auto`). Default: según modelo
+   * (Sonnet 5 → off; resto → auto). Ver `thinkingParamFor`.
+   */
+  thinkingMode?: ThinkingMode;
   /**
    * Si true, la llamada usa el path beta con code execution + skills para
    * generar archivos reales (PDF/Word/Excel/PPT). El caller (adapter) ya validó
@@ -411,13 +427,15 @@ export async function callClaude(
   options: CallClaudeOptions = {},
 ): Promise<ClaudeResponse> {
   const client = getClient();
+  const model = options.model ?? DEFAULT_MODEL;
+  const thinking = thinkingParamFor(model, options.thinkingMode);
 
   const response = await client.messages.create({
-    model: options.model ?? DEFAULT_MODEL,
+    model,
     // callClaude es NO-streaming → clampeamos al techo seguro del SDK
     // (NONSTREAMING_MAX_TOKENS). El path largo del chat usa streamClaude.
     max_tokens: Math.min(
-      options.maxTokens ?? maxTokensFor(options.model ?? DEFAULT_MODEL),
+      options.maxTokens ?? maxTokensFor(model),
       NONSTREAMING_MAX_TOKENS,
     ),
     // Prompt caching: marcamos el system (cerebro + format instructions, ~9k
@@ -433,6 +451,7 @@ export async function callClaude(
       },
     ],
     messages,
+    ...(thinking ? { thinking } : {}),
   });
 
   // `content` puede ser texto, tool-use, etc. Para el wrapper Claude
@@ -487,6 +506,7 @@ export async function streamClaude(
   const client = getClient();
   const model = options.model ?? DEFAULT_MODEL;
   const maxTokens = options.maxTokens ?? maxTokensFor(model);
+  const thinkingMode = options.thinkingMode;
 
   // Path con generación de archivos (code execution + skills) — ver helper abajo.
   if (options.enableFileGeneration) {
@@ -499,6 +519,7 @@ export async function streamClaude(
       onText,
       onStatus,
       onTiming,
+      thinkingMode,
     );
   }
 
@@ -511,6 +532,7 @@ export async function streamClaude(
     messages,
     onText,
     onTiming,
+    thinkingMode,
   );
 }
 
@@ -526,7 +548,9 @@ async function streamTextOnly(
   messages: ClaudeMessage[],
   onText?: (delta: string) => void,
   onTiming?: (phase: ClaudeTimingPhase) => void,
+  thinkingMode?: ThinkingMode,
 ): Promise<ClaudeResponse> {
+  const thinking = thinkingParamFor(model, thinkingMode);
   const stream = client.messages.stream({
     model,
     max_tokens: maxTokens,
@@ -540,6 +564,7 @@ async function streamTextOnly(
       },
     ],
     messages,
+    ...(thinking ? { thinking } : {}),
   });
 
   let firstDeltaSeen = false;
@@ -605,10 +630,12 @@ async function streamWithFileGeneration(
   onText?: (delta: string) => void,
   onStatus?: (status: string) => void,
   onTiming?: (phase: ClaudeTimingPhase) => void,
+  thinkingMode?: ThinkingMode,
 ): Promise<ClaudeResponse> {
   // Historia mutable: el loop de pause_turn le appendea el turno del assistant
   // para que la API resuma desde donde quedó. (MessageParam ⊆ BetaMessageParam.)
   const working = [...messages] as Anthropic.Beta.BetaMessageParam[];
+  const thinking = thinkingParamFor(model, thinkingMode);
 
   let text = "";
   let tokensInput = 0;
@@ -642,6 +669,7 @@ async function streamWithFileGeneration(
       tools: [CODE_EXECUTION_TOOL],
       container: { skills: FILE_SKILLS },
       betas: FILE_GEN_BETAS,
+      ...(thinking ? { thinking } : {}),
     });
 
     if (onText || onTiming) {

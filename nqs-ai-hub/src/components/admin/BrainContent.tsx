@@ -17,6 +17,7 @@ type VersionRow = {
   id: string;
   name: string;
   model: string;
+  thinking_mode?: string | null;
   is_active: boolean | null;
   version: number | null;
   created_at: string | null;
@@ -29,6 +30,7 @@ type TabState = {
   activeId: string | null;
   activeContent: string | null;
   activeModel: string;
+  activeThinkingMode?: string;
 };
 
 type BrainContentProps = Readonly<{

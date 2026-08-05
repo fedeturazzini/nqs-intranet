@@ -12,6 +12,11 @@
  */
 import { createServerClient } from "@/lib/db/supabase";
 import { decrypt, encrypt } from "@/lib/utils/crypto";
+import {
+  defaultThinkingModeFor,
+  isThinkingMode,
+  type ThinkingMode,
+} from "@/lib/anthropic/thinking-mode";
 import type { SystemPromptRow, ToolId } from "@/types/db-aliases";
 
 export type SystemPromptType = "system" | "memory";
@@ -24,8 +29,17 @@ export type ActiveSystemPrompt = {
   version: number;
   /** Modelo a usar para esta versión (Haiku/Sonnet/Opus). */
   model: string;
+  /** Thinking: off = disabled; auto = default del modelo. */
+  thinkingMode: ThinkingMode;
   content: string; // plaintext, ya desencriptado
 };
+
+function resolveThinkingMode(
+  model: string,
+  raw: string | null | undefined,
+): ThinkingMode {
+  return isThinkingMode(raw) ? raw : defaultThinkingModeFor(model);
+}
 
 /**
  * Devuelve el prompt activo de una tool para un type específico.
@@ -57,6 +71,7 @@ export async function getActiveSystemPrompt(
     name: data.name,
     version: data.version ?? 1,
     model: data.model,
+    thinkingMode: resolveThinkingMode(data.model, data.thinking_mode),
     content: raw === "" ? "" : decrypt(raw),
   };
 }
@@ -102,6 +117,7 @@ export async function getActiveSystemAndMemory(
       name: row.name,
       version: row.version ?? 1,
       model: row.model,
+      thinkingMode: resolveThinkingMode(row.model, row.thinking_mode),
       content,
     };
     if (t === "system" && !system) system = parsed;
@@ -150,6 +166,7 @@ export async function getActiveSystemAndMemoryForProject(
       name: row.name,
       version: row.version ?? 1,
       model: row.model,
+      thinkingMode: resolveThinkingMode(row.model, row.thinking_mode),
       content,
     };
     if (t === "system" && !system) system = parsed;

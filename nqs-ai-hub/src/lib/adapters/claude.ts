@@ -401,6 +401,7 @@ export const claudeAdapter: ToolAdapter = {
           // no tener que inferirlo de "no hubo error".
           brainPasswordGated: projectContext.isPrivate,
           model: systemPrompt.model,
+          thinkingMode: systemPrompt.thinkingMode,
           messagesSent: messages.length, // incluye el turno actual
           imagesReceived,
           expectedOutput:
@@ -444,7 +445,7 @@ export const claudeAdapter: ToolAdapter = {
       let response = await streamClaude(
         fullSystem,
         messages,
-        { model: systemPrompt.model, enableFileGeneration: fileGenEnabled },
+        { model: systemPrompt.model, thinkingMode: systemPrompt.thinkingMode, enableFileGeneration: fileGenEnabled },
         onText,
         onStatus,
         markTiming,
@@ -597,6 +598,7 @@ export const claudeAdapter: ToolAdapter = {
         conversationId,
         messageId,
         model: systemPrompt.model,
+        thinkingMode: systemPrompt.thinkingMode,
         stopReason: response.stopReason,
         tokensInput: response.tokensInput,
         tokensOutput: response.tokensOutput,

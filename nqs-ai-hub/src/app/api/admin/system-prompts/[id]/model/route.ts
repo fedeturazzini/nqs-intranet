@@ -1,15 +1,13 @@
 /**
  * PATCH /api/admin/system-prompts/[id]/model
  *
- * Cambia SOLO el modelo (Haiku/Sonnet/Opus) de una versión existente,
- * sin crear una nueva. Útil cuando el admin quiere abaratar/encarecer
- * sin tener que duplicar el contenido del prompt.
+ * Cambia modelo y/o thinking_mode de una versión existente, sin crear una
+ * nueva. Útil cuando el admin quiere abaratar/encarecer o apagar thinking
+ * (Sonnet 5) sin duplicar el contenido del prompt.
  *
- * Body: { model } — uno de los modelos vigentes (Haiku 4.5 / Sonnet 4.6 /
- * Opus 4.6 · 4.7 · 4.8 · 5). Debe coincidir con el CHECK de la migration 0017.
- *
- * El CHECK constraint en DB también valida; acá hacemos validación
- * temprana con Zod para devolver error claro.
+ * Body: { model?, thinkingMode? } — al menos uno requerido.
+ *   model: Haiku / Sonnet / Opus vigentes (CHECK migration 0019)
+ *   thinkingMode: "off" | "auto" (CHECK migration 0020)
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -20,17 +18,24 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const BodySchema = z.object({
-  model: z.enum([
-    "claude-haiku-4-5",
-    "claude-sonnet-4-6",
-    "claude-sonnet-5",
-    "claude-opus-4-6",
-    "claude-opus-4-7",
-    "claude-opus-4-8",
-    "claude-opus-5",
-  ]),
-});
+const BodySchema = z
+  .object({
+    model: z
+      .enum([
+        "claude-haiku-4-5",
+        "claude-sonnet-4-6",
+        "claude-sonnet-5",
+        "claude-opus-4-6",
+        "claude-opus-4-7",
+        "claude-opus-4-8",
+        "claude-opus-5",
+      ])
+      .optional(),
+    thinkingMode: z.enum(["off", "auto"]).optional(),
+  })
+  .refine((b) => b.model != null || b.thinkingMode != null, {
+    message: "pasá model y/o thinkingMode",
+  });
 
 export async function PATCH(
   request: Request,
@@ -58,12 +63,18 @@ export async function PATCH(
     );
   }
 
+  const patch: { model?: string; thinking_mode?: string } = {};
+  if (parsed.data.model != null) patch.model = parsed.data.model;
+  if (parsed.data.thinkingMode != null) {
+    patch.thinking_mode = parsed.data.thinkingMode;
+  }
+
   const db = createServerClient();
   const { data, error } = await db
     .from("system_prompts")
-    .update({ model: parsed.data.model })
+    .update(patch)
     .eq("id", id)
-    .select("id, model, is_active")
+    .select("id, model, thinking_mode, is_active")
     .single();
   if (error) {
     return NextResponse.json(
@@ -71,5 +82,13 @@ export async function PATCH(
       { status: 500 },
     );
   }
-  return NextResponse.json({ ok: true, prompt: data });
+  return NextResponse.json({
+    ok: true,
+    prompt: {
+      id: data.id,
+      model: data.model,
+      thinkingMode: data.thinking_mode,
+      is_active: data.is_active,
+    },
+  });
 }

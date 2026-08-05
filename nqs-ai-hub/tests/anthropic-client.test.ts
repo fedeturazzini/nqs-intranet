@@ -127,6 +127,55 @@ describe("callClaude", () => {
     expect(opts.maxRetries).toBe(3);
     expect(typeof opts.timeout).toBe("number");
   });
+
+  test("Sonnet 5 sin thinkingMode → manda thinking disabled (default seguro)", async () => {
+    let captured: Record<string, unknown> = {};
+    mockCreate = async (args: unknown) => {
+      captured = args as Record<string, unknown>;
+      return {
+        content: [{ type: "text", text: "ok" }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+        stop_reason: "end_turn",
+      };
+    };
+    await callClaude("sys", [{ role: "user", content: "x" }], {
+      model: "claude-sonnet-5",
+    });
+    expect(captured.thinking).toEqual({ type: "disabled" });
+  });
+
+  test("thinkingMode auto → no manda thinking", async () => {
+    let captured: Record<string, unknown> = {};
+    mockCreate = async (args: unknown) => {
+      captured = args as Record<string, unknown>;
+      return {
+        content: [{ type: "text", text: "ok" }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+        stop_reason: "end_turn",
+      };
+    };
+    await callClaude("sys", [{ role: "user", content: "x" }], {
+      model: "claude-sonnet-5",
+      thinkingMode: "auto",
+    });
+    expect(captured.thinking).toBeUndefined();
+  });
+
+  test("Opus 4.7 default → no manda thinking", async () => {
+    let captured: Record<string, unknown> = {};
+    mockCreate = async (args: unknown) => {
+      captured = args as Record<string, unknown>;
+      return {
+        content: [{ type: "text", text: "ok" }],
+        usage: { input_tokens: 1, output_tokens: 1 },
+        stop_reason: "end_turn",
+      };
+    };
+    await callClaude("sys", [{ role: "user", content: "x" }], {
+      model: "claude-opus-4-7",
+    });
+    expect(captured.thinking).toBeUndefined();
+  });
 });
 
 describe("streamClaude — marcas de timing", () => {

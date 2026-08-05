@@ -669,6 +669,7 @@ export type Database = {
           model: string
           name: string
           project_id: string | null
+          thinking_mode: string
           tool_id: string
           type: string
           updated_at: string | null
@@ -683,6 +684,7 @@ export type Database = {
           model?: string
           name: string
           project_id?: string | null
+          thinking_mode?: string
           tool_id: string
           type?: string
           updated_at?: string | null
@@ -697,6 +699,7 @@ export type Database = {
           model?: string
           name?: string
           project_id?: string | null
+          thinking_mode?: string
           tool_id?: string
           type?: string
           updated_at?: string | null

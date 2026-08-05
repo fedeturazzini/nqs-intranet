@@ -15,6 +15,7 @@ type VersionRow = {
   id: string;
   name: string;
   model: string;
+  thinking_mode?: string | null;
   is_active: boolean | null;
   version: number | null;
   created_at: string | null;
@@ -27,6 +28,7 @@ type TabState = {
   activeId: string | null;
   activeContent: string | null;
   activeModel: string;
+  activeThinkingMode?: string;
 };
 
 type PromptTabsProps = Readonly<{
@@ -80,6 +82,7 @@ export function PromptTabs({
           activeId={systemState.activeId}
           activeContent={systemState.activeContent}
           activeModel={systemState.activeModel}
+          activeThinkingMode={systemState.activeThinkingMode}
         />
       </div>
       <div style={{ display: tab === "memory" ? "block" : "none" }}>
@@ -90,6 +93,7 @@ export function PromptTabs({
           activeId={memoryState.activeId}
           activeContent={memoryState.activeContent}
           activeModel={memoryState.activeModel}
+          activeThinkingMode={memoryState.activeThinkingMode}
         />
       </div>
     </>
