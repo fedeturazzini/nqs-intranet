@@ -168,6 +168,92 @@ wc -m /mnt/user-data/outputs/prompt.txt</parameter>
       }),
     ).toEqual({ text: "Listo, ya lo generé.", repaired: false });
   });
+
+  test("repara artifact aplanado create text/plain nombre.txt sin intent", () => {
+    const body =
+      "Image 1 is the base architectural reference — this is a luxury primary bathroom with a rustic natural stone feature wall and a freestanding sculptural bathtub. CAMERA: Extremely close. PHOTOGRAPHIC STYLE: Real photograph.";
+    const malformed = `Listo, va el archivo.\n\ncreate text/plain stone_and_water_detail_v1.txt ${body}`;
+
+    const repaired = repairMalformedTextDelivery(malformed, null);
+
+    expect(repaired).toMatchObject({
+      repaired: true,
+      source: "flattened_artifact",
+    });
+    expect(parseMessageWithArtifacts(repaired.text).segments).toEqual([
+      { kind: "text", content: "Listo, va el archivo." },
+      {
+        kind: "artifact",
+        artifact: {
+          command: "create",
+          type: "text/plain",
+          title: "stone_and_water_detail_v1.txt",
+          content: body,
+          language: undefined,
+        },
+      },
+    ]);
+  });
+
+  test("repara tags de artifact sin angle brackets", () => {
+    const body =
+      "Image 1 is the base architectural reference — modern kitchen and dining area with full lighting and composition details for Nano Banana.";
+    const malformed = `Va el archivo.
+
+function_calls
+
+invoke name="artifacts" parameter name="command"createparameter parameter name="type"text/plainparameter parameter name="title"cocina_family_sunday_v1.txtparameter parameter name="content" ${body} parameter invoke function_results`;
+
+    const repaired = repairMalformedTextDelivery(malformed, null);
+
+    expect(repaired).toMatchObject({
+      repaired: true,
+      source: "stripped_artifact_tags",
+    });
+    const segments = parseMessageWithArtifacts(repaired.text).segments;
+    expect(segments).toHaveLength(2);
+    expect(segments[0]).toEqual({ kind: "text", content: "Va el archivo." });
+    expect(segments[1]).toMatchObject({
+      kind: "artifact",
+      artifact: {
+        type: "text/plain",
+        title: "cocina_family_sunday_v1.txt",
+        content: body,
+      },
+    });
+  });
+
+  test("repara wrapper xai:function_call con payload aplanado", () => {
+    const body =
+      "Image 1 is the base architectural reference — bathroom steam stone macro with full camera and lighting instructions.";
+    const malformed = `Listo, va el archivo.
+
+<xai:function_call name="artifacts"> create text/plain bathroom_steam_stone_macro.txt ${body}
+</xai:function_call>`;
+
+    const repaired = repairMalformedTextDelivery(malformed, null);
+
+    expect(repaired).toMatchObject({
+      repaired: true,
+      source: "xai_function_call",
+    });
+    expect(parseMessageWithArtifacts(repaired.text).segments[1]).toMatchObject({
+      kind: "artifact",
+      artifact: {
+        title: "bathroom_steam_stone_macro.txt",
+        content: body,
+      },
+    });
+  });
+
+  test("no repara menciones cortas de create text/plain en prosa", () => {
+    const chat =
+      "No uses create text/plain foo.txt acá; eso es solo un ejemplo corto.";
+    expect(repairMalformedTextDelivery(chat, null)).toEqual({
+      text: chat,
+      repaired: false,
+    });
+  });
 });
 
 describe("code execution diagnostics", () => {
