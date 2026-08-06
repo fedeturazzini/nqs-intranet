@@ -88,6 +88,33 @@ describe("parseMessageWithArtifacts", () => {
     expect(textContent).toContain("listo.");
   });
 
+  test("limpia citation_never_index alrededor del artifact", () => {
+    const msg =
+      "Listo, va el archivo.\n" +
+      "<citation_never_index>\n" +
+      artifactBlock(
+        `<parameter name="type">text/plain</parameter>\n` +
+          `<parameter name="title">VILLA_golden_hour_facade_v1.txt</parameter>\n` +
+          `<parameter name="content">PROMPT</parameter>`,
+      ) +
+      "\n</citation_never_index>";
+    const { segments } = parseMessageWithArtifacts(msg);
+    expect(segments).toHaveLength(2);
+    expect(segments[0]).toEqual({
+      kind: "text",
+      content: "Listo, va el archivo.",
+    });
+    expect(segments[1]).toMatchObject({
+      kind: "artifact",
+      artifact: { title: "VILLA_golden_hour_facade_v1.txt" },
+    });
+    const joined = segments
+      .filter((s) => s.kind === "text")
+      .map((s) => (s.kind === "text" ? s.content : ""))
+      .join("");
+    expect(joined).not.toMatch(/citation_never_index/i);
+  });
+
   test("acepta whitespace y mayúsculas en los tags (regex tolerante)", () => {
     const msg =
       `<function_calls>\n<invoke  name="artifacts" >\n` +
