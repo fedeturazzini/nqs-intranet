@@ -1,8 +1,8 @@
 /**
  * POST /api/admin/system-prompts/[id]/activate
  *
- * Marca esta versión como is_active=true y desactiva las otras de la
- * misma tool. NO toca contenido ni modelo.
+ * Marca esta versión como is_active=true y desactiva las otras del
+ * mismo (tool, type, project). NO toca contenido ni modelo.
  *
  * Acción crítica — el prompt activo es el "cerebro" que recibe la API
  * de Anthropic. La UI muestra modal de confirmación antes de pegarle.
@@ -28,10 +28,10 @@ export async function POST(
   }
 
   const db = createServerClient();
-  // Buscamos la version para saber a qué (tool, type) pertenece.
+  // Buscamos la version para saber a qué (tool, type, project) pertenece.
   const { data: target, error: lookupErr } = await db
     .from("system_prompts")
-    .select("id, tool_id, type")
+    .select("id, tool_id, type, project_id")
     .eq("id", id)
     .maybeSingle();
   if (lookupErr) {
@@ -44,14 +44,20 @@ export async function POST(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  // Desactivar el resto del mismo (tool, type) — system y memory tienen
-  // activos independientes.
-  await db
+  // Desactivar el resto del mismo (tool, type, project) — system y memory
+  // tienen activos independientes, y cada proyecto también. Sin el filtro
+  // de project_id se apagaba el cerebro activo de TODOS los proyectos.
+  let deacQ = db
     .from("system_prompts")
     .update({ is_active: false })
     .eq("tool_id", target.tool_id)
     .eq("type", target.type)
     .neq("id", id);
+  deacQ =
+    target.project_id == null
+      ? deacQ.is("project_id", null)
+      : deacQ.eq("project_id", target.project_id);
+  await deacQ;
 
   // Activar esta.
   const { error: actErr } = await db
