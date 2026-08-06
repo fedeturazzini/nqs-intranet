@@ -117,6 +117,13 @@ function cleanResidualTags(text: string): string {
       .replace(/<\/?function_calls\s*>/gi, "")
       .replace(/<\/?invoke[^>]*>/gi, "")
       .replace(/<\/?parameter[^>]*>/gi, "")
+      // Wrappers inventados por el modelo (Opus/Sonnet + thinking): no son del
+      // hub; si quedan alrededor del artifact se ven crudos en el chat.
+      .replace(/<\/?citation_never_index\b[^>]*>/gi, "")
+      .replace(/<\/?citation\b[^>]*>/gi, "")
+      .replace(/<\/?document_metadata\b[^>]*>/gi, "")
+      .replace(/<\/?document_id\b[^>]*>/gi, "")
+      .replace(/<\/?document\b[^>]*>/gi, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim()
   );
