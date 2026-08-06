@@ -27,6 +27,7 @@ import {
   extractPartialArtifact,
   messageToPlainText,
 } from "@/lib/utils/parse-artifacts";
+import { normalizeAssistantTextForDisplay } from "@/lib/adapters/claude-text-delivery";
 import { TOOL_DELIVERY_WARNING } from "@/lib/utils/tool-use-artifacts";
 import type { ChatMessage } from "@/lib/hooks/useClaudeChat";
 import {
@@ -557,13 +558,16 @@ const AssistantContent = memo(function AssistantContent({
   content: string;
   streaming: boolean;
 }) {
-  const incompleteThinking = hasIncompleteThinking(content);
-  const incompleteArtifact = hasIncompleteArtifact(content);
+  // Repair client-side: mensajes aplanados (`create text/plain nombre.txt …`)
+  // o viejos en DB sin pasar por el repair del server igual se ven como card.
+  const normalized = normalizeAssistantTextForDisplay(content);
+  const incompleteThinking = hasIncompleteThinking(normalized);
+  const incompleteArtifact = hasIncompleteArtifact(normalized);
 
   // Mientras un <thinking> o un <function_calls> está a medio llegar por
   // streaming, ocultamos todo lo que sigue al tag abierto (no mostramos el
   // XML/razonamiento parcial). El <thinking> ya completo lo borra el parser.
-  let visible = content;
+  let visible = normalized;
   if (incompleteThinking) {
     visible = visible.slice(0, visible.toLowerCase().lastIndexOf("<thinking>"));
   } else if (incompleteArtifact) {
@@ -576,7 +580,9 @@ const AssistantContent = memo(function AssistantContent({
   // stream ya terminó (cortado por max_tokens) → card parcial con badge, así no
   // queda el placeholder colgado para siempre.
   const partial =
-    incompleteArtifact && !streaming ? extractPartialArtifact(content) : null;
+    incompleteArtifact && !streaming
+      ? extractPartialArtifact(normalized)
+      : null;
 
   return (
     <>
@@ -602,7 +608,7 @@ function MessageActions({ content }: { content: string }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    const clean = messageToPlainText(content);
+    const clean = messageToPlainText(normalizeAssistantTextForDisplay(content));
     try {
       await navigator.clipboard.writeText(clean);
       setCopied(true);
@@ -631,7 +637,7 @@ function MessageActions({ content }: { content: string }) {
 }
 
 function downloadTextFallback(content: string, filename: string) {
-  const text = messageToPlainText(content);
+  const text = messageToPlainText(normalizeAssistantTextForDisplay(content));
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");

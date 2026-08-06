@@ -335,3 +335,13 @@ export function repairMalformedTextDelivery(
     tryRepairBashHeredoc(text, intent) ?? { text, repaired: false }
   );
 }
+
+/**
+ * Normaliza texto del assistant para UI / copy / descarga.
+ * Cubre mensajes viejos en DB o turns donde el repair del server no aplicó:
+ * si el modelo dejó el artifact aplanado, acá se convierte a XML parseable.
+ */
+export function normalizeAssistantTextForDisplay(text: string): string {
+  const repaired = repairMalformedTextDelivery(text, null);
+  return repaired.repaired ? repaired.text : text;
+}

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   detectTextDeliveryIntent,
   hasDeliveredTextArtifact,
+  normalizeAssistantTextForDisplay,
   repairMalformedTextDelivery,
 } from "@/lib/adapters/claude-text-delivery";
 import { parseMessageWithArtifacts } from "@/lib/utils/parse-artifacts";
@@ -252,6 +253,34 @@ invoke name="artifacts" parameter name="command"createparameter parameter name="
     expect(repairMalformedTextDelivery(chat, null)).toEqual({
       text: chat,
       repaired: false,
+    });
+  });
+
+  test("normalizeAssistantTextForDisplay repara multilínea create/type/title", () => {
+    const body =
+      "Image 1 is the base architectural reference — contemporary kitchen nocturnal mood with full camera lighting and photographic style details for delivery.";
+    const malformed = `Listo, va el archivo.
+
+create
+text/plain
+cooking_hands_v1.txt
+${body}`;
+
+    const normalized = normalizeAssistantTextForDisplay(malformed);
+    const segments = parseMessageWithArtifacts(normalized).segments;
+
+    expect(segments).toHaveLength(2);
+    expect(segments[0]).toEqual({
+      kind: "text",
+      content: "Listo, va el archivo.",
+    });
+    expect(segments[1]).toMatchObject({
+      kind: "artifact",
+      artifact: {
+        title: "cooking_hands_v1.txt",
+        type: "text/plain",
+        content: body,
+      },
     });
   });
 });
