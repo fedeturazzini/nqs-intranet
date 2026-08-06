@@ -18,6 +18,8 @@
  *     inactiva; activate=true si el toggle "y activar" estaba ON.
  *   - "Activar esta versión" (POST /[id]/activate) — cuando el admin
  *     selecciona una versión vieja del sidebar.
+ *   - "Borrar" (DELETE /[id]) — solo versiones inactivas; no deja el
+ *     historial vacío ni toca la activa.
  */
 import { useCallback, useEffect, useState } from "react";
 import { showToast } from "@/lib/store/toast";
@@ -280,6 +282,51 @@ export function PromptManager({
     }
   }
 
+  async function deleteVersion(v: VersionRow) {
+    if (v.is_active === true) return;
+    const ok = confirm(
+      `¿Borrar definitivamente la versión v${v.version}? Esta acción no se puede deshacer.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/system-prompts/${v.id}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json().catch(() => null)) as
+        | { ok: true; version: number }
+        | { error: string; message?: string }
+        | null;
+      if (!res.ok) {
+        showToast({
+          title: "ERROR",
+          msg:
+            data != null && "message" in data && data.message
+              ? data.message
+              : "no pude borrar",
+          color: "var(--danger)",
+        });
+        setBusy(false);
+        return;
+      }
+      showToast({
+        title: "BORRADA",
+        msg: `v${v.version} eliminada del historial.`,
+        color: "var(--ok)",
+      });
+      // Si estábamos mirando la que borramos, volvemos a la activa.
+      if (selectedId === v.id) {
+        const fallback =
+          versions.find((x) => x.is_active === true && x.id !== v.id)?.id ??
+          activeId;
+        if (fallback) await loadVersion(fallback);
+      }
+      await refreshVersions();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveSettingsOnly() {
     if (!selectedId) return;
     setBusy(true);
@@ -515,54 +562,94 @@ export function PromptManager({
           const active = v.is_active === true;
           const selected = v.id === selectedId;
           return (
-            <button
+            <div
               key={v.id}
-              type="button"
-              onClick={() => loadVersion(v.id)}
-              disabled={busy}
               style={{
-                width: "100%",
-                textAlign: "left",
-                padding: "10px 10px",
-                border: 0,
+                display: "flex",
+                alignItems: "stretch",
+                borderBottom: "1px solid var(--line)",
                 borderLeft: selected
                   ? "2px solid var(--accent)"
                   : "2px solid transparent",
                 background: selected
                   ? "var(--bg-elev-2, rgba(255,255,255,0.04))"
                   : "transparent",
-                color: "var(--fg)",
-                cursor: "pointer",
-                borderBottom: "1px solid var(--line)",
               }}
             >
-              <div
+              <button
+                type="button"
+                onClick={() => loadVersion(v.id)}
+                disabled={busy}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  marginBottom: 4,
+                  flex: 1,
+                  textAlign: "left",
+                  padding: "10px 10px",
+                  border: 0,
+                  background: "transparent",
+                  color: "var(--fg)",
+                  cursor: "pointer",
                 }}
               >
-                <strong style={{ fontSize: 13 }}>v{v.version}</strong>
-                {active && (
-                  <span
-                    className="tag ok"
-                    style={{ padding: "1px 6px", fontSize: 9 }}
-                  >
-                    activa
-                  </span>
-                )}
-              </div>
-              <div className="t-meta dim" style={{ fontSize: 10 }}>
-                {v.model.replace("claude-", "")}
-              </div>
-              <div className="t-meta dim" style={{ fontSize: 10, marginTop: 2 }}>
-                {v.created_at ? DT.format(new Date(v.created_at)) : "—"}
-                {v.users?.name ? ` · ${v.users.name}` : ""}
-              </div>
-            </button>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    marginBottom: 4,
+                  }}
+                >
+                  <strong style={{ fontSize: 13 }}>v{v.version}</strong>
+                  {active && (
+                    <span
+                      className="tag ok"
+                      style={{ padding: "1px 6px", fontSize: 9 }}
+                    >
+                      activa
+                    </span>
+                  )}
+                </div>
+                <div className="t-meta dim" style={{ fontSize: 10 }}>
+                  {v.model.replace("claude-", "")}
+                </div>
+                <div
+                  className="t-meta dim"
+                  style={{ fontSize: 10, marginTop: 2 }}
+                >
+                  {v.created_at ? DT.format(new Date(v.created_at)) : "—"}
+                  {v.users?.name ? ` · ${v.users.name}` : ""}
+                </div>
+              </button>
+              {!active && (
+                <button
+                  type="button"
+                  title={`borrar v${v.version}`}
+                  aria-label={`borrar v${v.version}`}
+                  onClick={() => void deleteVersion(v)}
+                  disabled={busy}
+                  style={{
+                    border: 0,
+                    background: "transparent",
+                    color: "var(--fg-mute)",
+                    cursor: "pointer",
+                    padding: "0 10px",
+                    fontFamily: "var(--mono)",
+                    fontSize: 10,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    alignSelf: "center",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "var(--danger)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "var(--fg-mute)";
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
           );
         })}
       </aside>
