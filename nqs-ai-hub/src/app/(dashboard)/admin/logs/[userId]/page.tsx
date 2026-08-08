@@ -63,34 +63,16 @@ export default async function AdminLogsDetailPage({
         ← volver a gasto
       </Link>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          flexWrap: "wrap",
-          marginTop: 14,
-        }}
-      >
-        <div>
-          <div className="t-eyebrow" style={{ marginBottom: 6 }}>
-            ↳ ADMIN · GASTO · DETALLE
-          </div>
-          <h1 className="page-title" style={{ fontSize: 26, margin: 0 }}>
-            <em style={{ fontFamily: "var(--serif)" }}>{detail.userName}</em>
-          </h1>
-          <p className="t-meta dim" style={{ marginTop: 4 }}>
-            {detail.dept ?? "—"}
-          </p>
+      <div style={{ marginTop: 14 }}>
+        <div className="t-eyebrow" style={{ marginBottom: 6 }}>
+          ↳ ADMIN · GASTO · DETALLE
         </div>
-        <Link
-          href={`/admin/logs/${userId}/conversations`}
-          className="btn sm"
-          style={{ textDecoration: "none", alignSelf: "center" }}
-        >
-          ver conversaciones →
-        </Link>
+        <h1 className="page-title" style={{ fontSize: 26, margin: 0 }}>
+          <em style={{ fontFamily: "var(--serif)" }}>{detail.userName}</em>
+        </h1>
+        <p className="t-meta dim" style={{ marginTop: 4 }}>
+          {detail.dept ?? "—"}
+        </p>
       </div>
 
       {/* Selector de período (links) */}
@@ -126,12 +108,14 @@ export default async function AdminLogsDetailPage({
         )}
       </div>
 
-      {/* Total */}
+      {/* Total + CTA conversaciones (junto al resumen, donde se mira primero) */}
       <div
         style={{
           display: "flex",
-          alignItems: "baseline",
+          alignItems: "center",
+          justifyContent: "space-between",
           gap: 18,
+          flexWrap: "wrap",
           padding: "16px 0",
           borderTop: "1px solid var(--line)",
           borderBottom: "1px solid var(--line)",
@@ -140,14 +124,31 @@ export default async function AdminLogsDetailPage({
       >
         <div
           style={{
-            fontFamily: "var(--serif)",
-            fontSize: 30,
-            fontStyle: "italic",
+            display: "flex",
+            alignItems: "baseline",
+            gap: 18,
+            flexWrap: "wrap",
           }}
         >
-          {formatUSD(detail.totalUsd)} <span style={{ fontSize: 13 }}>USD</span>
+          <div
+            style={{
+              fontFamily: "var(--serif)",
+              fontSize: 30,
+              fontStyle: "italic",
+            }}
+          >
+            {formatUSD(detail.totalUsd)}{" "}
+            <span style={{ fontSize: 13 }}>USD</span>
+          </div>
+          <div className="t-meta dim">{detail.messageCount} mensajes</div>
         </div>
-        <div className="t-meta dim">{detail.messageCount} mensajes</div>
+        <Link
+          href={`/admin/logs/${userId}/conversations`}
+          className="btn"
+          style={{ textDecoration: "none", flexShrink: 0 }}
+        >
+          ver conversaciones →
+        </Link>
       </div>
 
       {/* Llamadas */}

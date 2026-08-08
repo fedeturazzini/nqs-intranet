@@ -277,10 +277,19 @@ export function UsdLogsView({ initial }: UsdLogsViewProps) {
             </div>
             <div
               className="t-meta dim"
-              style={{ minWidth: 90, textAlign: "right", fontSize: 11 }}
+              style={{ minWidth: 70, textAlign: "right", fontSize: 11 }}
             >
               {u.messageCount} msg
             </div>
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() =>
+                router.push(`/admin/logs/${u.userId}/conversations`)
+              }
+            >
+              conversaciones →
+            </button>
             <button
               type="button"
               className="btn sm secondary"
