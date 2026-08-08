@@ -11,9 +11,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth/server";
 import { createServerClient } from "@/lib/db/supabase";
-import { signDownloadUrls } from "@/lib/storage/claude-uploads";
 import { hasProjectGate } from "@/lib/auth/project-gate";
-import { orderPriorDeliveryMessages } from "@/lib/adapters/claude-binary-delivery";
+import { buildConversationMessagesPayload } from "@/lib/db/queries/conversation-detail";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -58,137 +57,26 @@ export async function GET(
     return NextResponse.json({ error: "project_locked" }, { status: 403 });
   }
 
-  const { data: messages, error: msgErr } = await db
-    .from("claude_messages")
-    .select(
-      "id, role, content, images, tokens_input, tokens_output, created_at",
-    )
-    .eq("conversation_id", id)
-    .order("created_at", { ascending: true });
-
-  if (msgErr) {
+  try {
+    const messagesWithUrls = await buildConversationMessagesPayload(id);
+    return NextResponse.json({
+      conversation: {
+        id: conv.id,
+        title: conv.title,
+        createdAt: conv.created_at,
+        updatedAt: conv.updated_at,
+      },
+      messages: messagesWithUrls,
+    });
+  } catch (error) {
     return NextResponse.json(
-      { error: "db_error", message: msgErr.message },
+      {
+        error: "db_error",
+        message: error instanceof Error ? error.message : "error desconocido",
+      },
       { status: 500 },
     );
   }
-  // User y assistant se insertan en un mismo batch y reciben el mismo NOW().
-  // Postgres no garantiza el orden entre empates: normalizamos antes de firmar
-  // adjuntos y responder para que la reconciliación nunca invierta el turno.
-  const orderedMessages = orderPriorDeliveryMessages(messages ?? []);
-
-  // Las imágenes se guardan como PATHS de Storage. Para mostrarlas hay
-  // que firmar URLs de descarga on-demand (1h). Juntamos todos los paths
-  // de la conversación, firmamos en un solo batch, y devolvemos
-  // `imageUrls` por mensaje.
-  const allPaths: string[] = [];
-  for (const m of orderedMessages) {
-    const imgs = Array.isArray(m.images) ? (m.images as unknown[]) : [];
-    for (const p of imgs) {
-      if (typeof p === "string" && p.length > 0) allPaths.push(p);
-    }
-  }
-  const signedByPath = new Map<string, string>();
-  if (allPaths.length > 0) {
-    const signed = await signDownloadUrls(allPaths);
-    for (const s of signed) signedByPath.set(s.path, s.url);
-  }
-
-  // Archivos generados (claude_files) de la conversación, agrupados por
-  // message_id para adjuntarlos a cada mensaje del assistant al recargar.
-  const { data: files } = await db
-    .from("claude_files")
-    .select("id, message_id, name, media_type, created_at")
-    .eq("conversation_id", id);
-  const filesByMessage = new Map<
-    string,
-    Array<{ id: string; name: string; mediaType: string }>
-  >();
-  // Los archivos con `message_id` null (el mensaje del assistant no se guardó
-  // bien en la etapa 2) NO se descartan: se recuperan por TIEMPO para que
-  // aparezcan al recargar.
-  //
-  // REGLA DURA (fix del "archivo equivocado", ver archivo-equivocado-audit.md):
-  // cada huérfano va al mensaje de SU PROPIO turno. La versión anterior los
-  // adjuntaba TODOS al último mensaje del assistant de la conversación, así que
-  // un huérfano de un turno viejo aterrizaba en el mensaje más nuevo (y varios
-  // huérfanos de turnos distintos se apilaban en el mismo mensaje).
-  const orphanFiles: Array<{
-    id: string;
-    name: string;
-    mediaType: string;
-    createdAt: string | null;
-  }> = [];
-  for (const f of files ?? []) {
-    if (!f.message_id) {
-      orphanFiles.push({
-        id: f.id,
-        name: f.name,
-        mediaType: f.media_type,
-        createdAt: f.created_at,
-      });
-      continue;
-    }
-    const arr = filesByMessage.get(f.message_id) ?? [];
-    arr.push({ id: f.id, name: f.name, mediaType: f.media_type });
-    filesByMessage.set(f.message_id, arr);
-  }
-  if (orphanFiles.length > 0) {
-    // `orderedMessages` viene ascendente por created_at con desempate por rol.
-    const assistantMsgs = orderedMessages.filter((m) => m.role === "assistant");
-    for (const orphan of orphanFiles) {
-      // La etapa 2 inserta el archivo DESPUÉS de su mensaje del assistant, en la
-      // misma vuelta → su dueño es el ÚLTIMO assistant creado en o antes que el
-      // archivo. Si no podemos fecharlo, NO adivinamos (mejor no mostrarlo que
-      // colgarlo del mensaje equivocado).
-      if (!orphan.createdAt) continue;
-      const fileTime = new Date(orphan.createdAt).getTime();
-      let ownerId: string | null = null;
-      for (const m of assistantMsgs) {
-        if (!m.created_at) continue;
-        if (new Date(m.created_at).getTime() <= fileTime) ownerId = m.id;
-        else break; // ascendente: de acá en adelante todos son posteriores
-      }
-      if (!ownerId) continue;
-      const arr = filesByMessage.get(ownerId) ?? [];
-      arr.push({
-        id: orphan.id,
-        name: orphan.name,
-        mediaType: orphan.mediaType,
-      });
-      filesByMessage.set(ownerId, arr);
-    }
-  }
-
-  const messagesWithUrls = orderedMessages.map((m) => {
-    const imgs = Array.isArray(m.images) ? (m.images as unknown[]) : [];
-    // Los paths mezclan imágenes y PDFs; se distinguen por extensión. El
-    // nombre original del PDF no se persiste (solo el path uuid.pdf) → label
-    // genérico. Imágenes → imageUrls (como antes); PDFs → pdfAttachments.
-    const imageUrls: string[] = [];
-    const pdfAttachments: Array<{ url: string; name: string }> = [];
-    for (const p of imgs) {
-      if (typeof p !== "string") continue;
-      const url = signedByPath.get(p);
-      if (!url) continue;
-      if (p.toLowerCase().endsWith(".pdf")) {
-        pdfAttachments.push({ url, name: "documento.pdf" });
-      } else {
-        imageUrls.push(url);
-      }
-    }
-    return { ...m, imageUrls, pdfAttachments, files: filesByMessage.get(m.id) };
-  });
-
-  return NextResponse.json({
-    conversation: {
-      id: conv.id,
-      title: conv.title,
-      createdAt: conv.created_at,
-      updatedAt: conv.updated_at,
-    },
-    messages: messagesWithUrls,
-  });
 }
 
 // El título editable: no vacío y con un largo razonable. Se `trim`ea antes de

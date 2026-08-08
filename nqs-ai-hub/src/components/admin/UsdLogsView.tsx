@@ -3,13 +3,14 @@
 /**
  * Vista de gasto en Claude (USD) por usuario.
  *
- * Selector de período (hoy / este mes / mes anterior / 7 días / custom) +
- * búsqueda por nombre + total del período + tabla con "Detalle".
+ * Selector de período + búsqueda + tabla. Incluye cambio de contraseña
+ * del gate de Gastos.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatUSD } from "@/lib/costs/claude-pricing";
 import { PERIOD_LABELS, type PeriodKey } from "@/lib/costs/period";
+import { showToast } from "@/lib/store/toast";
 
 type UsdUser = {
   userId: string;
@@ -39,6 +40,7 @@ export function UsdLogsView({ initial }: UsdLogsViewProps) {
   const [query, setQuery] = useState("");
   const [data, setData] = useState(initial);
   const [loading, setLoading] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false);
 
   async function load(p: PeriodKey, from?: string, to?: string) {
     setLoading(true);
@@ -51,6 +53,10 @@ export function UsdLogsView({ initial }: UsdLogsViewProps) {
       const res = await fetch(`/api/admin/logs/usd?${qs.toString()}`, {
         cache: "no-store",
       });
+      if (res.status === 403) {
+        router.refresh();
+        return;
+      }
       if (res.ok) {
         const d = (await res.json()) as {
           users: UsdUser[];
@@ -88,21 +94,40 @@ export function UsdLogsView({ initial }: UsdLogsViewProps) {
 
   return (
     <div className="page" style={{ padding: 32 }}>
-      <div className="t-eyebrow" style={{ marginBottom: 14 }}>
-        ↳ ADMIN · GASTO
-      </div>
-      <h1
-        className="page-title"
-        style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 14,
+        }}
       >
-        Gasto en <em style={{ fontFamily: "var(--serif)" }}>Claude</em>
-      </h1>
-      <p className="muted" style={{ marginTop: 6, marginBottom: 18 }}>
-        Cuánto gastó cada usuario en USD, según los tokens consumidos por
-        modelo.
-      </p>
+        <div>
+          <div className="t-eyebrow" style={{ marginBottom: 6 }}>
+            ↳ ADMIN · GASTO
+          </div>
+          <h1
+            className="page-title"
+            style={{ fontSize: 28, margin: 0, letterSpacing: "-0.01em" }}
+          >
+            Gasto en <em style={{ fontFamily: "var(--serif)" }}>Claude</em>
+          </h1>
+          <p className="muted" style={{ marginTop: 6, marginBottom: 0 }}>
+            Cuánto gastó cada usuario en USD, según los tokens consumidos por
+            modelo.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn sm secondary"
+          onClick={() => setChangeOpen(true)}
+        >
+          🔑 cambiar contraseña
+        </button>
+      </div>
 
-      {/* Controles */}
       <div
         style={{
           display: "flex",
@@ -183,7 +208,6 @@ export function UsdLogsView({ initial }: UsdLogsViewProps) {
         </div>
       )}
 
-      {/* Total */}
       <div
         style={{
           display: "flex",
@@ -213,7 +237,6 @@ export function UsdLogsView({ initial }: UsdLogsViewProps) {
         {loading && <div className="t-meta dim">cargando…</div>}
       </div>
 
-      {/* Tabla */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {filtered.length === 0 && (
           <div
@@ -268,7 +291,171 @@ export function UsdLogsView({ initial }: UsdLogsViewProps) {
           </div>
         ))}
       </div>
+
+      {changeOpen && (
+        <GastosChangePasswordModal onClose={() => setChangeOpen(false)} />
+      )}
     </div>
+  );
+}
+
+function GastosChangePasswordModal({
+  onClose,
+}: Readonly<{ onClose: () => void }>) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setError(null);
+    if (next.length < 6) {
+      setError("la nueva contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+    if (next !== confirm) {
+      setError("las contraseñas nuevas no coinciden");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/gastos/change-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          current_password: current,
+          new_password: next,
+        }),
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        message?: string;
+      };
+      if (!res.ok || !data.success) {
+        setError(data.message ?? "no se pudo cambiar la contraseña");
+        setBusy(false);
+        return;
+      }
+      showToast({
+        title: "CONTRASEÑA ACTUALIZADA",
+        msg: "Gastos usa la nueva contraseña.",
+        color: "var(--ok)",
+      });
+      onClose();
+    } catch {
+      setError("error de red");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 1000,
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--bg-elev)",
+          border: "1px solid var(--line-strong)",
+          borderRadius: 12,
+          padding: 24,
+          width: "100%",
+          maxWidth: 400,
+        }}
+      >
+        <div className="t-eyebrow" style={{ marginBottom: 14 }}>
+          ↳ CAMBIAR CONTRASEÑA DE GASTOS
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <PwInput label="ACTUAL" value={current} onChange={setCurrent} />
+          <PwInput label="NUEVA" value={next} onChange={setNext} />
+          <PwInput
+            label="CONFIRMAR NUEVA"
+            value={confirm}
+            onChange={setConfirm}
+          />
+        </div>
+        {error && (
+          <div
+            className="t-meta"
+            style={{ color: "var(--danger)", marginTop: 10 }}
+          >
+            ↳ {error}
+          </div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 10,
+            marginTop: 18,
+          }}
+        >
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={onClose}
+            disabled={busy}
+          >
+            cancelar
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void submit()}
+            disabled={busy || !current || !next || !confirm}
+          >
+            {busy ? "guardando…" : "guardar →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PwInput({
+  label,
+  value,
+  onChange,
+}: Readonly<{
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}>) {
+  return (
+    <label style={{ display: "block" }}>
+      <span className="t-eyebrow" style={{ display: "block", marginBottom: 4 }}>
+        {label}
+      </span>
+      <input
+        type="password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: "100%",
+          background: "var(--bg)",
+          border: "1px solid var(--line-strong)",
+          borderRadius: 6,
+          color: "var(--fg)",
+          fontFamily: "var(--mono)",
+          fontSize: 13,
+          padding: "8px 10px",
+          outline: "none",
+        }}
+      />
+    </label>
   );
 }
 

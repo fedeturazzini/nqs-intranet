@@ -4,7 +4,8 @@
  * Devuelve una signed URL (1h) para un archivo generado por Claude
  * (PDF/Word/Excel/PPT). El binario vive en Storage privado (bucket
  * `claude-uploads`), así que se firma on-demand. Valida ownership: el archivo
- * tiene que pertenecer al user logueado (403 si no).
+ * tiene que pertenecer al user logueado (403 si no) — excepto admin con gate
+ * de Gastos válido (ver conversaciones ajenas).
  *
  *   - sin query        → URL de DESCARGA (Content-Disposition: attachment con el
  *                        nombre real; para el botón "Descargar").
@@ -15,6 +16,7 @@
  */
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/server";
+import { hasGastosGate } from "@/lib/auth/gastos-gate";
 import { createServerClient } from "@/lib/db/supabase";
 import {
   createFileDownloadUrl,
@@ -50,9 +52,13 @@ export async function GET(request: Request, ctx: Ctx): Promise<NextResponse> {
   if (!file) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  // Ownership: el archivo tiene que ser del user logueado.
+  // Ownership: dueño, o admin con gate de Gastos (vista de conversaciones).
   if (file.user_id !== session.userId) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    const adminUnlocked =
+      session.role === "admin" && (await hasGastosGate());
+    if (!adminUnlocked) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
   }
 
   // ?inline=1 → URL sin Content-Disposition:attachment (renderiza el PDF embebido

@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
+import { requireGastosGateApi } from "@/lib/auth/gastos-gate";
 import { createServerClient } from "@/lib/db/supabase";
 
 const QuerySchema = z.object({
@@ -21,6 +22,8 @@ const QuerySchema = z.object({
 export async function GET(request: Request): Promise<NextResponse> {
   const guard = await requireAdminApi();
   if (guard instanceof NextResponse) return guard;
+  const gate = await requireGastosGateApi();
+  if (gate instanceof NextResponse) return gate;
 
   const url = new URL(request.url);
   const parsed = QuerySchema.safeParse({

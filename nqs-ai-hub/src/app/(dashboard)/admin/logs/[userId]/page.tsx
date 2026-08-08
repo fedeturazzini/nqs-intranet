@@ -1,11 +1,11 @@
 /**
  * /admin/logs/[userId] — detalle de gasto de un usuario.
  *
- * Server Component: lee el período de la URL (?period=…&from=&to=),
- * agrega las llamadas y las lista. El selector de período son links
- * (server-rendered).
+ * Protegido por gate de Gastos. Incluye link a ver conversaciones (V1).
  */
 import Link from "next/link";
+import { GastosPasswordGate } from "@/components/admin/GastosPasswordGate";
+import { hasGastosGate } from "@/lib/auth/gastos-gate";
 import { getUsdDetailForUser } from "@/lib/db/queries/usage-costs";
 import { formatUSD } from "@/lib/costs/claude-pricing";
 import {
@@ -22,8 +22,6 @@ const DT = new Intl.DateTimeFormat("es-AR", {
   month: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
-  // Server-rendered: forzamos hora Argentina (si no, usa la del runtime =
-  // UTC en Vercel y se ven 3hs adelantadas).
   timeZone: "America/Argentina/Buenos_Aires",
 });
 
@@ -43,6 +41,10 @@ export default async function AdminLogsDetailPage({
   params,
   searchParams,
 }: PageProps) {
+  if (!(await hasGastosGate())) {
+    return <GastosPasswordGate />;
+  }
+
   const { userId } = await params;
   const sp = await searchParams;
   const period: PeriodKey =
@@ -61,15 +63,35 @@ export default async function AdminLogsDetailPage({
         ← volver a gasto
       </Link>
 
-      <div className="t-eyebrow" style={{ margin: "14px 0 6px" }}>
-        ↳ ADMIN · GASTO · DETALLE
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+          marginTop: 14,
+        }}
+      >
+        <div>
+          <div className="t-eyebrow" style={{ marginBottom: 6 }}>
+            ↳ ADMIN · GASTO · DETALLE
+          </div>
+          <h1 className="page-title" style={{ fontSize: 26, margin: 0 }}>
+            <em style={{ fontFamily: "var(--serif)" }}>{detail.userName}</em>
+          </h1>
+          <p className="t-meta dim" style={{ marginTop: 4 }}>
+            {detail.dept ?? "—"}
+          </p>
+        </div>
+        <Link
+          href={`/admin/logs/${userId}/conversations`}
+          className="btn sm"
+          style={{ textDecoration: "none", alignSelf: "center" }}
+        >
+          ver conversaciones →
+        </Link>
       </div>
-      <h1 className="page-title" style={{ fontSize: 26, margin: 0 }}>
-        <em style={{ fontFamily: "var(--serif)" }}>{detail.userName}</em>
-      </h1>
-      <p className="t-meta dim" style={{ marginTop: 4 }}>
-        {detail.dept ?? "—"}
-      </p>
 
       {/* Selector de período (links) */}
       <div style={{ display: "flex", gap: 4, marginTop: 14, flexWrap: "wrap" }}>
@@ -181,9 +203,7 @@ export default async function AdminLogsDetailPage({
               {c.tokensIn.toLocaleString("es-AR")} /{" "}
               {c.tokensOut.toLocaleString("es-AR")}
             </span>
-            <span
-              style={{ textAlign: "right", fontFamily: "var(--mono)" }}
-            >
+            <span style={{ textAlign: "right", fontFamily: "var(--mono)" }}>
               {formatUSD(c.usd)}
             </span>
           </div>

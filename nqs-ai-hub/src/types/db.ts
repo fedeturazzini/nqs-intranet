@@ -116,6 +116,38 @@ export type Database = {
           },
         ]
       }
+      gastos_gate_config: {
+        Row: {
+          gate_version: number
+          id: string
+          password_hash: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          gate_version?: number
+          id?: string
+          password_hash: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          gate_version?: number
+          id?: string
+          password_hash?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gastos_gate_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       claude_conversations: {
         Row: {
           created_at: string | null

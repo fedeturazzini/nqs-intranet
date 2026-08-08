@@ -6,12 +6,15 @@
  */
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
+import { requireGastosGateApi } from "@/lib/auth/gastos-gate";
 import { getUsdSummary } from "@/lib/db/queries/usage-costs";
 import { isPeriodKey, resolvePeriod } from "@/lib/costs/period";
 
 export async function GET(request: Request): Promise<NextResponse> {
   const guard = await requireAdminApi();
   if (guard instanceof NextResponse) return guard;
+  const gate = await requireGastosGateApi();
+  if (gate instanceof NextResponse) return gate;
 
   const url = new URL(request.url);
   const periodParam = url.searchParams.get("period") ?? "today";

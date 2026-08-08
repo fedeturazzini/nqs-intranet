@@ -114,7 +114,7 @@ type ExecuteResponse =
     }
   | { error: string; message?: string };
 
-type ConversationDetailResponse = {
+export type ConversationDetailResponse = {
   conversation: { id: string; title: string | null };
   messages: Array<{
     id: string;
@@ -526,7 +526,8 @@ export function applyStreamingText(
 const chatSessions = createClaudeChatSessionStore();
 const executionControllers = new Map<string, AbortController>();
 
-function mapConversationMessages(
+/** Mapea el payload de detalle (me o admin) al shape de ChatMessages. */
+export function mapConversationMessages(
   data: ConversationDetailResponse,
 ): ChatMessage[] {
   return data.messages.map((message) => ({
