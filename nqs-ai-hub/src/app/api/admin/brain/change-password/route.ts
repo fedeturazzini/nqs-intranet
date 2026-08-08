@@ -2,8 +2,8 @@
  * POST /api/admin/brain/change-password
  *
  * Body: { current_password, new_password }
- * Valida la actual contra el hash, hashea la nueva y actualiza brain_config.
- * Loguea en usage_logs con action 'admin.brain.password_change'.
+ * Valida la actual, hashea la nueva, gate_version++ (invalida cookies),
+ * renueva la cookie del admin que cambió. Loguea admin.brain.password_change.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -11,6 +11,12 @@ import bcrypt from "bcryptjs";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
 import { createServerClient } from "@/lib/db/supabase";
 import { logToolUsage } from "@/lib/adapters/utils";
+import {
+  BRAIN_COOKIE,
+  BRAIN_TTL_SECONDS,
+  brainGateCookieOptions,
+  mintBrainToken,
+} from "@/lib/auth/brain";
 
 const BodySchema = z.object({
   current_password: z.string().min(1).max(200),
@@ -38,7 +44,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const db = createServerClient();
   const { data: config } = await db
     .from("brain_config")
-    .select("id, password_hash")
+    .select("id, password_hash, gate_version")
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -53,16 +59,21 @@ export async function POST(request: Request): Promise<NextResponse> {
   );
   if (!ok) {
     return NextResponse.json(
-      { error: "wrong_password", message: "La contraseña actual no es correcta" },
+      {
+        error: "wrong_password",
+        message: "La contraseña actual no es correcta",
+      },
       { status: 401 },
     );
   }
 
   const newHash = await bcrypt.hash(parsed.data.new_password, 10);
+  const nextVersion = config.gate_version + 1;
   const { error: updErr } = await db
     .from("brain_config")
     .update({
       password_hash: newHash,
+      gate_version: nextVersion,
       updated_by: guard.userId,
       updated_at: new Date().toISOString(),
     })
@@ -82,5 +93,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     metadata: { by: guard.name },
   });
 
-  return NextResponse.json({ success: true });
+  // Renovar cookie del admin que cambió la clave (sigue dentro).
+  const res = NextResponse.json({ success: true });
+  res.cookies.set(
+    BRAIN_COOKIE,
+    mintBrainToken(nextVersion),
+    brainGateCookieOptions(BRAIN_TTL_SECONDS),
+  );
+  return res;
 }

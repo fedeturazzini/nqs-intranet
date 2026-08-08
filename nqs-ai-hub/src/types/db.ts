@@ -89,18 +89,21 @@ export type Database = {
       }
       brain_config: {
         Row: {
+          gate_version: number
           id: string
           password_hash: string
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          gate_version?: number
           id?: string
           password_hash: string
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          gate_version?: number
           id?: string
           password_hash?: string
           updated_at?: string

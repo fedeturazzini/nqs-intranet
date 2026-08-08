@@ -3,14 +3,20 @@
  *
  * Body: { password }
  * Compara con bcrypt contra brain_config.password_hash. Si coincide, setea
- * la cookie httpOnly `brain_session` (30 min) y devuelve { success: true }.
+ * la cookie httpOnly `brain_session` (30 min, con gate_version) y
+ * devuelve { success: true }.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
 import { createServerClient } from "@/lib/db/supabase";
-import { BRAIN_COOKIE, BRAIN_TTL_SECONDS, mintBrainToken } from "@/lib/auth/brain";
+import {
+  BRAIN_COOKIE,
+  BRAIN_TTL_SECONDS,
+  brainGateCookieOptions,
+  mintBrainToken,
+} from "@/lib/auth/brain";
 
 const BodySchema = z.object({ password: z.string().min(1).max(200) });
 
@@ -32,7 +38,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const db = createServerClient();
   const { data: config } = await db
     .from("brain_config")
-    .select("password_hash")
+    .select("password_hash, gate_version")
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -49,14 +55,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ success: false }, { status: 401 });
   }
 
-  const isProd = process.env.NODE_ENV === "production";
   const res = NextResponse.json({ success: true });
-  res.cookies.set(BRAIN_COOKIE, mintBrainToken(), {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: "lax",
-    path: "/",
-    maxAge: BRAIN_TTL_SECONDS,
-  });
+  res.cookies.set(
+    BRAIN_COOKIE,
+    mintBrainToken(config.gate_version),
+    brainGateCookieOptions(BRAIN_TTL_SECONDS),
+  );
   return res;
 }

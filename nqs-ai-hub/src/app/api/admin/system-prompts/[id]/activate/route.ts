@@ -9,6 +9,7 @@
  */
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
+import { requireBrainGateApi } from "@/lib/auth/brain";
 import { createServerClient } from "@/lib/db/supabase";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -21,6 +22,8 @@ export async function POST(
 ): Promise<NextResponse> {
   const guard = await requireAdminApi();
   if (guard instanceof NextResponse) return guard;
+  const brainGate = await requireBrainGateApi();
+  if (brainGate instanceof NextResponse) return brainGate;
 
   const { id } = await ctx.params;
   if (!UUID_RE.test(id)) {

@@ -13,6 +13,7 @@
  */
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
+import { requireBrainGateApi } from "@/lib/auth/brain";
 import { createServerClient } from "@/lib/db/supabase";
 import { decrypt } from "@/lib/utils/crypto";
 import {
@@ -30,6 +31,8 @@ export async function GET(
 ): Promise<NextResponse> {
   const guard = await requireAdminApi();
   if (guard instanceof NextResponse) return guard;
+  const brainGate = await requireBrainGateApi();
+  if (brainGate instanceof NextResponse) return brainGate;
 
   const { id } = await ctx.params;
   if (!UUID_RE.test(id)) {
@@ -81,6 +84,8 @@ export async function DELETE(
 ): Promise<NextResponse> {
   const guard = await requireAdminApi();
   if (guard instanceof NextResponse) return guard;
+  const brainGate = await requireBrainGateApi();
+  if (brainGate instanceof NextResponse) return brainGate;
 
   const { id } = await ctx.params;
   if (!UUID_RE.test(id)) {

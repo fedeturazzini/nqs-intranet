@@ -12,6 +12,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth/admin-guard";
+import { requireBrainGateApi } from "@/lib/auth/brain";
 import { createServerClient } from "@/lib/db/supabase";
 import { encrypt } from "@/lib/utils/crypto";
 import { defaultThinkingModeFor } from "@/lib/anthropic/thinking-mode";
@@ -43,6 +44,8 @@ const NewPromptSchema = z.object({
 export async function GET(request: Request): Promise<NextResponse> {
   const guard = await requireAdminApi();
   if (guard instanceof NextResponse) return guard;
+  const brainGate = await requireBrainGateApi();
+  if (brainGate instanceof NextResponse) return brainGate;
 
   const url = new URL(request.url);
   const toolId = url.searchParams.get("toolId");
@@ -85,6 +88,8 @@ export async function GET(request: Request): Promise<NextResponse> {
 export async function POST(request: Request): Promise<NextResponse> {
   const guard = await requireAdminApi();
   if (guard instanceof NextResponse) return guard;
+  const brainGate = await requireBrainGateApi();
+  if (brainGate instanceof NextResponse) return brainGate;
 
   let body: unknown;
   try {

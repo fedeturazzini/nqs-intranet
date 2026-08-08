@@ -1,18 +1,17 @@
 /**
  * /admin/brain — System Brain (ex "Prompt Padre"), protegido por password.
  *
- * 1. Si no hay cookie `brain_session` válida → render del gate de password.
+ * 1. Si no hay cookie `brain_session` válida (con gate_version) → gate.
  * 2. Con cookie válida → editor del cerebro + memoria DEL PROYECTO
  *    seleccionado (?project=<id>, default = primer proyecto activo), con
  *    selector de proyecto y botón "cambiar contraseña".
  */
-import { cookies } from "next/headers";
 import { BrainPasswordGate } from "@/components/admin/BrainPasswordGate";
 import { BrainContent } from "@/components/admin/BrainContent";
 import { createServerClient } from "@/lib/db/supabase";
 import { decrypt } from "@/lib/utils/crypto";
 import { listActiveProjects } from "@/lib/db/queries/projects";
-import { BRAIN_COOKIE, isValidBrainToken } from "@/lib/auth/brain";
+import { hasBrainGate } from "@/lib/auth/brain";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +38,9 @@ async function loadStateForType(type: PromptType, projectId: string) {
       .select("content_encrypted")
       .eq("id", active.id)
       .maybeSingle();
-    activeContent = full?.content_encrypted ? decrypt(full.content_encrypted) : "";
+    activeContent = full?.content_encrypted
+      ? decrypt(full.content_encrypted)
+      : "";
   }
 
   return {
@@ -56,9 +57,8 @@ type PageProps = {
 };
 
 export default async function AdminBrainPage({ searchParams }: PageProps) {
-  const cookieStore = await cookies();
-  const unlocked = isValidBrainToken(cookieStore.get(BRAIN_COOKIE)?.value);
-  if (!unlocked) {
+  // Gate server-side: cookie + gate_version vs DB (migration 0022).
+  if (!(await hasBrainGate())) {
     return <BrainPasswordGate />;
   }
 
