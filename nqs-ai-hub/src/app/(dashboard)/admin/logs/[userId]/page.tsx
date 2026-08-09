@@ -5,15 +5,11 @@
  */
 import Link from "next/link";
 import { GastosPasswordGate } from "@/components/admin/GastosPasswordGate";
+import { UsdDetailPeriodPicker } from "@/components/admin/UsdDetailPeriodPicker";
 import { hasGastosGate } from "@/lib/auth/gastos-gate";
 import { getUsdDetailForUser } from "@/lib/db/queries/usage-costs";
 import { formatUSD } from "@/lib/costs/claude-pricing";
-import {
-  PERIOD_LABELS,
-  isPeriodKey,
-  resolvePeriod,
-  type PeriodKey,
-} from "@/lib/costs/period";
+import { isPeriodKey, resolvePeriod, type PeriodKey } from "@/lib/costs/period";
 
 export const dynamic = "force-dynamic";
 
@@ -24,13 +20,6 @@ const DT = new Intl.DateTimeFormat("es-AR", {
   minute: "2-digit",
   timeZone: "America/Argentina/Buenos_Aires",
 });
-
-const PRESET_PERIODS: PeriodKey[] = [
-  "today",
-  "this-month",
-  "last-month",
-  "7days",
-];
 
 type PageProps = {
   params: Promise<{ userId: string }>;
@@ -75,38 +64,12 @@ export default async function AdminLogsDetailPage({
         </p>
       </div>
 
-      {/* Selector de período (links) */}
-      <div style={{ display: "flex", gap: 4, marginTop: 14, flexWrap: "wrap" }}>
-        {PRESET_PERIODS.map((p) => {
-          const active = p === period;
-          return (
-            <Link
-              key={p}
-              href={`/admin/logs/${userId}?period=${p}`}
-              className="t-meta"
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                border: "1px solid",
-                borderColor: active ? "var(--accent)" : "var(--line)",
-                background: active ? "var(--accent)" : "transparent",
-                color: active ? "var(--accent-fg)" : "var(--fg-mute)",
-                textTransform: "uppercase",
-                fontSize: 11,
-                letterSpacing: "0.06em",
-                textDecoration: "none",
-              }}
-            >
-              {PERIOD_LABELS[p]}
-            </Link>
-          );
-        })}
-        {period === "custom" && (
-          <span className="t-meta dim" style={{ alignSelf: "center" }}>
-            (período personalizado)
-          </span>
-        )}
-      </div>
+      <UsdDetailPeriodPicker
+        userId={userId}
+        period={period}
+        initialFrom={sp.from ?? ""}
+        initialTo={sp.to ?? ""}
+      />
 
       {/* Total + CTA conversaciones (junto al resumen, donde se mira primero) */}
       <div
