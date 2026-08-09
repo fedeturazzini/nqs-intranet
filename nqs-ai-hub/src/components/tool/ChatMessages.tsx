@@ -44,6 +44,8 @@ type ChatMessagesProps = Readonly<{
   isLoadingConversation: boolean;
   userInitials: string;
   userFirstName: string;
+  /** Si viene, scrollea a ese mensaje y lo resalta un momento (admin gasto). */
+  focusMessageId?: string | null;
 }>;
 
 // Forzamos hora Argentina: sin timeZone explícito, SSR en Vercel = UTC = +3hs
@@ -78,6 +80,7 @@ export function ChatMessages({
   isLoadingConversation,
   userInitials,
   userFirstName,
+  focusMessageId = null,
 }: ChatMessagesProps) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -89,6 +92,7 @@ export function ChatMessages({
   const prevLenRef = useRef(messages.length);
   const previousScrollTopRef = useRef(0);
   const previousTouchYRef = useRef<number | null>(null);
+  const focusDoneRef = useRef<string | null>(null);
   const shouldAttachScrollListeners = shouldAttachChatScrollListeners(
     messages.length,
   );
@@ -97,6 +101,7 @@ export function ChatMessages({
     left: number;
     bottom: number;
   } | null>(null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   // Detectar scroll manual sobre el contenedor scrolleable (vive en
   // ClaudeView). Si el user se aleja del fondo, dejamos de pegarlo abajo.
@@ -173,6 +178,7 @@ export function ChatMessages({
 
   // Autoscroll: instantáneo en cada chunk de streaming, suave al entrar un
   // mensaje nuevo. Si el user acaba de mandar un mensaje, forzamos ir al fondo.
+  // Con focusMessageId pendiente, no pegamos al fondo (el focus effect scrollea).
   useEffect(() => {
     const grew = messages.length > prevLenRef.current;
     prevLenRef.current = messages.length;
@@ -181,13 +187,51 @@ export function ChatMessages({
       stickRef.current = true;
       setShowJumpToBottom(false);
     }
+    const awaitingFocus =
+      focusMessageId != null && focusDoneRef.current !== focusMessageId;
+    if (awaitingFocus) return;
     if (stickRef.current) {
       endRef.current?.scrollIntoView({
         behavior: grew ? "smooth" : "auto",
         block: "end",
       });
     }
-  }, [messages]);
+  }, [messages, focusMessageId]);
+
+  // Deep-link: scroll al mensaje + highlight temporal (~2.5s).
+  useEffect(() => {
+    if (!focusMessageId || isLoadingConversation || messages.length === 0) {
+      return;
+    }
+    if (focusDoneRef.current === focusMessageId) return;
+    const exists = messages.some((m) => m.id === focusMessageId);
+    if (!exists) {
+      focusDoneRef.current = focusMessageId;
+      return;
+    }
+
+    stickRef.current = false;
+    setShowJumpToBottom(true);
+
+    // Esperar un frame para que el DOM pinte los id=chat-msg-…
+    const t0 = window.setTimeout(() => {
+      const el = document.getElementById(`chat-msg-${focusMessageId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setHighlightedId(focusMessageId);
+        focusDoneRef.current = focusMessageId;
+      }
+    }, 50);
+
+    const t1 = window.setTimeout(() => {
+      setHighlightedId((cur) => (cur === focusMessageId ? null : cur));
+    }, 2800);
+
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
+  }, [focusMessageId, isLoadingConversation, messages]);
 
   const jumpToBottom = () => {
     stickRef.current = true;
@@ -224,6 +268,7 @@ export function ChatMessages({
           msg={m}
           userInitials={userInitials}
           userFirstName={userFirstName}
+          highlighted={highlightedId === m.id}
         />
       ))}
       <div ref={endRef} />
@@ -300,6 +345,7 @@ const MessageBubble = memo(function MessageBubble({
   msg,
   userInitials,
   userFirstName,
+  highlighted = false,
 }: MessageBubbleProps) {
   const isAi = msg.role === "assistant";
   const whoLabel = isAi ? "CLAUDE" : userFirstName.toUpperCase();
@@ -317,7 +363,26 @@ const MessageBubble = memo(function MessageBubble({
   });
 
   return (
-    <div className={cssClass}>
+    <div
+      id={`chat-msg-${msg.id}`}
+      className={cssClass}
+      style={
+        highlighted
+          ? {
+              outline: "2px solid var(--accent)",
+              outlineOffset: 4,
+              borderRadius: 8,
+              background: "color-mix(in srgb, var(--accent) 14%, transparent)",
+              transition: "outline-color 0.4s ease, background 0.4s ease",
+            }
+          : {
+              outline: "2px solid transparent",
+              outlineOffset: 4,
+              borderRadius: 8,
+              transition: "outline-color 0.6s ease, background 0.6s ease",
+            }
+      }
+    >
       <div className={`av ${isAi ? "ai" : ""}`}>{avatarText}</div>
       <div className="body">
         <div

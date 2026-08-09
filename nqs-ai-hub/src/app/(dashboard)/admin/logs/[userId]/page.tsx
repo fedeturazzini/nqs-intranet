@@ -211,7 +211,11 @@ export default async function AdminLogsDetailPage({
             <span style={{ textAlign: "right" }}>
               {c.conversationId ? (
                 <Link
-                  href={`/admin/logs/${userId}/conversations/${c.conversationId}`}
+                  href={
+                    c.messageId
+                      ? `/admin/logs/${userId}/conversations/${c.conversationId}?message=${c.messageId}`
+                      : `/admin/logs/${userId}/conversations/${c.conversationId}`
+                  }
                   className="t-meta"
                   style={{
                     color: "var(--accent)",

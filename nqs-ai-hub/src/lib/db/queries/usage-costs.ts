@@ -139,6 +139,8 @@ export type UsdCall = {
   usd: number;
   /** De usage_logs.metadata.conversationId — null si no se persistió. */
   conversationId: string | null;
+  /** De usage_logs.metadata.messageId (mensaje assistant del turno). */
+  messageId: string | null;
 };
 
 export type UsdUserDetail = {
@@ -185,6 +187,8 @@ export async function getUsdDetailForUser(
     const rawConvId = strOrNull(md.conversationId);
     const conversationId =
       rawConvId && rawConvId.length > 0 ? rawConvId : null;
+    const rawMsgId = strOrNull(md.messageId);
+    const messageId = rawMsgId && rawMsgId.length > 0 ? rawMsgId : null;
     calls.push({
       createdAt: log.created_at,
       model,
@@ -192,6 +196,7 @@ export async function getUsdDetailForUser(
       tokensOut,
       usd,
       conversationId,
+      messageId,
     });
   }
 

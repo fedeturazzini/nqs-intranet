@@ -3,6 +3,7 @@
 /**
  * Detalle de conversación en modo solo lectura (admin).
  * Reusa ChatMessages; sin ChatInput ni acciones de escritura.
+ * focusMessageId: scroll + highlight al mensaje del gasto.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -17,6 +18,7 @@ import {
 type AdminConversationDetailProps = Readonly<{
   userId: string;
   conversationId: string;
+  focusMessageId?: string | null;
 }>;
 
 type AdminDetailResponse = ConversationDetailResponse & {
@@ -33,6 +35,7 @@ type AdminDetailResponse = ConversationDetailResponse & {
 export function AdminConversationDetail({
   userId,
   conversationId,
+  focusMessageId = null,
 }: AdminConversationDetailProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -115,6 +118,7 @@ export function AdminConversationDetail({
           {meta
             ? `${meta.userName} · ${meta.projectName ?? "Sin proyecto"}`
             : "…"}
+          {focusMessageId ? " · mensaje del gasto resaltado" : ""}
         </p>
       </div>
 
@@ -155,6 +159,7 @@ export function AdminConversationDetail({
           isLoadingConversation={loading}
           userInitials={initials}
           userFirstName={firstName}
+          focusMessageId={focusMessageId}
         />
       </div>
     </div>
