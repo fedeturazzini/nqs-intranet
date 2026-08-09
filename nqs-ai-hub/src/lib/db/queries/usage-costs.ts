@@ -6,12 +6,18 @@
  * caemos al join con `claude_messages` vía `metadata.messageId` (que tiene
  * tokens_input/tokens_output exactos).
  *
+ * Pagina resultados (Supabase max_rows=1000) para cubrir períodos largos.
+ *
  * Server-only.
  */
 import { createServerClient } from "@/lib/db/supabase";
 import { calculateCostUSD } from "@/lib/costs/claude-pricing";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
+
+/** PostgREST/Supabase `max_rows` (ver supabase/config.toml). Sin paginar,
+ * los períodos largos se cortan en este tope y el total USD queda incompleto. */
+const PAGE_SIZE = 1000;
 
 function asObj(m: unknown): Record<string, unknown> {
   return m && typeof m === "object" ? (m as Record<string, unknown>) : {};
@@ -30,6 +36,45 @@ type RawLog = {
   tokens_consumed: number | null;
   users: { name: string; dept: string | null } | null;
 };
+
+const LOG_SELECT =
+  "user_id, created_at, metadata, tokens_consumed, users!usage_logs_user_id_fkey(name, dept)";
+
+/** Trae todos los `claude.execute` del rango, paginando más allá de max_rows. */
+async function fetchAllUsageLogs(opts: {
+  fromIso: string;
+  toIso: string;
+  userId?: string;
+  ascending?: boolean;
+}): Promise<RawLog[]> {
+  const db = createServerClient();
+  const all: RawLog[] = [];
+  let offset = 0;
+  const ascending = opts.ascending ?? true;
+
+  for (;;) {
+    let q = db
+      .from("usage_logs")
+      .select(LOG_SELECT)
+      .eq("action", "claude.execute");
+    if (opts.userId) q = q.eq("user_id", opts.userId);
+
+    const { data, error } = await q
+      .gte("created_at", opts.fromIso)
+      .lte("created_at", opts.toIso)
+      .order("created_at", { ascending })
+      .order("id", { ascending })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+
+    const batch = (data ?? []) as RawLog[];
+    all.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return all;
+}
 
 /** Resuelve model + tokensIn/Out de un log, usando el map de mensajes para
  * los históricos sin split en metadata. */
@@ -98,18 +143,7 @@ export async function getUsdSummary(
   fromIso: string,
   toIso: string,
 ): Promise<UsdUserSummary[]> {
-  const db = createServerClient();
-  const { data, error } = await db
-    .from("usage_logs")
-    .select(
-      "user_id, created_at, metadata, tokens_consumed, users!usage_logs_user_id_fkey(name, dept)",
-    )
-    .eq("action", "claude.execute")
-    .gte("created_at", fromIso)
-    .lte("created_at", toIso);
-  if (error) throw error;
-
-  const logs = (data ?? []) as RawLog[];
+  const logs = await fetchAllUsageLogs({ fromIso, toIso });
   const msgMap = await buildMessageTokenMap(logs);
 
   const byUser = new Map<string, UsdUserSummary>();
@@ -161,20 +195,12 @@ export async function getUsdDetailForUser(
   fromIso: string,
   toIso: string,
 ): Promise<UsdUserDetail> {
-  const db = createServerClient();
-  const { data, error } = await db
-    .from("usage_logs")
-    .select(
-      "user_id, created_at, metadata, tokens_consumed, users!usage_logs_user_id_fkey(name, dept)",
-    )
-    .eq("action", "claude.execute")
-    .eq("user_id", userId)
-    .gte("created_at", fromIso)
-    .lte("created_at", toIso)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-
-  const logs = (data ?? []) as RawLog[];
+  const logs = await fetchAllUsageLogs({
+    fromIso,
+    toIso,
+    userId,
+    ascending: false,
+  });
   const msgMap = await buildMessageTokenMap(logs);
 
   // Resolver nombres de proyecto en un batch (metadata.projectId).
@@ -185,12 +211,18 @@ export async function getUsdDetailForUser(
   }
   const projectNames = new Map<string, string>();
   if (projectIds.size > 0) {
-    const { data: projects } = await db
-      .from("projects")
-      .select("id, name")
-      .in("id", [...projectIds]);
-    for (const p of projects ?? []) {
-      projectNames.set(p.id, p.name);
+    const db = createServerClient();
+    const ids = [...projectIds];
+    const CHUNK = 200;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const { data: projects } = await db
+        .from("projects")
+        .select("id, name")
+        .in("id", slice);
+      for (const p of projects ?? []) {
+        projectNames.set(p.id, p.name);
+      }
     }
   }
 
