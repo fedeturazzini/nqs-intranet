@@ -4,6 +4,9 @@
  * Detalle de conversación en modo solo lectura (admin).
  * Reusa ChatMessages; sin ChatInput ni acciones de escritura.
  * focusMessageId: scroll + highlight al mensaje del gasto.
+ *
+ * Nav: "← Volver" = history.back() (fallback al detalle de gasto);
+ * CTA "ver conversaciones de {user}" = lista de todas las del user.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -79,6 +82,16 @@ export function AdminConversationDetail({
     };
   }, [conversationId, router]);
 
+  function handleBack() {
+    // Preferir historial (vino del detalle de gasto). Si no hay stack útil
+    // (deep-link directo), caer al detalle de gasto del user.
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push(`/admin/logs/${userId}`);
+  }
+
   const initials = meta
     ? meta.userName
         .split(" ")
@@ -88,6 +101,7 @@ export function AdminConversationDetail({
         .join("") || "?"
     : "?";
   const firstName = meta?.userName.split(" ")[0] ?? "Usuario";
+  const userDisplay = meta?.userName ?? "usuario";
 
   return (
     <div
@@ -99,14 +113,40 @@ export function AdminConversationDetail({
       }}
     >
       <div style={{ padding: "20px 32px 12px", flexShrink: 0 }}>
-        <Link
-          href={`/admin/logs/${userId}/conversations`}
-          className="t-meta"
-          style={{ color: "var(--accent)" }}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
         >
-          ← volver a conversaciones
-        </Link>
-        <div className="t-eyebrow" style={{ margin: "12px 0 6px" }}>
+          <button
+            type="button"
+            onClick={handleBack}
+            className="t-meta"
+            style={{
+              color: "var(--accent)",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              font: "inherit",
+            }}
+          >
+            ← Volver
+          </button>
+          <Link
+            href={`/admin/logs/${userId}/conversations`}
+            className="btn sm"
+            style={{ textDecoration: "none", flexShrink: 0 }}
+          >
+            ver conversaciones de {firstName} →
+          </Link>
+        </div>
+
+        <div className="t-eyebrow" style={{ margin: "14px 0 6px" }}>
           ↳ ADMIN · CONVERSACIÓN · SOLO LECTURA
         </div>
         <h1 className="page-title" style={{ fontSize: 22, margin: 0 }}>
@@ -116,7 +156,7 @@ export function AdminConversationDetail({
         </h1>
         <p className="t-meta dim" style={{ marginTop: 6 }}>
           {meta
-            ? `${meta.userName} · ${meta.projectName ?? "Sin proyecto"}`
+            ? `${userDisplay} · ${meta.projectName ?? "Sin proyecto"}`
             : "…"}
           {focusMessageId ? " · mensaje del gasto resaltado" : ""}
         </p>

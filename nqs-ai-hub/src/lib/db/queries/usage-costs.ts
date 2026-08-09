@@ -141,6 +141,10 @@ export type UsdCall = {
   conversationId: string | null;
   /** De usage_logs.metadata.messageId (mensaje assistant del turno). */
   messageId: string | null;
+  /** De usage_logs.metadata.projectId. */
+  projectId: string | null;
+  /** Nombre resuelto desde projects; null si no hay / no existe. */
+  projectName: string | null;
 };
 
 export type UsdUserDetail = {
@@ -173,6 +177,23 @@ export async function getUsdDetailForUser(
   const logs = (data ?? []) as RawLog[];
   const msgMap = await buildMessageTokenMap(logs);
 
+  // Resolver nombres de proyecto en un batch (metadata.projectId).
+  const projectIds = new Set<string>();
+  for (const log of logs) {
+    const pid = strOrNull(asObj(log.metadata).projectId);
+    if (pid) projectIds.add(pid);
+  }
+  const projectNames = new Map<string, string>();
+  if (projectIds.size > 0) {
+    const { data: projects } = await db
+      .from("projects")
+      .select("id, name")
+      .in("id", [...projectIds]);
+    for (const p of projects ?? []) {
+      projectNames.set(p.id, p.name);
+    }
+  }
+
   let totalUsd = 0;
   const calls: UsdCall[] = [];
   let userName = "—";
@@ -189,6 +210,9 @@ export async function getUsdDetailForUser(
       rawConvId && rawConvId.length > 0 ? rawConvId : null;
     const rawMsgId = strOrNull(md.messageId);
     const messageId = rawMsgId && rawMsgId.length > 0 ? rawMsgId : null;
+    const rawProjectId = strOrNull(md.projectId);
+    const projectId =
+      rawProjectId && rawProjectId.length > 0 ? rawProjectId : null;
     calls.push({
       createdAt: log.created_at,
       model,
@@ -197,6 +221,8 @@ export async function getUsdDetailForUser(
       usd,
       conversationId,
       messageId,
+      projectId,
+      projectName: projectId ? (projectNames.get(projectId) ?? null) : null,
     });
   }
 
