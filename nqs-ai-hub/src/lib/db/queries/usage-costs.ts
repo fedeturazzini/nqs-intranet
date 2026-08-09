@@ -137,6 +137,8 @@ export type UsdCall = {
   tokensIn: number;
   tokensOut: number;
   usd: number;
+  /** De usage_logs.metadata.conversationId — null si no se persistió. */
+  conversationId: string | null;
 };
 
 export type UsdUserDetail = {
@@ -179,7 +181,18 @@ export async function getUsdDetailForUser(
     const { model, tokensIn, tokensOut } = resolveTokens(log, msgMap);
     const usd = calculateCostUSD(model, tokensIn, tokensOut);
     totalUsd += usd;
-    calls.push({ createdAt: log.created_at, model, tokensIn, tokensOut, usd });
+    const md = asObj(log.metadata);
+    const rawConvId = strOrNull(md.conversationId);
+    const conversationId =
+      rawConvId && rawConvId.length > 0 ? rawConvId : null;
+    calls.push({
+      createdAt: log.created_at,
+      model,
+      tokensIn,
+      tokensOut,
+      usd,
+      conversationId,
+    });
   }
 
   return {

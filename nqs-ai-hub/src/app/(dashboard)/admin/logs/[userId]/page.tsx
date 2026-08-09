@@ -151,13 +151,13 @@ export default async function AdminLogsDetailPage({
         </Link>
       </div>
 
-      {/* Llamadas */}
+      {/* Llamadas — cada fila puede linkear a su conversación */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <div
           className="t-eyebrow"
           style={{
             display: "grid",
-            gridTemplateColumns: "140px 1fr 120px 90px",
+            gridTemplateColumns: "140px 1fr 120px 90px 110px",
             gap: 12,
             padding: "0 12px 8px",
             fontSize: 9,
@@ -167,6 +167,7 @@ export default async function AdminLogsDetailPage({
           <span>MODELO</span>
           <span style={{ textAlign: "right" }}>TOKENS (IN/OUT)</span>
           <span style={{ textAlign: "right" }}>USD</span>
+          <span style={{ textAlign: "right" }}>CONV</span>
         </div>
         {detail.calls.length === 0 && (
           <div
@@ -181,7 +182,7 @@ export default async function AdminLogsDetailPage({
             key={i}
             style={{
               display: "grid",
-              gridTemplateColumns: "140px 1fr 120px 90px",
+              gridTemplateColumns: "140px 1fr 120px 90px 110px",
               gap: 12,
               padding: "10px 12px",
               border: "1px solid var(--line)",
@@ -206,6 +207,25 @@ export default async function AdminLogsDetailPage({
             </span>
             <span style={{ textAlign: "right", fontFamily: "var(--mono)" }}>
               {formatUSD(c.usd)}
+            </span>
+            <span style={{ textAlign: "right" }}>
+              {c.conversationId ? (
+                <Link
+                  href={`/admin/logs/${userId}/conversations/${c.conversationId}`}
+                  className="t-meta"
+                  style={{
+                    color: "var(--accent)",
+                    textDecoration: "none",
+                    fontSize: 11,
+                  }}
+                >
+                  ver →
+                </Link>
+              ) : (
+                <span className="t-meta dim" style={{ fontSize: 11 }}>
+                  —
+                </span>
+              )}
             </span>
           </div>
         ))}
