@@ -157,15 +157,17 @@ export default async function AdminLogsDetailPage({
           className="t-eyebrow"
           style={{
             display: "grid",
-            gridTemplateColumns: "130px 1fr 1fr 120px 80px 90px",
+            // FECHA + PROYECTO + MODELO juntos a la izq.; 1fr empuja TOKENS/USD/CONV a la der.
+            gridTemplateColumns: "130px 180px 140px 1fr 120px 80px 90px",
             gap: 12,
             padding: "0 12px 8px",
             fontSize: 9,
           }}
         >
           <span>FECHA</span>
-          <span>MODELO</span>
           <span>PROYECTO</span>
+          <span>MODELO</span>
+          <span aria-hidden="true" />
           <span style={{ textAlign: "right" }}>TOKENS (IN/OUT)</span>
           <span style={{ textAlign: "right" }}>USD</span>
           <span style={{ textAlign: "right" }}>CONV</span>
@@ -183,7 +185,7 @@ export default async function AdminLogsDetailPage({
             key={i}
             style={{
               display: "grid",
-              gridTemplateColumns: "130px 1fr 1fr 120px 80px 90px",
+              gridTemplateColumns: "130px 180px 140px 1fr 120px 80px 90px",
               gap: 12,
               padding: "10px 12px",
               border: "1px solid var(--line)",
@@ -195,9 +197,6 @@ export default async function AdminLogsDetailPage({
           >
             <span className="t-meta dim">
               {c.createdAt ? DT.format(new Date(c.createdAt)) : "—"}
-            </span>
-            <span style={{ fontFamily: "var(--mono)" }}>
-              {c.model.replace("claude-", "")}
             </span>
             <span
               className="t-meta"
@@ -211,6 +210,10 @@ export default async function AdminLogsDetailPage({
             >
               {c.projectName ?? "Sin proyecto"}
             </span>
+            <span style={{ fontFamily: "var(--mono)" }}>
+              {c.model.replace("claude-", "")}
+            </span>
+            <span aria-hidden="true" />
             <span
               className="t-meta dim"
               style={{ textAlign: "right", fontFamily: "var(--mono)" }}
