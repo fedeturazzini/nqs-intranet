@@ -54,6 +54,10 @@ import {
   shouldEnableBinaryFileGeneration,
 } from "./claude-binary-delivery";
 import {
+  resolveHistoryTokenBudget,
+  trimHistoryToBudget,
+} from "./claude-history-window";
+import {
   detectTextDeliveryIntent,
   hasDeliveredTextArtifact,
   repairMalformedTextDelivery,
@@ -286,6 +290,8 @@ export const claudeAdapter: ToolAdapter = {
         modelSupportsCodeExecution(systemPrompt.model);
 
       // 2. Construir history si vino conversationId.
+      //    Intent detection usa el historial completo de DB; a Anthropic solo
+      //    mandamos una ventana por budget (+ resumen heurístico si hubo corte).
       const messages: ClaudeMessage[] = [];
       let previousUserPrompt: string | null = null;
       let previousAssistantId: string | null = null;
@@ -295,6 +301,15 @@ export const claudeAdapter: ToolAdapter = {
         content: string;
       }> = [];
       let previousAssistantFileMediaTypes: string[] = [];
+      const historyBudgetTokens = resolveHistoryTokenBudget();
+      let historyWindow = {
+        truncated: false,
+        droppedCount: 0,
+        keptCount: 0,
+        estimatedTokens: 0,
+        summaryIncluded: false,
+        total: 0,
+      };
 
       if (conversationId) {
         // Ownership + project_id ya se resolvieron una sola vez pre-stream.
@@ -307,8 +322,23 @@ export const claudeAdapter: ToolAdapter = {
           role: message.role,
           content: message.content,
         }));
-        for (const m of priorMessages) {
-          messages.push({ role: m.role, content: m.content });
+        const trimmed = trimHistoryToBudget(
+          priorMessages,
+          historyBudgetTokens,
+        );
+        historyWindow = {
+          truncated: trimmed.truncated,
+          droppedCount: trimmed.droppedCount,
+          keptCount: trimmed.keptCount,
+          estimatedTokens: trimmed.estimatedTokens,
+          summaryIncluded: trimmed.summaryIncluded,
+          total: priorMessages.length,
+        };
+        for (const m of trimmed.messages) {
+          messages.push({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          });
         }
         ({ previousUserPrompt, previousAssistantId } =
           resolvePriorDeliveryTurn(priorMessages));
@@ -403,6 +433,13 @@ export const claudeAdapter: ToolAdapter = {
           model: systemPrompt.model,
           thinkingMode: systemPrompt.thinkingMode,
           messagesSent: messages.length, // incluye el turno actual
+          historyTotal: historyWindow.total,
+          historyKept: historyWindow.keptCount,
+          historyDropped: historyWindow.droppedCount,
+          historyTruncated: historyWindow.truncated,
+          historySummaryIncluded: historyWindow.summaryIncluded,
+          historyBudgetTokens,
+          historyEstimatedTokens: historyWindow.estimatedTokens,
           imagesReceived,
           expectedOutput:
             binaryDeliveryIntent?.format ?? textDeliveryIntent?.format ?? null,

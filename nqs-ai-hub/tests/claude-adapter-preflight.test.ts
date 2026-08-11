@@ -142,6 +142,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.ENABLE_FILE_GENERATION;
+  delete process.env.CLAUDE_HISTORY_TOKEN_BUDGET;
   vi.restoreAllMocks();
 });
 
@@ -379,5 +380,100 @@ describe("Claude adapter preflight", () => {
       anthropicTotalMs: 150,
       totalMs: 450,
     });
+  });
+
+  test("recorta historial largo antes de streamClaude y loguea historyTruncated", async () => {
+    process.env.CLAUDE_HISTORY_TOKEN_BUDGET = "80";
+    const filler = (n: number, ch: string) => ch.repeat(n * 4);
+    const historyRows = [
+      {
+        id: "m1",
+        role: "user" as const,
+        content: filler(100, "A"),
+        created_at: "2026-08-01T10:00:00.000Z",
+      },
+      {
+        id: "m2",
+        role: "assistant" as const,
+        content: filler(100, "B"),
+        created_at: "2026-08-01T10:00:01.000Z",
+      },
+      {
+        id: "m3",
+        role: "user" as const,
+        content: filler(100, "C"),
+        created_at: "2026-08-01T10:00:02.000Z",
+      },
+      {
+        id: "m4",
+        role: "assistant" as const,
+        content: filler(100, "D"),
+        created_at: "2026-08-01T10:00:03.000Z",
+      },
+      {
+        id: "m5",
+        role: "user" as const,
+        content: filler(20, "E"),
+        created_at: "2026-08-01T10:00:04.000Z",
+      },
+      {
+        id: "m6",
+        role: "assistant" as const,
+        content: filler(20, "F"),
+        created_at: "2026-08-01T10:00:05.000Z",
+      },
+    ];
+
+    mocks.getBrain.mockResolvedValue({
+      system: {
+        id: "brain-1",
+        content: "System",
+        model: "claude-sonnet-4-5",
+        thinkingMode: "auto",
+        version: 7,
+      },
+      memory: null,
+    });
+    mocks.historyOrder.mockResolvedValue({ data: historyRows, error: null });
+    mocks.streamClaude.mockResolvedValueOnce({
+      text: "ok",
+      tokensInput: 10,
+      tokensOutput: 5,
+      stopReason: "end_turn",
+      contentBlocks: [{ type: "text", chars: 2 }],
+      anthropicMessageId: "msg_trim",
+      cacheCreationTokens: 0,
+      cacheReadTokens: 0,
+    });
+
+    const result = await claudeAdapter.execute!("user-1", {
+      prompt: "seguí",
+      conversationId: "conversation-1",
+      projectContext: {
+        projectId: "project-1",
+        projectName: "Proyecto",
+        isPrivate: false,
+        source: "conversation",
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(mocks.streamClaude).toHaveBeenCalledTimes(1);
+    const sentMessages = mocks.streamClaude.mock.calls[0][1] as Array<{
+      role: string;
+      content: string;
+    }>;
+    // prior (6) + turno actual (1) = 7 si no hubiera trim; con trim son menos.
+    expect(sentMessages.length).toBeLessThan(historyRows.length + 1);
+    expect(sentMessages.at(-1)).toMatchObject({ role: "user" });
+    expect(mocks.logInfo).toHaveBeenCalledWith(
+      "execute.context",
+      expect.objectContaining({
+        historyTruncated: true,
+        historyTotal: historyRows.length,
+        historySummaryIncluded: true,
+        historyBudgetTokens: 80,
+      }),
+    );
   });
 });

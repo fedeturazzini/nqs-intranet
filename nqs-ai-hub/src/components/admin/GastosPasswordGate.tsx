@@ -73,8 +73,8 @@ export function GastosPasswordGate() {
           Acceso a Gastos
         </h2>
         <p className="t-meta dim" style={{ lineHeight: 1.5, margin: "0 0 18px" }}>
-          Esta sección está protegida. Ingresá la contraseña para ver gasto y
-          conversaciones.
+          Esta sección está protegida. Ingresá la contraseña para ver gastos y
+          detalles.
         </p>
         <form onSubmit={submit}>
           <input
